@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { HubClient, ZzapiMesHttpError } from "../index.js";
-import type { PingResponse, PoResponse } from "../index.js";
+import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse, ConfirmationResponse, GoodsReceiptResponse, GoodsIssueResponse } from "../index.js";
 
 const BASE = "http://hub.test:8080";
 const API_KEY = "test-api-key";
@@ -208,5 +208,130 @@ describe("HubClient", () => {
     const client = new HubClient({ url: `${BASE}/`, apiKey: API_KEY });
     await client.ping();
     assert.ok(!capturedUrl?.includes("8080//"));
+  });
+
+  // Phase 5A methods
+
+  it("getProdOrder builds correct URL", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { aufnr: "1000000", auart: "PP01", werks: "1000", matnr: "10000001", gamng: 1000, gstrp: "20260401", gltrp: "20260415" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getProdOrder("1000000");
+    assert.equal(result.aufnr, "1000000");
+    assert.match(capturedUrl!, /\/prod-order\/1000000$/);
+  });
+
+  it("getMaterial builds correct URL with optional werks", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { matnr: "10000001", mtart: "FERT", meins: "EA" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getMaterial("10000001", "1000");
+    assert.equal(result.mtart, "FERT");
+    assert.match(capturedUrl!, /\/material\/10000001\?werks=1000$/);
+  });
+
+  it("getStock builds correct URL", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { matnr: "10000001", werks: "1000", items: [{ lgort: "0001", clabs: 250 }] });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getStock("10000001", "1000", "0001");
+    assert.match(capturedUrl!, /\/stock\/10000001\?werks=1000&lgort=0001$/);
+  });
+
+  it("getPoItems builds correct URL", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { ebeln: "4500000001", items: [{ ebelp: "00010", matnr: "10000001", menge: 100, meins: "EA" }] });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getPoItems("4500000001");
+    assert.equal(result.ebeln, "4500000001");
+    assert.match(capturedUrl!, /\/po\/4500000001\/items$/);
+  });
+
+  it("getRouting builds correct URL", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { matnr: "10000001", werks: "1000", plnnr: "50000123", operations: [{ vornr: "0010", ltxa1: "Turning" }] });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getRouting("10000001", "1000");
+    assert.equal(result.plnnr, "50000123");
+    assert.match(capturedUrl!, /\/routing\/10000001\?werks=1000$/);
+  });
+
+  it("getWorkCenter builds correct URL", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { arbpl: "TURN1", werks: "1000", steus: "PP01" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getWorkCenter("TURN1", "1000");
+    assert.equal(result.steus, "PP01");
+    assert.match(capturedUrl!, /\/work-center\/TURN1\?werks=1000$/);
+  });
+
+  // Phase 5B POST methods
+
+  it("confirmProduction sends POST with idempotency-key header", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    globalThis.fetch = mockFetch((url, init) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      capturedHeaders = init?.headers as Record<string, string>;
+      return jsonResponse(201, { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, status: "confirmed" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
+      { orderid: "1000000", operation: "0010", yield: 50 },
+      "test-idem-key-001",
+    );
+    assert.equal(result.status, "confirmed");
+    assert.equal(capturedHeaders["idempotency-key"], "test-idem-key-001");
+    assert.match(capturedUrl!, /\/confirmation$/);
+  });
+
+  it("goodsReceipt sends POST with idempotency-key header", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(201, { ebeln: "4500000001", ebelp: "00010", menge: 100, status: "posted" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).goodsReceipt(
+      { ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" },
+      "test-gr-key-001",
+    );
+    assert.equal(result.status, "posted");
+    assert.match(capturedUrl!, /\/goods-receipt$/);
+  });
+
+  it("goodsIssue sends POST with idempotency-key header", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(201, { orderid: "1000000", matnr: "20000001", menge: 50, status: "posted" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).goodsIssue(
+      { orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" },
+      "test-gi-key-001",
+    );
+    assert.equal(result.status, "posted");
+    assert.match(capturedUrl!, /\/goods-issue$/);
+  });
+
+  it("POST methods retry on 401", async () => {
+    let authCalls = 0;
+    let postCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      postCalls++;
+      if (postCalls === 1) return jsonResponse(401, { error: "expired" });
+      return jsonResponse(201, { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, status: "confirmed" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
+      { orderid: "1000000", operation: "0010", yield: 50 },
+      "retry-key-001",
+    );
+    assert.equal(authCalls, 2);
+    assert.equal(result.status, "confirmed");
   });
 });
