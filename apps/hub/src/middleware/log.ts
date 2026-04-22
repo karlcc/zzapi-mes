@@ -1,8 +1,11 @@
 import type { MiddlewareHandler } from "hono";
-import { appendFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { appendFile, mkdir } from "node:fs/promises";
+import { resolve, dirname } from "node:path";
 
 const LOG_FILE = resolve(process.env.HUB_LOG_FILE ?? "./hub.log");
+
+// Ensure log directory exists at startup
+mkdir(dirname(LOG_FILE), { recursive: true }).catch(() => {});
 
 /** Structured JSON access-log middleware. Writes one line per request. */
 export const accessLog: MiddlewareHandler = async (c, next) => {
@@ -17,7 +20,5 @@ export const accessLog: MiddlewareHandler = async (c, next) => {
     ms,
     sub: (c.get("jwtPayload") as Record<string, string> | undefined)?.sub ?? "-",
   });
-  // Fire-and-forget write; errors are swallowed deliberately to avoid
-  // logging failures breaking the request path.
   appendFile(LOG_FILE, entry + "\n").catch(() => {});
 };

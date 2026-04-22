@@ -52,8 +52,8 @@ describe("HubClient", () => {
     await client.ping();
 
     assert.equal(callCount, 2); // 1 auth + 1 ping
-    assert.match(capturedUrls[0], /\/auth\/token$/);
-    assert.match(capturedUrls[1], /\/ping$/);
+    assert.match(capturedUrls[0]!, /\/auth\/token$/);
+    assert.match(capturedUrls[1]!, /\/ping$/);
   });
 
   it("sends API key in auth request body", async () => {
@@ -105,7 +105,7 @@ describe("HubClient", () => {
     await client.ping();
 
     assert.equal(capturedHeaders.length, 1);
-    assert.equal(capturedHeaders[0].authorization, "Bearer jwt-abc");
+    assert.equal(capturedHeaders[0]!.authorization, "Bearer jwt-abc");
   });
 
   it("retries with new JWT on 401", async () => {
