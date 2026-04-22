@@ -1,5 +1,5 @@
 import { ensureProtocol } from "./index.js";
-import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse } from "./index.js";
+import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse, ConfirmationRequest, ConfirmationResponse, GoodsReceiptRequest, GoodsReceiptResponse, GoodsIssueRequest, GoodsIssueResponse } from "./index.js";
 import { ZzapiMesHttpError } from "./index.js";
 
 export interface HubClientConfig {
@@ -77,6 +77,21 @@ export class HubClient {
     return this.request<WorkCenterResponse>(`/work-center/${encodeURIComponent(arbpl)}?${params}`);
   }
 
+  /** Post a production order confirmation. */
+  async confirmProduction(data: ConfirmationRequest, idempotencyKey: string): Promise<ConfirmationResponse> {
+    return this.postRequest<ConfirmationRequest, ConfirmationResponse>("/confirmation", data, idempotencyKey);
+  }
+
+  /** Post a goods receipt against a purchase order. */
+  async goodsReceipt(data: GoodsReceiptRequest, idempotencyKey: string): Promise<GoodsReceiptResponse> {
+    return this.postRequest<GoodsReceiptRequest, GoodsReceiptResponse>("/goods-receipt", data, idempotencyKey);
+  }
+
+  /** Post a goods issue for a production order. */
+  async goodsIssue(data: GoodsIssueRequest, idempotencyKey: string): Promise<GoodsIssueResponse> {
+    return this.postRequest<GoodsIssueRequest, GoodsIssueResponse>("/goods-issue", data, idempotencyKey);
+  }
+
   // -----------------------------------------------------------------------
 
   /** Get a valid JWT, refreshing if within 60s of expiry. */
@@ -145,6 +160,55 @@ export class HubClient {
     }
 
     return this.parseResponse<T>(res);
+  }
+
+  private async postRequest<Req, Res>(path: string, body: Req, idempotencyKey: string): Promise<Res> {
+    const token = await this.getToken();
+    const url = `${this.url}${path}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    // If 401, token may have expired — retry once
+    if (res.status === 401) {
+      this.tokenCache = null;
+      const newToken = await this.getToken();
+      const retryController = new AbortController();
+      const retryTimer = setTimeout(() => retryController.abort(), this.timeout);
+      let retryRes: Response;
+      try {
+        retryRes = await fetch(url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${newToken}`,
+            "content-type": "application/json",
+            "idempotency-key": idempotencyKey,
+          },
+          body: JSON.stringify(body),
+          signal: retryController.signal,
+        });
+      } finally {
+        clearTimeout(retryTimer);
+      }
+      return this.parseResponse<Res>(retryRes);
+    }
+
+    return this.parseResponse<Res>(res);
   }
 
   private async parseResponse<T>(res: Response): Promise<T> {

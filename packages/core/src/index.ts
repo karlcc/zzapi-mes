@@ -14,6 +14,12 @@ export {
   PoItemsResponseSchema,
   RoutingResponseSchema,
   WorkCenterResponseSchema,
+  ConfirmationRequestSchema,
+  ConfirmationResponseSchema,
+  GoodsReceiptRequestSchema,
+  GoodsReceiptResponseSchema,
+  GoodsIssueRequestSchema,
+  GoodsIssueResponseSchema,
 } from "./generated/schemas.js";
 
 import {
@@ -26,6 +32,12 @@ import {
   PoItemsResponseSchema,
   RoutingResponseSchema,
   WorkCenterResponseSchema,
+  ConfirmationRequestSchema,
+  ConfirmationResponseSchema,
+  GoodsReceiptRequestSchema,
+  GoodsReceiptResponseSchema,
+  GoodsIssueRequestSchema,
+  GoodsIssueResponseSchema,
 } from "./generated/schemas.js";
 
 // ---------------------------------------------------------------------------
@@ -41,6 +53,12 @@ export type StockResponse = z.infer<typeof StockResponseSchema>;
 export type PoItemsResponse = z.infer<typeof PoItemsResponseSchema>;
 export type RoutingResponse = z.infer<typeof RoutingResponseSchema>;
 export type WorkCenterResponse = z.infer<typeof WorkCenterResponseSchema>;
+export type ConfirmationRequest = z.infer<typeof ConfirmationRequestSchema>;
+export type ConfirmationResponse = z.infer<typeof ConfirmationResponseSchema>;
+export type GoodsReceiptRequest = z.infer<typeof GoodsReceiptRequestSchema>;
+export type GoodsReceiptResponse = z.infer<typeof GoodsReceiptResponseSchema>;
+export type GoodsIssueRequest = z.infer<typeof GoodsIssueRequestSchema>;
+export type GoodsIssueResponse = z.infer<typeof GoodsIssueResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Config & error types

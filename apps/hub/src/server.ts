@@ -17,6 +17,8 @@ import { createPoItemsRouter } from "./routes/po-items.js";
 import { createRoutingRouter } from "./routes/routing.js";
 import { createWorkCenterRouter } from "./routes/work-center.js";
 import { createConfirmationRouter } from "./routes/confirmation.js";
+import { createGoodsReceiptRouter } from "./routes/goods-receipt.js";
+import { createGoodsIssueRouter } from "./routes/goods-issue.js";
 import { idempotencyGuard } from "./middleware/idempotency.js";
 import { z } from "zod";
 import { sign } from "hono/jwt";
@@ -134,6 +136,8 @@ export function createApp(sap?: SapClient, deps?: AppDeps) {
   app.use("/work-center/*", requireJwt, requireScope("work_center"), rateLimit);
   // Write-back routes: JWT + scope + idempotency + rate limit
   app.use("/confirmation", requireJwt, requireScope("conf"), idempotencyGuard, rateLimit);
+  app.use("/goods-receipt", requireJwt, requireScope("gr"), idempotencyGuard, rateLimit);
+  app.use("/goods-issue", requireJwt, requireScope("gi"), idempotencyGuard, rateLimit);
   app.route("/", createPingRouter(client));         // GET /ping
   app.route("/", createPoRouter(client));            // GET /po/:ebeln
   app.route("/", createPoItemsRouter(client));       // GET /po/:ebeln/items
@@ -143,6 +147,8 @@ export function createApp(sap?: SapClient, deps?: AppDeps) {
   app.route("/", createRoutingRouter(client));       // GET /routing/:matnr
   app.route("/", createWorkCenterRouter(client));    // GET /work-center/:arbpl
   app.route("/", createConfirmationRouter(client));  // POST /confirmation
+  app.route("/", createGoodsReceiptRouter(client));  // POST /goods-receipt
+  app.route("/", createGoodsIssueRouter(client));    // POST /goods-issue
 
   return app;
 }

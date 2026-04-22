@@ -125,7 +125,7 @@ describe("E2E integration against mock SAP", () => {
       id: keyId,
       hash,
       label: "e2e test key",
-      scopes: "ping,po,prod_order,material,stock,routing,work_center,conf",
+      scopes: "ping,po,prod_order,material,stock,routing,work_center,conf,gr,gi",
       rate_limit_per_min: null,
       created_at: Math.floor(Date.now() / 1000),
     });
@@ -412,5 +412,198 @@ describe("E2E integration against mock SAP", () => {
       headers: { authorization: `Bearer ${token}` },
     }));
     assert.equal(matRes.status, 403);
+  });
+
+  // --- Phase 5B write-back tests ---
+
+  it("POST /goods-receipt accepts valid GR", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const grRes = await app.fetch(new Request("http://localhost/goods-receipt", {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "gr-key-001",
+      },
+      body: JSON.stringify({
+        ebeln: "4500000001",
+        ebelp: "00010",
+        menge: 100,
+        werks: "1000",
+        lgort: "0001",
+      }),
+    }));
+    assert.equal(grRes.status, 201);
+    const grBody = await grRes.json() as Record<string, unknown>;
+    assert.equal(grBody.ebeln, "4500000001");
+    assert.equal(grBody.status, "posted");
+  });
+
+  it("POST /goods-receipt rejects missing idempotency key", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const res = await app.fetch(new Request("http://localhost/goods-receipt", {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        ebeln: "4500000001",
+        ebelp: "00010",
+        menge: 100,
+        werks: "1000",
+        lgort: "0001",
+      }),
+    }));
+    assert.equal(res.status, 400);
+  });
+
+  it("POST /goods-issue accepts valid GI", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const giRes = await app.fetch(new Request("http://localhost/goods-issue", {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "gi-key-001",
+      },
+      body: JSON.stringify({
+        orderid: "1000000",
+        matnr: "20000001",
+        menge: 50,
+        werks: "1000",
+        lgort: "0001",
+      }),
+    }));
+    assert.equal(giRes.status, 201);
+    const giBody = await giRes.json() as Record<string, unknown>;
+    assert.equal(giBody.orderid, "1000000");
+    assert.equal(giBody.status, "posted");
+  });
+
+  it("POST /goods-issue rejects missing idempotency key", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const res = await app.fetch(new Request("http://localhost/goods-issue", {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        orderid: "1000000",
+        matnr: "20000001",
+        menge: 50,
+        werks: "1000",
+        lgort: "0001",
+      }),
+    }));
+    assert.equal(res.status, 400);
+  });
+
+  it("rejects Phase 5B endpoints without correct scope", async () => {
+    const token = await sign(
+      { key_id: "e2etestkey001", scopes: ["ping", "po"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    // gr scope missing → 403
+    const grRes = await app.fetch(new Request("http://localhost/goods-receipt", {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "scope-test-001",
+      },
+      body: JSON.stringify({
+        ebeln: "4500000001",
+        ebelp: "00010",
+        menge: 100,
+        werks: "1000",
+        lgort: "0001",
+      }),
+    }));
+    assert.equal(grRes.status, 403);
+
+    // gi scope missing → 403
+    const giRes = await app.fetch(new Request("http://localhost/goods-issue", {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "scope-test-002",
+      },
+      body: JSON.stringify({
+        orderid: "1000000",
+        matnr: "20000001",
+        menge: 50,
+        werks: "1000",
+        lgort: "0001",
+      }),
+    }));
+    assert.equal(giRes.status, 403);
   });
 });

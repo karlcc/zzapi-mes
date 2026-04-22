@@ -120,3 +120,61 @@ export const WorkCenterResponseSchema = z.object({
   kapid: z.string().max(8).optional(),
   kostl: z.string().max(10).optional(),
 });
+
+// Phase 5B schemas — write-back
+
+export const ConfirmationRequestSchema = z.object({
+  orderid: z.string().max(12),
+  operation: z.string().max(4),
+  yield: z.number().min(0),
+  scrap: z.number().min(0).optional(),
+  work_actual: z.number().min(0).optional(),
+  postg_date: z.string().regex(/^[0-9]{8}$/).optional(),
+});
+
+export const ConfirmationResponseSchema = z.object({
+  orderid: z.string(),
+  operation: z.string(),
+  yield: z.number(),
+  scrap: z.number(),
+  status: z.string(),
+  message: z.string().optional(),
+});
+
+export const GoodsReceiptRequestSchema = z.object({
+  ebeln: z.string().max(10),
+  ebelp: z.string().max(5),
+  menge: z.number().min(0),
+  werks: z.string().max(4),
+  lgort: z.string().max(4),
+  budat: z.string().regex(/^[0-9]{8}$/).optional(),
+  charg: z.string().max(10).optional(),
+});
+
+export const GoodsReceiptResponseSchema = z.object({
+  ebeln: z.string(),
+  ebelp: z.string(),
+  menge: z.number(),
+  material_document: z.string().optional(),
+  status: z.string(),
+  message: z.string().optional(),
+});
+
+export const GoodsIssueRequestSchema = z.object({
+  orderid: z.string().max(12),
+  matnr: z.string().max(18),
+  menge: z.number().min(0),
+  werks: z.string().max(4),
+  lgort: z.string().max(4),
+  budat: z.string().regex(/^[0-9]{8}$/).optional(),
+  charg: z.string().max(10).optional(),
+});
+
+export const GoodsIssueResponseSchema = z.object({
+  orderid: z.string(),
+  matnr: z.string(),
+  menge: z.number(),
+  material_document: z.string().optional(),
+  status: z.string(),
+  message: z.string().optional(),
+});

@@ -828,6 +828,199 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # -----------------------------------------------------------------------
+  # Phase 5B — MES write-back endpoints
+  # -----------------------------------------------------------------------
+
+  /confirmation:
+    post:
+      operationId: createConfirmation
+      summary: Production order confirmation
+      description: Records a production order time ticket confirmation. Requires `conf` scope and an `Idempotency-Key` header for deduplication.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Client-generated idempotency key for deduplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmationRequest"
+      responses:
+        "201":
+          description: Confirmation recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmationResponse"
+        "400":
+          description: Invalid request body or missing Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope (requires 'conf')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Duplicate Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /goods-receipt:
+    post:
+      operationId: createGoodsReceipt
+      summary: Goods receipt for purchase order
+      description: Records a goods receipt (GR) against a purchase order. Requires `gr` scope and an `Idempotency-Key` header.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Client-generated idempotency key for deduplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoodsReceiptRequest"
+      responses:
+        "201":
+          description: Goods receipt recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoodsReceiptResponse"
+        "400":
+          description: Invalid request body or missing Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope (requires 'gr')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Duplicate Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /goods-issue:
+    post:
+      operationId: createGoodsIssue
+      summary: Goods issue for production order
+      description: Records a goods issue (GI) for a production order component. Requires `gi` scope and an `Idempotency-Key` header.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Client-generated idempotency key for deduplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoodsIssueRequest"
+      responses:
+        "201":
+          description: Goods issue recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoodsIssueResponse"
+        "400":
+          description: Invalid request body or missing Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope (requires 'gi')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Duplicate Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     basicAuth:
@@ -1244,3 +1437,209 @@ components:
           maxLength: 10
           description: Cost center
           example: "10001000"
+
+    # -----------------------------------------------------------------
+    # Phase 5B schemas — write-back
+    # -----------------------------------------------------------------
+
+    ConfirmationRequest:
+      type: object
+      required: [orderid, operation, yield]
+      properties:
+        orderid:
+          type: string
+          maxLength: 12
+          description: Production order number
+          example: "1000000"
+        operation:
+          type: string
+          maxLength: 4
+          description: Operation number
+          example: "0010"
+        yield:
+          type: number
+          minimum: 0
+          description: Yield quantity
+          example: 50
+        scrap:
+          type: number
+          minimum: 0
+          description: Scrap quantity
+          example: 0
+        work_actual:
+          type: number
+          minimum: 0
+          description: Actual work (hours)
+          example: 1.5
+        postg_date:
+          type: string
+          pattern: "^[0-9]{8}$"
+          description: Posting date (YYYYMMDD)
+          example: "20260422"
+
+    ConfirmationResponse:
+      type: object
+      required: [orderid, operation, yield, scrap, status]
+      properties:
+        orderid:
+          type: string
+          description: Production order number
+          example: "1000000"
+        operation:
+          type: string
+          description: Operation number
+          example: "0010"
+        yield:
+          type: number
+          description: Yield quantity confirmed
+          example: 50
+        scrap:
+          type: number
+          description: Scrap quantity confirmed
+          example: 0
+        status:
+          type: string
+          description: Confirmation status
+          example: "confirmed"
+        message:
+          type: string
+          description: Additional info
+          example: "Production confirmation recorded"
+
+    GoodsReceiptRequest:
+      type: object
+      required: [ebeln, ebelp, menge, werks, lgort]
+      properties:
+        ebeln:
+          type: string
+          maxLength: 10
+          description: Purchasing document number
+          example: "4500000001"
+        ebelp:
+          type: string
+          maxLength: 5
+          description: Item number
+          example: "00010"
+        menge:
+          type: number
+          minimum: 0
+          description: Quantity to receive
+          example: 100
+        werks:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        lgort:
+          type: string
+          maxLength: 4
+          description: Storage location
+          example: "0001"
+        budat:
+          type: string
+          pattern: "^[0-9]{8}$"
+          description: Posting date (YYYYMMDD)
+          example: "20260422"
+        charg:
+          type: string
+          maxLength: 10
+          description: Batch number
+          example: "BATCH001"
+
+    GoodsReceiptResponse:
+      type: object
+      required: [ebeln, ebelp, menge, status]
+      properties:
+        ebeln:
+          type: string
+          description: Purchasing document number
+          example: "4500000001"
+        ebelp:
+          type: string
+          description: Item number
+          example: "00010"
+        menge:
+          type: number
+          description: Quantity received
+          example: 100
+        material_document:
+          type: string
+          description: Material document number
+          example: "5000000001"
+        status:
+          type: string
+          description: Receipt status
+          example: "posted"
+        message:
+          type: string
+          description: Additional info
+          example: "Goods receipt posted"
+
+    GoodsIssueRequest:
+      type: object
+      required: [orderid, matnr, menge, werks, lgort]
+      properties:
+        orderid:
+          type: string
+          maxLength: 12
+          description: Production order number
+          example: "1000000"
+        matnr:
+          type: string
+          maxLength: 18
+          description: Component material number
+          example: "20000001"
+        menge:
+          type: number
+          minimum: 0
+          description: Quantity to issue
+          example: 50
+        werks:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        lgort:
+          type: string
+          maxLength: 4
+          description: Storage location
+          example: "0001"
+        budat:
+          type: string
+          pattern: "^[0-9]{8}$"
+          description: Posting date (YYYYMMDD)
+          example: "20260422"
+        charg:
+          type: string
+          maxLength: 10
+          description: Batch number
+          example: "BATCH001"
+
+    GoodsIssueResponse:
+      type: object
+      required: [orderid, matnr, menge, status]
+      properties:
+        orderid:
+          type: string
+          description: Production order number
+          example: "1000000"
+        matnr:
+          type: string
+          description: Component material number
+          example: "20000001"
+        menge:
+          type: number
+          description: Quantity issued
+          example: 50
+        material_document:
+          type: string
+          description: Material document number
+          example: "5000000002"
+        status:
+          type: string
+          description: Issue status
+          example: "posted"
+        message:
+          type: string
+          description: Additional info
+          example: "Goods issue posted"
