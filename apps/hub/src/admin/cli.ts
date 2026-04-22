@@ -37,7 +37,7 @@ async function main(args: string[]): Promise<void> {
 
   if (command !== "keys") usage();
 
-  const db = openDb();
+  const db = openDb(process.env.HUB_DB_PATH || undefined);
   runMigrations(db);
 
   try {

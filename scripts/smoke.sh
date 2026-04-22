@@ -215,6 +215,46 @@ if [[ "$HUB_MODE" != "1" ]]; then
   check "work-center with werks returns arbpl" \
     "${BASE_URL}/sap/bc/zzapi_mes_wc?arbpl=TURN1&werks=1000" \
     "200" GET
+
+  # Phase 5B direct SAP write-back endpoints
+  echo ""
+  echo "-- Phase 5B: confirmation, goods-receipt, goods-issue (direct) --"
+
+  check "direct confirmation POST returns 201" \
+    "${BASE_URL}/sap/bc/zzapi_mes_conf" \
+    "201" POST \
+    -H "content-type: application/json" \
+    -d '{"orderid":"1000000","operation":"0010","yield":50}'
+
+  check "direct goods-receipt POST returns 201" \
+    "${BASE_URL}/sap/bc/zzapi_mes_gr" \
+    "201" POST \
+    -H "content-type: application/json" \
+    -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
+
+  check "direct goods-issue POST returns 201" \
+    "${BASE_URL}/sap/bc/zzapi_mes_gi" \
+    "201" POST \
+    -H "content-type: application/json" \
+    -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}'
+
+  check "direct confirmation invalid body returns 400" \
+    "${BASE_URL}/sap/bc/zzapi_mes_conf" \
+    "400" POST \
+    -H "content-type: application/json" \
+    -d '{"orderid":"","operation":"0010","yield":0}'
+
+  check "direct goods-receipt invalid body returns 400" \
+    "${BASE_URL}/sap/bc/zzapi_mes_gr" \
+    "400" POST \
+    -H "content-type: application/json" \
+    -d '{"ebeln":"","ebelp":"00010","menge":0,"werks":"1000","lgort":"0001"}'
+
+  check "direct goods-issue invalid body returns 400" \
+    "${BASE_URL}/sap/bc/zzapi_mes_gi" \
+    "400" POST \
+    -H "content-type: application/json" \
+    -d '{"orderid":"","matnr":"20000001","menge":0,"werks":"1000","lgort":"0001"}'
 fi
 
 if [[ "$HUB_MODE" == "1" ]]; then

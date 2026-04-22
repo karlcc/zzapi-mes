@@ -20,6 +20,8 @@ export {
   GoodsReceiptResponseSchema,
   GoodsIssueRequestSchema,
   GoodsIssueResponseSchema,
+  TokenResponseSchema,
+  HealthzResponseSchema,
 } from "./generated/schemas.js";
 
 import {
@@ -38,6 +40,8 @@ import {
   GoodsReceiptResponseSchema,
   GoodsIssueRequestSchema,
   GoodsIssueResponseSchema,
+  TokenResponseSchema,
+  HealthzResponseSchema,
 } from "./generated/schemas.js";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +63,8 @@ export type GoodsReceiptRequest = z.infer<typeof GoodsReceiptRequestSchema>;
 export type GoodsReceiptResponse = z.infer<typeof GoodsReceiptResponseSchema>;
 export type GoodsIssueRequest = z.infer<typeof GoodsIssueRequestSchema>;
 export type GoodsIssueResponse = z.infer<typeof GoodsIssueResponseSchema>;
+export type TokenResponse = z.infer<typeof TokenResponseSchema>;
+export type HealthzResponse = z.infer<typeof HealthzResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Scopes — single source of truth for all authorized scopes

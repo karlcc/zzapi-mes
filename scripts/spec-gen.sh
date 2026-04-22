@@ -51,6 +51,8 @@ export const GoodsReceiptRequestSchema = GoodsReceiptRequest;
 export const GoodsReceiptResponseSchema = GoodsReceiptResponse;
 export const GoodsIssueRequestSchema = GoodsIssueRequest;
 export const GoodsIssueResponseSchema = GoodsIssueResponse;
+export const TokenResponseSchema = TokenResponse;
+export const HealthzResponseSchema = HealthzResponse;
 REEXPORTS
 
 echo "Done — schemas.ts regenerated and cleaned"

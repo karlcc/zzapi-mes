@@ -386,6 +386,80 @@ describe("Rate limiting", () => {
     assert.equal(body.error, "Rate limit exceeded");
     assert.ok(res3.headers.get("retry-after"));
   });
+
+  it("tokens refill after waiting", async () => {
+    // Create a key with 60 req/min = 1 token/sec
+    const keyId = "refilltest";
+    const secret = "refilltestsecret123456789abcdef01";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "refill test key",
+      scopes: "ping",
+      rate_limit_per_min: 60,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    const authRes = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: plaintext }),
+    });
+    assert.equal(authRes.status, 200);
+    const { token } = await authRes.json() as { token: string };
+
+    // Exhaust the bucket (60 tokens)
+    for (let i = 0; i < 60; i++) {
+      await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    }
+
+    // Next request should be rate limited
+    const limited = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(limited.status, 429);
+
+    // Wait ~1.1s for token refill (1 token/sec at 60 RPM)
+    await new Promise((r) => setTimeout(r, 1100));
+
+    // Should succeed again after refill
+    const after = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(after.status, 200);
+  });
+
+  it("retry-after header has positive integer value", async () => {
+    const keyId = "retrytest";
+    const secret = "retrytestsecret123456789abcdef012";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "retry test key",
+      scopes: "ping",
+      rate_limit_per_min: 1,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    const authRes = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: plaintext }),
+    });
+    assert.equal(authRes.status, 200);
+    const { token } = await authRes.json() as { token: string };
+
+    // Use the one allowed request
+    await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+
+    // Next request is rate limited
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    const retryAfter = res.headers.get("retry-after");
+    assert.ok(retryAfter);
+    const val = Number(retryAfter);
+    assert.ok(Number.isInteger(val) && val > 0, `retry-after should be positive integer, got ${retryAfter}`);
+  });
 });
 
 describe("Metrics", () => {
@@ -952,5 +1026,65 @@ describe("Phase 5B write-back routes", () => {
     assert.equal(row.method, "POST");
     assert.equal(row.path, "/goods-issue");
     assert.equal(row.sap_status, 201);
+  });
+});
+
+describe("Access log middleware", () => {
+  it("writes JSON log entry with correct fields", async () => {
+    const token = await validToken();
+    const reqId = "log-test-req-001";
+
+    // Capture stdout
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
+      if (typeof chunk === "string") chunks.push(chunk);
+      return true;
+    };
+
+    try {
+      await fetchApi("/ping", {
+        headers: {
+          authorization: `Bearer ${token}`,
+          "x-request-id": reqId,
+        },
+      });
+    } finally {
+      process.stdout.write = origWrite;
+    }
+
+    const logLine = chunks.find((c) => c.includes(reqId));
+    assert.ok(logLine, "log entry for our request-id should appear in stdout");
+
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.level, "info");
+    assert.equal(entry.req_id, reqId);
+    assert.equal(entry.method, "GET");
+    assert.equal(entry.path, "/ping");
+    assert.equal(entry.status, 200);
+    assert.ok(typeof entry.latency_ms === "number" && entry.latency_ms >= 0);
+    assert.ok(typeof entry.key_id === "string" && entry.key_id.length > 0);
+    assert.match(entry.ts, /^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("log entry for unauthenticated request has key_id dash", async () => {
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
+      if (typeof chunk === "string") chunks.push(chunk);
+      return true;
+    };
+
+    try {
+      await fetchApi("/healthz");
+    } finally {
+      process.stdout.write = origWrite;
+    }
+
+    const logLine = chunks.find((c) => c.includes("healthz"));
+    assert.ok(logLine, "log entry for healthz should appear");
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.key_id, "-");
+    assert.equal(entry.path, "/healthz");
   });
 });
