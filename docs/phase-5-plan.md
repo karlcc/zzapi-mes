@@ -1,6 +1,6 @@
 # Phase 5 — MES Business Endpoints
 
-> Status: **proposed**, 2026-04-23. Prerequisite: Phase 1 (SICF deployment on sapdev).
+> Status: **shipped**, 2026-04-23. All ABAP handlers, hub routes, SDK methods, CLI commands, and tests implemented. Prerequisite for live testing: Phase 1 (SICF deployment on sapdev).
 
 ## TL;DR
 
@@ -19,9 +19,9 @@ with idempotency and audit safeguards.
 | `/sap/bc/zzapi_mes_ping` | `/ping` | Health check | `ZCL_ZZAPI_MES_PING` |
 | `/sap/bc/zzapi_mes` | `/po/:ebeln` | PO header lookup | `ZCL_ZZAPI_MES_HANDLER` |
 
-## Proposed Endpoints
+## Implemented Endpoints
 
-### Phase 5A — Read-Only (SAP → MES, zero risk)
+### Phase 5A — Read-Only (SAP → MES, zero risk) — SHIPPED
 
 | # | Endpoint | SICF Path | Hub Path | SAP Tables | BAPI | Key Fields | Description |
 |---|---|---|---|---|---|---|---|
@@ -32,7 +32,7 @@ with idempotency and audit safeguards.
 | 5 | Work center | `/sap/bc/zzapi_mes_wc` | `/work-center/:arbpl` | CRHD, CRCA, CRCO | Direct table read (no standard BAPI) | arbpl, werks, kapid, kostl, steus | Capacity + cost center for scheduling |
 | 6 | PO line items | `/sap/bc/zzapi_mes_po_items` | `/po/:ebeln/items` | EKPO, EKET | — | ebelp, matnr, menge, meins, eindt | Extends existing PO header with item detail |
 
-### Phase 5B — Write-Back (MES → SAP, transactional)
+### Phase 5B — Write-Back (MES → SAP, transactional) — SHIPPED
 
 | # | Endpoint | SICF Path | Hub Path | SAP BAPI | Movement | Key Input | Description |
 |---|---|---|---|---|---|---|---|
