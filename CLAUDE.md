@@ -8,22 +8,23 @@ zzapi-mes is an SAP ICF REST handler SDK + CLI for MES integration on **SAP_BASI
 
 The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go through the ICF handler pattern.
 
-## Repo Layout (what's actually here vs. planned)
+## Repo Layout
 
 - `abap/` — ABAP class source mirrored from SE24. These files are the source of truth in git, but the *running* code lives on the SAP system. They are not "compiled" locally.
-- `scripts/smoke.sh` — curl round-trip tests against the deployed handlers on `sapdev.fastcell.hk:8000`.
+- `scripts/smoke.sh` — curl round-trip tests against the deployed handlers on `sapdev.fastcell.hk:8000`. Supports direct and hub mode (`HUB_MODE=1`).
 - `docs/demo-walkthrough.md` — step-by-step SE24 + SICF deployment procedure.
-- `packages/core/` — `@zzapi-mes/core` — SAP client (`SapClient`), Zod schemas, error types, `HubClient`. Shared by SDK, CLI, and hub.
+- `packages/core/` — `@zzapi-mes/core` — SAP client (`SapClient`), hub client (`HubClient`), Zod schemas, error types, `ALL_SCOPES` constant. Shared by SDK, CLI, and hub.
 - `packages/sdk/` — `@zzapi-mes/sdk` — thin re-export of `@zzapi-mes/core`. Back-compat for existing consumers.
-- `packages/cli/` — `@zzapi-mes/cli` — CLI (`zzapi-mes ping`, `zzapi-mes po <ebeln>`). Supports `--mode direct|hub` flag. Direct mode reads `SAP_*` env or `~/.zzapirc`. Hub mode reads `HUB_URL`/`HUB_API_KEY`.
+- `packages/cli/` — `@zzapi-mes/cli` — CLI with `--mode direct|hub` flag. Both modes support all commands including write-back (confirm, goods-receipt, goods-issue). Direct mode reads `SAP_*` env or `~/.zzapirc`. Hub mode reads `HUB_URL`/`HUB_API_KEY`.
 - `spec/openapi.yaml` — OpenAPI 3.0 contract for SAP + hub endpoints.
-- `apps/hub/` — `@zzapi-mes/hub` — Hono server. Holds SAP creds server-side, issues JWTs to clients presenting API keys (SQLite-backed, argon2id-hashed). Deploys as systemd unit. Admin CLI: `zzapi-mes-hub-admin keys create/list/revoke`.
+- `apps/hub/` — `@zzapi-mes/hub` — Hono server. Holds SAP creds server-side, issues JWTs to clients presenting API keys (SQLite-backed, argon2id-hashed). Deploys as systemd unit or Docker container. Admin CLI: `zzapi-mes-hub-admin keys create/list/revoke`.
+- `Dockerfile` — Multi-stage build for the hub. Uses `pnpm prune --prod` in builder, copies `node_modules` to slim runtime.
 
 ## Commands
 
 - `pnpm build` — compile core, SDK, CLI, and hub TypeScript packages.
-- `pnpm test` — run unit tests across core + hub (Node built-in test runner, mocked fetch + in-memory SQLite for hub).
-- `pnpm spec:gen` — regenerate Zod schemas from `spec/openapi.yaml` into `packages/core/src/generated/`. CI drift gate checks this.
+- `pnpm test` — run unit tests across core + hub + CLI (Node built-in test runner, mocked fetch + in-memory SQLite for hub).
+- `pnpm spec:gen` — regenerate Zod schemas from `spec/openapi.yaml` via `scripts/spec-gen.sh` (runs openapi-zod-client then strips zodios code and adds `*Schema` re-exportss). CI drift gate checks this.
 - `pnpm smoke` — run the curl smoke suite against sapdev. Requires handlers to already be deployed. Override creds/host via env:
   ```
   SAP_USER=api_user2 SAP_PASS='Pt@2026' SAP_HOST=sapdev.fastcell.hk:8000 pnpm smoke
@@ -55,12 +56,46 @@ Each handler is a single class implementing `IF_HTTP_EXTENSION` with one method 
 
 For multi-endpoint routing under one SICF node, dispatch on `server->request->get_header_field( '~path_info' )` inside `handle_request` rather than registering many SICF nodes.
 
-## Phase Roadmap (context for where work is heading)
+## Hub Architecture
 
-| Phase | Scope |
+### Middleware Chain (write-back routes)
+
+Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
+1. **JWT verification** (`middleware/jwt.ts`) — validates Bearer token, extracts scopes
+2. **Scope enforcement** (`middleware/jwt.ts`) — checks required scope (conf/gr/gi)
+3. **Idempotency guard** (`middleware/idempotency.ts`) — requires `Idempotency-Key` header, stores SHA-256 body hash in SQLite. Returns:
+   - `409` if same key + same body (true duplicate)
+   - `422` if same key + different body (hash mismatch)
+4. **Rate limiting** (`middleware/rate-limit.ts`) — per-key token bucket
+5. **Audit logging** — writes to `audit_log` table via `writeAudit()`
+
+### Scope Definitions
+
+`ALL_SCOPES` in `packages/core/src/index.ts` is the single source of truth: `["ping","po","prod_order","material","stock","routing","work_center","conf","gr","gi"]`. Hub admin CLI and test helpers all import from core.
+
+### Spec Codegen
+
+`spec/openapi.yaml` → `openapi-zod-client` → `packages/core/src/generated/schemas.ts`. The generated file contains zodios code that must be stripped (done by `scripts/spec-gen.sh`). Schema re-exports with `*Schema` suffix are added automatically. **Never hand-edit `schemas.ts`** — always run `pnpm spec:gen`.
+
+### Error Semantics (write-back routes)
+
+| Status | Meaning |
 |---|---|
-| 1 (current) | Deploy `ZCL_ZZAPI_MES_PING` + `ZCL_ZZAPI_MES_HANDLER`, curl round-trip verified |
-| 2 (done) | OpenAPI spec in `spec/`, Node SDK `@zzapi-mes/sdk`, CLI `@zzapi-mes/cli` |
-| 3 (done) | `apps/hub` Hono service with JWT auth, `packages/core` extraction, CLI `--mode hub` |
-| 4 (done) | SQLite-backed API keys (argon2id) + admin CLI, request IDs, structured JSON logs, `/metrics`, per-key rate limiting, spec-driven zod codegen, e2e integration tests |
-| 5 (done) | MES business endpoints — Phase 5A read-only (production orders, material, stock, PO items, routing, work centers) + Phase 5B write-back (production confirmations, goods receipt, goods issue) with idempotency guard and audit logging. See `docs/phase-5-plan.md`. |
+| 201 | Success |
+| 400 | Invalid JSON body or missing `Idempotency-Key` |
+| 401 | Missing/expired JWT |
+| 403 | Insufficient scope |
+| 409 | Duplicate idempotency key (same body), or SAP backflush conflict (goods-issue) |
+| 422 | Idempotency key reused with different body, or SAP business rule rejection |
+| 429 | Rate limit exceeded |
+| 502 | SAP upstream error (non-422/409) |
+
+## Phase Roadmap
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Deploy `ZCL_ZZAPI_MES_PING` + `ZCL_ZZAPI_MES_HANDLER`, curl round-trip verified | Pending (SAP GUI) |
+| 2 | OpenAPI spec, Node SDK, CLI | Done |
+| 3 | Hub with JWT auth, SAP auth abstracted | Done |
+| 4 | Persistent API keys, admin CLI, request IDs, logs, metrics, rate limiting, spec codegen, e2e tests | Done |
+| 5 | MES business endpoints (5A read + 5B write-back with idempotency/audit) | Done |

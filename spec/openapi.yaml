@@ -883,6 +883,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Idempotency-Key reused with different body, or SAP business rule rejection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limit exceeded
           headers:
@@ -946,6 +952,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Idempotency-Key reused with different body, or SAP business rule rejection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limit exceeded
           headers:
@@ -1004,7 +1016,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Duplicate Idempotency-Key
+          description: Duplicate Idempotency-Key, or SAP backflush conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Idempotency-Key reused with different body, or SAP business rule rejection
           content:
             application/json:
               schema:
