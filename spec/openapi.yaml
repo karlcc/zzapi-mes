@@ -948,6 +948,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /goods-receipt:
     post:
@@ -1017,6 +1023,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /goods-issue:
     post:
@@ -1082,6 +1094,12 @@ paths:
               schema:
                 type: integer
               description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SAP upstream error
           content:
             application/json:
               schema:
@@ -1173,6 +1191,9 @@ components:
         ok:
           type: boolean
           example: true
+        error:
+          type: string
+          description: Error message when ok is false (e.g. "database unreachable")
 
     # -----------------------------------------------------------------
     # Phase 5A schemas

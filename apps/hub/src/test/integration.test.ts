@@ -234,7 +234,7 @@ describe("E2E integration against mock SAP", () => {
       password: "test",
     });
 
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     // 1. Get JWT
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
@@ -324,7 +324,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     // Get JWT
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
@@ -361,7 +361,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -400,7 +400,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -427,7 +427,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const res = await app.fetch(new Request("http://localhost/ping"));
     assert.equal(res.status, 401);
@@ -445,7 +445,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     // po scope missing
     const res = await app.fetch(new Request("http://localhost/po/123", {
@@ -461,7 +461,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -489,7 +489,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     // prod_order scope missing → 403
     const prodRes = await app.fetch(new Request("http://localhost/prod-order/1000000", {
@@ -513,7 +513,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -550,7 +550,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -583,7 +583,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -620,7 +620,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -658,7 +658,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     // gr scope missing → 403
     const grRes = await app.fetch(new Request("http://localhost/goods-receipt", {
@@ -703,7 +703,7 @@ describe("E2E integration against mock SAP", () => {
     const errSap = await startMockSap("conf-422");
     try {
       const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
-      const app = createApp(sap, { db });
+      const { app } = createApp(sap, { db });
 
       const authRes = await app.fetch(new Request("http://localhost/auth/token", {
         method: "POST",
@@ -727,7 +727,7 @@ describe("E2E integration against mock SAP", () => {
     const errSap = await startMockSap("conf-500");
     try {
       const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
-      const app = createApp(sap, { db });
+      const { app } = createApp(sap, { db });
 
       const authRes = await app.fetch(new Request("http://localhost/auth/token", {
         method: "POST",
@@ -751,7 +751,7 @@ describe("E2E integration against mock SAP", () => {
     const errSap = await startMockSap("gr-422");
     try {
       const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
-      const app = createApp(sap, { db });
+      const { app } = createApp(sap, { db });
 
       const authRes = await app.fetch(new Request("http://localhost/auth/token", {
         method: "POST",
@@ -775,7 +775,7 @@ describe("E2E integration against mock SAP", () => {
     const errSap = await startMockSap("gr-500");
     try {
       const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
-      const app = createApp(sap, { db });
+      const { app } = createApp(sap, { db });
 
       const authRes = await app.fetch(new Request("http://localhost/auth/token", {
         method: "POST",
@@ -799,7 +799,7 @@ describe("E2E integration against mock SAP", () => {
     const errSap = await startMockSap("gi-409");
     try {
       const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
-      const app = createApp(sap, { db });
+      const { app } = createApp(sap, { db });
 
       const authRes = await app.fetch(new Request("http://localhost/auth/token", {
         method: "POST",
@@ -823,7 +823,7 @@ describe("E2E integration against mock SAP", () => {
     const errSap = await startMockSap("gi-422");
     try {
       const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
-      const app = createApp(sap, { db });
+      const { app } = createApp(sap, { db });
 
       const authRes = await app.fetch(new Request("http://localhost/auth/token", {
         method: "POST",
@@ -847,7 +847,7 @@ describe("E2E integration against mock SAP", () => {
     const errSap = await startMockSap("gi-500");
     try {
       const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
-      const app = createApp(sap, { db });
+      const { app } = createApp(sap, { db });
 
       const authRes = await app.fetch(new Request("http://localhost/auth/token", {
         method: "POST",
@@ -874,7 +874,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -904,7 +904,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -934,7 +934,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -960,7 +960,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",
@@ -986,7 +986,7 @@ describe("E2E integration against mock SAP", () => {
       user: "test",
       password: "test",
     });
-    const app = createApp(sap, { db });
+    const { app } = createApp(sap, { db });
 
     const authRes = await app.fetch(new Request("http://localhost/auth/token", {
       method: "POST",

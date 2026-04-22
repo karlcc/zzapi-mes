@@ -15,7 +15,9 @@ const PoResponse = z
 const TokenResponse = z
   .object({ token: z.string(), expires_in: z.number().int() })
   .passthrough();
-const HealthzResponse = z.object({ ok: z.boolean() }).passthrough();
+const HealthzResponse = z
+  .object({ ok: z.boolean(), error: z.string().optional() })
+  .passthrough();
 const ProdOrderOperation = z
   .object({
     vornr: z.string().max(4),

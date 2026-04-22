@@ -142,7 +142,7 @@ beforeEach(async () => {
 // --- Helpers ---
 
 function app() {
-  return createApp(new MockSapClient() as unknown as SapClient, { db });
+  return createApp(new MockSapClient() as unknown as SapClient, { db }).app;
 }
 
 async function fetchApi(path: string, opts?: RequestInit) {
@@ -304,7 +304,7 @@ describe("GET /healthz", () => {
     const brokenDb = {
       prepare: () => { throw new Error("disk I/O error"); },
     } as unknown as Database.Database;
-    const brokenApp = createApp(new MockSapClient() as unknown as SapClient, { db: brokenDb });
+    const brokenApp = createApp(new MockSapClient() as unknown as SapClient, { db: brokenDb }).app;
     const req = new Request("http://localhost/healthz");
     const res = await brokenApp.fetch(req);
     assert.equal(res.status, 503);

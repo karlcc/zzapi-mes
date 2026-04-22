@@ -6,12 +6,17 @@ import { checkIdempotency, updateIdempotencyStatus, evictIdempotencyKeys, type I
 /** Evict keys older than 5 minutes (300 seconds). */
 const IDEMPOTENCY_MAX_AGE_SECONDS = 300;
 
+/** Evict with ~1% probability per request to reduce write amplification. */
+const EVICTION_PROBABILITY = 0.01;
+
 /** Reject duplicate write-back requests within a 5-minute window. */
 export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
-  // Evict stale keys on each write-back request
-  const dbForEviction = c.get("db") as Database.Database | undefined;
-  if (dbForEviction) {
-    evictIdempotencyKeys(dbForEviction, IDEMPOTENCY_MAX_AGE_SECONDS);
+  // Probabilistic eviction of stale keys (~1% of requests)
+  if (Math.random() < EVICTION_PROBABILITY) {
+    const dbForEviction = c.get("db") as Database.Database | undefined;
+    if (dbForEviction) {
+      evictIdempotencyKeys(dbForEviction, IDEMPOTENCY_MAX_AGE_SECONDS);
+    }
   }
   const idempotencyKey = c.req.header("idempotency-key");
   if (!idempotencyKey) {

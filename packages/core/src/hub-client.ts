@@ -32,6 +32,11 @@ export class HubClient {
     this.timeout = config.timeout ?? 30_000;
   }
 
+  /** Clear cached JWT, forcing re-authentication on the next request. */
+  invalidateToken(): void {
+    this.tokenCache = null;
+  }
+
   /** Health check via hub. */
   async ping(): Promise<PingResponse> {
     return this.request<PingResponse>("/ping");

@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./server.js";
 
 const port = Number(process.env.HUB_PORT) || 8080;
-const app = createApp();
+const { app, db } = createApp();
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(`zzapi-mes hub listening on :${info.port}`);
@@ -11,6 +11,7 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
 function shutdown() {
   console.log("Shutting down...");
   server.close(() => {
+    try { db.close(); } catch { /* ignore if already closed */ }
     console.log("Server closed.");
     process.exit(0);
   });

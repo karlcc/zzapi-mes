@@ -50,7 +50,7 @@ export interface AppDeps {
 }
 
 /** Build the Hono app. Callers provide a SapClient (or one is created from env). */
-export function createApp(sap?: SapClient, deps?: AppDeps) {
+export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variables: HubVariables }>; db: Database.Database } {
   const jwtSecret = requireEnv("HUB_JWT_SECRET");
   const jwtTtl = Number(process.env.HUB_JWT_TTL_SECONDS) || 900;
 
@@ -150,5 +150,5 @@ export function createApp(sap?: SapClient, deps?: AppDeps) {
   app.route("/", createGoodsReceiptRouter(client));  // POST /goods-receipt
   app.route("/", createGoodsIssueRouter(client));    // POST /goods-issue
 
-  return app;
+  return { app, db };
 }

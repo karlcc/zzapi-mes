@@ -445,6 +445,30 @@ describe("HubClient", () => {
     assert.equal(result.status, "posted");
   });
 
+  it("invalidateToken clears cached JWT", async () => {
+    let authCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      return jsonResponse(200, { ok: true, sap_time: "20260422163000" });
+    });
+
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await client.ping();
+    assert.equal(authCalls, 1);
+
+    // Cached — no new auth call
+    await client.ping();
+    assert.equal(authCalls, 1);
+
+    // Invalidate forces re-auth
+    client.invalidateToken();
+    await client.ping();
+    assert.equal(authCalls, 2);
+  });
+
   it("GET request wraps timeout abort in ZzapiMesHttpError(408)", async () => {
     let callCount = 0;
     globalThis.fetch = mockFetch((url) => {
