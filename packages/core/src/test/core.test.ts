@@ -151,6 +151,60 @@ describe("SapClient", () => {
       (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 422,
     );
   });
+
+  it("postGoodsReceipt throws ZzapiMesHttpError on 422", async () => {
+    globalThis.fetch = mockFetch(422, '{"error":"PO already received"}');
+    await assert.rejects(
+      () => new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 422,
+    );
+  });
+
+  it("postGoodsIssue throws ZzapiMesHttpError on 409 backflush", async () => {
+    globalThis.fetch = mockFetch(409, '{"error":"Backflush is active"}');
+    await assert.rejects(
+      () => new SapClient(CFG).postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 409,
+    );
+  });
+
+  it("postGoodsIssue throws ZzapiMesHttpError on 422", async () => {
+    globalThis.fetch = mockFetch(422, '{"error":"Material not found"}');
+    await assert.rejects(
+      () => new SapClient(CFG).postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 422,
+    );
+  });
+
+  it("POST methods throw ZzapiMesHttpError on 500 upstream failure", async () => {
+    globalThis.fetch = mockFetch(500, '{"error":"Internal Server Error"}');
+    await assert.rejects(
+      () => new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 500,
+    );
+  });
+
+  it("POST methods throw on non-JSON response", async () => {
+    globalThis.fetch = mockFetch(502, "<html>Bad Gateway</html>");
+    await assert.rejects(
+      () => new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.message.includes("Non-JSON"),
+    );
+  });
+
+  it("POST methods send Content-Type application/json", async () => {
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"status":"confirmed"}');
+    await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    const headers = capturedOpts?.headers as Record<string, string>;
+    assert.equal(headers?.["Content-Type"], "application/json");
+  });
+
+  it("POST methods send Basic auth header", async () => {
+    globalThis.fetch = mockFetch(201, '{"ebeln":"4500000001","ebelp":"00010","menge":100,"status":"posted"}');
+    await new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
+    const headers = capturedOpts?.headers as Record<string, string>;
+    assert.equal(headers?.Authorization, "Basic " + btoa("u:p"));
+  });
 });
 
 describe("ensureProtocol", () => {

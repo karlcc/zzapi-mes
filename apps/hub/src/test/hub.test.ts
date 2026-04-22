@@ -586,7 +586,7 @@ describe("Phase 5B write-back routes", () => {
     assert.equal(res.status, 409);
   });
 
-  it("POST write-back returns 502 on SAP upstream failure", async () => {
+  it("POST /goods-receipt returns 502 on SAP upstream failure", async () => {
     mockGrError = new ZzapiMesHttpError(500, "Internal Server Error");
     const token = await validToken();
     const res = await fetchApi("/goods-receipt", {
@@ -594,10 +594,295 @@ describe("Phase 5B write-back routes", () => {
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
-        "idempotency-key": "sapi-gr-err-001",
+        "idempotency-key": "sapi-gr-502",
       },
       body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
     });
     assert.equal(res.status, 502);
+  });
+
+  it("POST /goods-receipt returns 422 when SAP rejects business logic", async () => {
+    mockGrError = new ZzapiMesHttpError(422, "PO already received");
+    const token = await validToken();
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "sapi-gr-422",
+      },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 422);
+  });
+
+  it("POST /confirmation returns 502 on SAP upstream failure", async () => {
+    mockConfError = new ZzapiMesHttpError(500, "Internal Server Error");
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "sapi-conf-502",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 502);
+  });
+
+  it("POST /goods-issue returns 502 on SAP upstream failure", async () => {
+    mockGiError = new ZzapiMesHttpError(500, "Internal Server Error");
+    const token = await validToken();
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "sapi-gi-502",
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 502);
+  });
+
+  it("POST /goods-issue returns 422 when SAP rejects business logic", async () => {
+    mockGiError = new ZzapiMesHttpError(422, "Material not found");
+    const token = await validToken();
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "sapi-gi-422",
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 422);
+  });
+
+  // --- Zod validation failures ---
+
+  it("POST /confirmation returns 400 on invalid request body", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "zod-conf-001",
+      },
+      body: JSON.stringify({ orderid: "", operation: "0010", yield: -1 }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("orderid"));
+    assert.ok(String(body.error).includes("yield"));
+  });
+
+  it("POST /confirmation returns 400 on invalid postg_date format", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "zod-conf-date",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50, postg_date: "2026-04-22" }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("postg_date"));
+  });
+
+  it("POST /goods-receipt returns 400 on invalid request body", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "zod-gr-001",
+      },
+      body: JSON.stringify({ ebeln: "", ebelp: "00010", menge: -5 }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("ebeln"));
+    assert.ok(String(body.error).includes("menge"));
+  });
+
+  it("POST /goods-issue returns 400 on invalid request body", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "zod-gi-001",
+      },
+      body: JSON.stringify({ orderid: "", matnr: "20000001", menge: 50 }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("orderid"));
+  });
+
+  it("POST /goods-issue returns 400 on missing required fields", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "zod-gi-missing",
+      },
+      body: JSON.stringify({ orderid: "1000000" }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("matnr"));
+    assert.ok(String(body.error).includes("menge"));
+  });
+
+  // --- Malformed JSON body ---
+
+  it("POST /confirmation returns 400 on malformed JSON body", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "malformed-conf",
+      },
+      body: "not valid json{",
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("valid JSON"));
+  });
+
+  it("POST /goods-receipt returns 400 on malformed JSON body", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "malformed-gr",
+      },
+      body: "broken{",
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("valid JSON"));
+  });
+
+  it("POST /goods-issue returns 400 on malformed JSON body", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "malformed-gi",
+      },
+      body: "{invalid",
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("valid JSON"));
+  });
+
+  // --- Idempotency duplicates for GR and GI ---
+
+  it("POST /goods-receipt duplicate idempotency key returns 409", async () => {
+    const token = await validToken();
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "idempotency-key": "dup-gr-001",
+    };
+    const body = JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
+
+    const res1 = await fetchApi("/goods-receipt", { method: "POST", headers, body });
+    assert.equal(res1.status, 201);
+
+    const res2 = await fetchApi("/goods-receipt", { method: "POST", headers, body });
+    assert.equal(res2.status, 409);
+  });
+
+  it("POST /goods-issue duplicate idempotency key returns 409", async () => {
+    const token = await validToken();
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "idempotency-key": "dup-gi-001",
+    };
+    const body = JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" });
+
+    const res1 = await fetchApi("/goods-issue", { method: "POST", headers, body });
+    assert.equal(res1.status, 201);
+
+    const res2 = await fetchApi("/goods-issue", { method: "POST", headers, body });
+    assert.equal(res2.status, 409);
+  });
+
+  // --- Audit log verification ---
+
+  it("POST /confirmation writes audit log entry", async () => {
+    const token = await validToken();
+    await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "audit-conf-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    const row = db.prepare("SELECT method, path, sap_status FROM audit_log WHERE path = '/confirmation' ORDER BY rowid DESC LIMIT 1").get() as { method: string; path: string; sap_status: number } | undefined;
+    assert.ok(row);
+    assert.equal(row.method, "POST");
+    assert.equal(row.path, "/confirmation");
+    assert.equal(row.sap_status, 201);
+  });
+
+  it("POST /goods-receipt writes audit log entry", async () => {
+    const token = await validToken();
+    await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "audit-gr-001",
+      },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    const row = db.prepare("SELECT method, path, sap_status FROM audit_log WHERE path = '/goods-receipt' ORDER BY rowid DESC LIMIT 1").get() as { method: string; path: string; sap_status: number } | undefined;
+    assert.ok(row);
+    assert.equal(row.method, "POST");
+    assert.equal(row.path, "/goods-receipt");
+    assert.equal(row.sap_status, 201);
+  });
+
+  it("POST /goods-issue writes audit log entry", async () => {
+    const token = await validToken();
+    await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "audit-gi-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    const row = db.prepare("SELECT method, path, sap_status FROM audit_log WHERE path = '/goods-issue' ORDER BY rowid DESC LIMIT 1").get() as { method: string; path: string; sap_status: number } | undefined;
+    assert.ok(row);
+    assert.equal(row.method, "POST");
+    assert.equal(row.path, "/goods-issue");
+    assert.equal(row.sap_status, 201);
   });
 });

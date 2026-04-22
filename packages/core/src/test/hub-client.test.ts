@@ -334,4 +334,74 @@ describe("HubClient", () => {
     assert.equal(authCalls, 2);
     assert.equal(result.status, "confirmed");
   });
+
+  it("confirmProduction throws ZzapiMesHttpError on 422", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { error: "Order already confirmed" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
+        { orderid: "1000000", operation: "0010", yield: 50 },
+        "err-conf-001",
+      ),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 422,
+    );
+  });
+
+  it("goodsReceipt throws ZzapiMesHttpError on 422", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { error: "PO already received" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).goodsReceipt(
+        { ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" },
+        "err-gr-001",
+      ),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 422,
+    );
+  });
+
+  it("goodsIssue throws ZzapiMesHttpError on 409 backflush", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(409, { error: "Backflush is active" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).goodsIssue(
+        { orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" },
+        "err-gi-001",
+      ),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 409,
+    );
+  });
+
+  it("goodsIssue throws ZzapiMesHttpError on 422", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { error: "Material not found" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).goodsIssue(
+        { orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" },
+        "err-gi-422",
+      ),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 422,
+    );
+  });
+
+  it("POST methods throw ZzapiMesHttpError on 502 upstream failure", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(502, { error: "SAP upstream error" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
+        { orderid: "1000000", operation: "0010", yield: 50 },
+        "err-502-001",
+      ),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 502,
+    );
+  });
 });
