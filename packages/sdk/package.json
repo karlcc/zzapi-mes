@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "pretest": "tsc",
-    "test": "node --test dist/test/*.test.js",
+    "test": "echo 'Tests live in @zzapi-mes/core'",
     "prepublishOnly": "pnpm run build"
   },
   "license": "UNLICENSED",
