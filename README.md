@@ -16,7 +16,12 @@ Client (curl / SDK / CLI)
 SAP ICF → ZCL_ZZAPI_MES_HANDLER → JSON response
 ```
 
-Phase 3 adds a Node hub in front that holds SAP credentials and issues bearer tokens to clients — SAP stays untouched.
+With the hub (Phase 3):
+
+```
+MES client ──(API key)──▶ Hub POST /auth/token ──▶ JWT (15 min)
+MES client ──(JWT)──────▶ Hub GET /ping, /po/:ebeln ──▶ SAP ICF (Basic Auth)
+```
 
 ## Phase Roadmap
 
@@ -25,18 +30,19 @@ Phase 3 adds a Node hub in front that holds SAP credentials and issues bearer to
 | 0 | Repo init, ABAP source mirrors, demo walkthrough | Done |
 | 1 | Deploy handlers on sapdev, curl round-trip verified | Pending (SAP GUI) |
 | 2 | OpenAPI spec, Node SDK (`@zzapi-mes/sdk`), CLI (`@zzapi-mes/cli`) | Done |
-| 3 | Node hub (`apps/hub`) with bearer tokens, SAP auth abstracted | Deferred |
+| 3 | Node hub (`apps/hub`) with bearer tokens, SAP auth abstracted | Done |
 
 ## Repo Layout
 
 ```
-abap/          ABAP class sources (mirrored from SE24)
-spec/          OpenAPI 3.0 contract
-packages/sdk/  @zzapi-mes/sdk — typed Node client
-packages/cli/  @zzapi-mes/cli — CLI tool
-apps/          Hub service (phase 3, empty)
-scripts/       Smoke tests
-docs/          Walkthroughs
+abap/            ABAP class sources (mirrored from SE24)
+spec/            OpenAPI 3.0 contract
+packages/core/   @zzapi-mes/core — SapClient, Zod schemas, HubClient
+packages/sdk/    @zzapi-mes/sdk — re-exports core (back-compat)
+packages/cli/    @zzapi-mes/cli — CLI with --mode direct|hub
+apps/hub/        @zzapi-mes/hub — Hono server, JWT auth, SAP proxy
+scripts/         Smoke tests
+docs/            Walkthroughs
 ```
 
 ## Quick Start (Phase 1 — Demo)
@@ -75,9 +81,13 @@ const po = await client.getPo("3010000608");
 ## CLI Usage
 
 ```bash
-# Via env vars
+# Direct mode (default) — talks to SAP with Basic Auth
 SAP_USER=api_user2 SAP_PASS='Pt@2026' npx zzapi-mes ping
 SAP_USER=api_user2 SAP_PASS='Pt@2026' npx zzapi-mes po 3010000608
+
+# Hub mode — talks to the hub with API key, no SAP creds needed
+HUB_URL=http://localhost:8080 HUB_API_KEY=my-key npx zzapi-mes --mode hub ping
+HUB_URL=http://localhost:8080 HUB_API_KEY=my-key npx zzapi-mes --mode hub po 3010000608
 
 # Or via ~/.zzapirc
 echo '{"SAP_USER":"api_user2","SAP_PASS":"Pt@2026"}' > ~/.zzapirc
@@ -88,8 +98,8 @@ npx zzapi-mes ping
 
 | Command | Description |
 |---|---|
-| `pnpm build` | Compile SDK + CLI TypeScript |
-| `pnpm test` | Run SDK unit tests (mocked fetch) |
+| `pnpm build` | Compile all TypeScript packages |
+| `pnpm test` | Run unit tests (mocked fetch) |
 | `pnpm smoke` | Curl round-trip tests against sapdev |
 
 ## Endpoints
@@ -98,3 +108,26 @@ npx zzapi-mes ping
 |---|---|---|---|
 | `ZCL_ZZAPI_MES_PING` | `/sap/bc/zzapi_mes_ping` | GET | Health check |
 | `ZCL_ZZAPI_MES_HANDLER` | `/sap/bc/zzapi_mes` | GET | PO info by ebeln |
+
+## Hub Quick Start
+
+1. Build and start the hub:
+
+```bash
+pnpm build
+HUB_API_KEYS=my-key HUB_JWT_SECRET=random-secret \
+  SAP_HOST=sapdev.fastcell.hk:8000 SAP_CLIENT=200 \
+  SAP_USER=api_user2 SAP_PASS='Pt@2026' \
+  pnpm --filter @zzapi-mes/hub start
+```
+
+2. Get a token and test:
+
+```bash
+TOKEN=$(curl -s localhost:8080/auth/token \
+  -d '{"api_key":"my-key"}' -H 'content-type: application/json' | jq -r .token)
+curl -H "authorization: Bearer $TOKEN" localhost:8080/ping
+curl -H "authorization: Bearer $TOKEN" localhost:8080/po/3010000608
+```
+
+3. Deploy as systemd unit — see `apps/hub/deploy/`.

@@ -1,0 +1,13 @@
+[Unit]
+Description=zzapi-mes hub — token-gated SAP proxy
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/zzapi-mes-hub.env
+ExecStart=/usr/bin/node /opt/zzapi-mes-hub/dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -13,15 +13,16 @@ The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go throug
 - `abap/` — ABAP class source mirrored from SE24. These files are the source of truth in git, but the *running* code lives on the SAP system. They are not "compiled" locally.
 - `scripts/smoke.sh` — curl round-trip tests against the deployed handlers on `sapdev.fastcell.hk:8000`.
 - `docs/demo-walkthrough.md` — step-by-step SE24 + SICF deployment procedure.
-- `packages/sdk/` — `@zzapi-mes/sdk` — typed Node client (`ZzapiMesClient`) wrapping the ICF endpoints with Basic Auth, timeout, JSON error handling.
-- `packages/cli/` — `@zzapi-mes/cli` — CLI (`zzapi-mes ping`, `zzapi-mes po <ebeln>`). Reads `SAP_USER`/`SAP_PASS` env or `~/.zzapirc` JSON file. Supports `--help`/`--version`.
-- `spec/openapi.yaml` — OpenAPI 3.0 contract for both endpoints.
-- `apps/` — **empty** (Phase 3 hub, deferred).
+- `packages/core/` — `@zzapi-mes/core` — SAP client (`SapClient`), Zod schemas, error types, `HubClient`. Shared by SDK, CLI, and hub.
+- `packages/sdk/` — `@zzapi-mes/sdk` — thin re-export of `@zzapi-mes/core`. Back-compat for existing consumers.
+- `packages/cli/` — `@zzapi-mes/cli` — CLI (`zzapi-mes ping`, `zzapi-mes po <ebeln>`). Supports `--mode direct|hub` flag. Direct mode reads `SAP_*` env or `~/.zzapirc`. Hub mode reads `HUB_URL`/`HUB_API_KEY`.
+- `spec/openapi.yaml` — OpenAPI 3.0 contract for SAP + hub endpoints.
+- `apps/hub/` — `@zzapi-mes/hub` — Hono server. Holds SAP creds server-side, issues JWTs to clients presenting API keys. Deploys as systemd unit.
 
 ## Commands
 
-- `pnpm build` — compile SDK and CLI TypeScript packages.
-- `pnpm test` — run SDK unit tests (Node built-in test runner, mocked fetch).
+- `pnpm build` — compile core, SDK, CLI, and hub TypeScript packages.
+- `pnpm test` — run unit tests across core + hub (Node built-in test runner, mocked fetch).
 - `pnpm smoke` — run the curl smoke suite against sapdev. Requires handlers to already be deployed. Override creds/host via env:
   ```
   SAP_USER=api_user2 SAP_PASS='Pt@2026' SAP_HOST=sapdev.fastcell.hk:8000 pnpm smoke
@@ -59,4 +60,4 @@ For multi-endpoint routing under one SICF node, dispatch on `server->request->ge
 |---|---|
 | 1 (current) | Deploy `ZCL_ZZAPI_MES_PING` + `ZCL_ZZAPI_MES_HANDLER`, curl round-trip verified |
 | 2 (done) | OpenAPI spec in `spec/`, Node SDK `@zzapi-mes/sdk`, CLI `@zzapi-mes/cli` |
-| 3 (deferred) | `apps/hub` Node service fronting SAP with bearer tokens so clients never hold SAP creds |
+| 3 (done) | `apps/hub` Hono service with JWT auth, `packages/core` extraction, CLI `--mode hub` |

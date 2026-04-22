@@ -8,7 +8,9 @@ info:
 
 servers:
   - url: http://sapdev.fastcell.hk:8000
-    description: sapdev (Phase 1)
+    description: sapdev (Phase 1, direct SAP access)
+  - url: http://localhost:8080
+    description: zzapi-mes hub (Phase 3)
 
 security:
   - basicAuth: []
@@ -69,11 +71,128 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # -----------------------------------------------------------------------
+  # Hub-specific endpoints (Phase 3)
+  # These only exist on the hub server, not on SAP directly.
+  # -----------------------------------------------------------------------
+
+  /auth/token:
+    post:
+      operationId: createToken
+      summary: Obtain a JWT bearer token
+      description: Exchange an API key for a short-lived JWT (15 min). The JWT is then used as a Bearer token on protected hub routes.
+      security: []  # No auth required for token issuance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key:
+                  type: string
+                  description: Pre-shared API key
+      responses:
+        "200":
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Hub health check
+      description: Lightweight probe — no SAP call, no auth required.
+      security: []
+      responses:
+        "200":
+          description: Hub is running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthzResponse"
+
+  # Hub mirrors the SAP endpoints at /ping and /po/:ebeln
+  /ping:
+    get:
+      operationId: hubPing
+      summary: Health check via hub
+      description: Proxies to the SAP ping handler. Requires Bearer token on the hub server.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: System reachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PingResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /po/{ebeln}:
+    get:
+      operationId: hubGetPo
+      summary: Purchase order info via hub
+      description: Proxies to the SAP PO handler. Requires Bearer token on the hub server.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ebeln
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 10
+          description: Purchasing document number
+      responses:
+        "200":
+          description: PO found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PO not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     basicAuth:
       type: http
       scheme: basic
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 
   parameters:
     SapClient:
@@ -131,3 +250,23 @@ components:
         error:
           type: string
           example: "PO not found"
+
+    TokenResponse:
+      type: object
+      required: [token, expires_in]
+      properties:
+        token:
+          type: string
+          description: JWT bearer token
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+          example: 900
+
+    HealthzResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          example: true

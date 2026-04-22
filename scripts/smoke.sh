@@ -14,7 +14,26 @@ SAP_HOST="${SAP_HOST:-sapdev.fastcell.hk:8000}"
 SAP_CLIENT="${SAP_CLIENT:-200}"
 VERBOSE="${VERBOSE:-0}"
 
+# Hub mode: set HUB_MODE=1 to test against the hub instead of SAP directly
+HUB_MODE="${HUB_MODE:-0}"
+HUB_URL="${HUB_URL:-http://localhost:8080}"
+HUB_API_KEY="${HUB_API_KEY:-test-key}"
+
 BASE_URL="http://${SAP_HOST}"
+
+# When in hub mode, fetch a JWT first
+HUB_TOKEN=""
+if [[ "$HUB_MODE" == "1" ]]; then
+  BASE_URL="$HUB_URL"
+  HUB_TOKEN=$(curl -s "$HUB_URL/auth/token" \
+    -d "{\"api_key\":\"$HUB_API_KEY\"}" \
+    -H 'content-type: application/json' \
+    | jq -r .token 2>/dev/null) || true
+  if [[ -z "$HUB_TOKEN" || "$HUB_TOKEN" == "null" ]]; then
+    echo "FATAL: could not obtain hub JWT (check HUB_URL and HUB_API_KEY)"
+    exit 1
+  fi
+fi
 
 pass=0
 fail=0
@@ -34,12 +53,20 @@ check() {
   local t0 status body elapsed tmpf
   t0=${EPOCHREALTIME//./}
 
-  # Build full URL — use ? for first param, & for subsequent
-  local sep="?"
-  if [[ "$url" == *"?"* ]]; then sep="&"; fi
-  local full_url="${url}${sep}sap-client=${SAP_CLIENT}"
+  # Build full URL — add sap-client param only in direct mode
+  local full_url="$url"
+  if [[ "$HUB_MODE" != "1" ]]; then
+    local sep="?"
+    if [[ "$url" == *"?"* ]]; then sep="&"; fi
+    full_url="${url}${sep}sap-client=${SAP_CLIENT}"
+  fi
 
-  local curl_args=(-s -u "${SAP_USER}:${SAP_PASS}")
+  local curl_args=(-s)
+  if [[ "$HUB_MODE" == "1" ]]; then
+    curl_args+=(-H "authorization: Bearer ${HUB_TOKEN}")
+  else
+    curl_args+=(-u "${SAP_USER}:${SAP_PASS}")
+  fi
   if [[ "$method" != "GET" ]]; then curl_args+=(-X "$method"); fi
 
   # Single curl call: body to temp file, status via -w
@@ -73,38 +100,89 @@ check() {
 }
 
 echo "=== zzapi-mes smoke tests ==="
-echo "  SAP host:   ${SAP_HOST}"
-echo "  SAP client: ${SAP_CLIENT}"
-echo "  SAP user:   ${SAP_USER}"
+if [[ "$HUB_MODE" == "1" ]]; then
+  echo "  Mode:       hub"
+  echo "  Hub URL:    ${HUB_URL}"
+  echo "  Hub token:  ${HUB_TOKEN:0:20}..."
+else
+  echo "  Mode:       direct"
+  echo "  SAP host:   ${SAP_HOST}"
+  echo "  SAP client: ${SAP_CLIENT}"
+  echo "  SAP user:   ${SAP_USER}"
+fi
 echo ""
+
+# Route paths differ between direct (SAP ICF) and hub
+if [[ "$HUB_MODE" == "1" ]]; then
+  PING_PATH="/ping"
+  PO_PATH_PREFIX="/po"
+  # Hub mode: no sap-client param needed
+  ADD_SAP_CLIENT=0
+else
+  PING_PATH="/sap/bc/zzapi_mes_ping"
+  PO_PATH_PREFIX="/sap/bc/zzapi_mes"
+  ADD_SAP_CLIENT=1
+fi
 
 echo "-- Ping handler --"
 check "ping returns ok=true" \
-  "${BASE_URL}/sap/bc/zzapi_mes_ping" \
+  "${BASE_URL}${PING_PATH}" \
   "200" GET \
   ".ok" "true"
 
-check "POST to ping rejected with 405" \
-  "${BASE_URL}/sap/bc/zzapi_mes_ping" \
-  "405" POST \
-  ".error" "Method not allowed"
+if [[ "$HUB_MODE" != "1" ]]; then
+  check "POST to ping rejected with 405" \
+    "${BASE_URL}${PING_PATH}" \
+    "405" POST \
+    ".error" "Method not allowed"
+fi
 
 echo ""
 echo "-- PO handler --"
+if [[ "$HUB_MODE" == "1" ]]; then
+  PO_URL="${BASE_URL}${PO_PATH_PREFIX}/3010000608"
+  PO_NOTFOUND_URL="${BASE_URL}${PO_PATH_PREFIX}/9999999999"
+  PO_POST_URL="${BASE_URL}${PO_PATH_PREFIX}/3010000608"
+else
+  PO_URL="${BASE_URL}${PO_PATH_PREFIX}?ebeln=3010000608"
+  PO_NOTFOUND_URL="${BASE_URL}${PO_PATH_PREFIX}?ebeln=9999999999"
+  PO_POST_URL="${BASE_URL}${PO_PATH_PREFIX}?ebeln=3010000608"
+fi
+
 check "PO 3010000608 returns ebeln" \
-  "${BASE_URL}/sap/bc/zzapi_mes?ebeln=3010000608" \
+  "$PO_URL" \
   "200" GET \
   ".ebeln" "3010000608"
 
 check "PO 9999999999 returns 404 with error" \
-  "${BASE_URL}/sap/bc/zzapi_mes?ebeln=9999999999" \
+  "$PO_NOTFOUND_URL" \
   "404" GET \
   ".error" "PO not found"
 
-check "POST rejected with 405" \
-  "${BASE_URL}/sap/bc/zzapi_mes?ebeln=3010000608" \
-  "405" POST \
-  ".error" "Method not allowed"
+if [[ "$HUB_MODE" != "1" ]]; then
+  check "POST rejected with 405" \
+    "$PO_POST_URL" \
+    "405" POST \
+    ".error" "Method not allowed"
+fi
+
+if [[ "$HUB_MODE" == "1" ]]; then
+  echo ""
+  echo "-- Hub-specific --"
+  check "healthz returns ok without auth" \
+    "${BASE_URL}/healthz" \
+    "200" GET \
+    ".ok" "true"
+
+  # Temporarily clear HUB_TOKEN to test 401
+  SAVED_TOKEN="$HUB_TOKEN"
+  HUB_TOKEN="invalid-token"
+  check "ping returns 401 with bad token" \
+    "${BASE_URL}${PING_PATH}" \
+    "401" GET \
+    ".error" "Invalid or expired token"
+  HUB_TOKEN="$SAVED_TOKEN"
+fi
 
 echo ""
 echo "=== Results: ${pass} passed, ${fail} failed ==="

@@ -1,7 +1,7 @@
 {
-  "name": "@zzapi-mes/sdk",
+  "name": "@zzapi-mes/core",
   "version": "0.1.0",
-  "description": "Typed Node client for ZZAPI MES ICF REST endpoints",
+  "description": "SAP client, Zod schemas, and shared types for ZZAPI MES",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
@@ -13,7 +13,7 @@
   },
   "license": "UNLICENSED",
   "dependencies": {
-    "@zzapi-mes/core": "workspace:*"
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
