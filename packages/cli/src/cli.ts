@@ -77,8 +77,11 @@ function parseMode(args: string[]): { mode: Mode; rest: string[] } {
 }
 
 async function main() {
-  const [,, command, ...rawArgs] = process.argv;
-  const { mode, rest: args } = parseMode(rawArgs);
+  // Parse --mode from all args first, then extract command from remaining
+  const [, , ...allArgs] = process.argv;
+  const { mode, rest } = parseMode(allArgs);
+  const command = rest[0];
+  const args = rest.slice(1);
 
   if (command === "--help" || command === "-h" || !command) {
     console.log(`zzapi-mes ${VERSION}

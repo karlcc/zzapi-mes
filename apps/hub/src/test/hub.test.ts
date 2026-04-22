@@ -226,3 +226,59 @@ describe("GET /healthz", () => {
     assert.equal(body.ok, true);
   });
 });
+
+describe("Rate limiting", () => {
+  it("returns 429 when token bucket is exhausted", async () => {
+    // Create a key with very low rate limit (2 req/min)
+    const keyId = "ratelimited";
+    const secret = "ratelimitedsecret123456789abcdef0";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "rate limit test key",
+      scopes: "ping,po",
+      rate_limit_per_min: 2,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    // Get JWT with the low-limit key
+    const authRes = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: plaintext }),
+    });
+    assert.equal(authRes.status, 200);
+    const { token } = await authRes.json() as { token: string };
+
+    // First two requests should succeed
+    const res1 = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res1.status, 200);
+    const res2 = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res2.status, 200);
+
+    // Third request should be rate limited
+    const res3 = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res3.status, 429);
+    const body = await res3.json() as Record<string, unknown>;
+    assert.equal(body.error, "Rate limit exceeded");
+    assert.ok(res3.headers.get("retry-after"));
+  });
+});
+
+describe("Metrics", () => {
+  it("increments request counters after requests", async () => {
+    // Make a request first
+    const token = await validToken();
+    await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+
+    // Check metrics endpoint
+    const res = await fetchApi("/metrics");
+    assert.equal(res.status, 200);
+    const text = await res.text();
+    assert.ok(text.includes("zzapi_hub_requests_total"));
+    assert.ok(text.includes("zzapi_hub_request_duration_seconds"));
+    assert.ok(text.includes("zzapi_hub_sap_duration_seconds"));
+  });
+});

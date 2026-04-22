@@ -32,6 +32,7 @@ MES client ──(JWT)──────▶ Hub GET /ping, /po/:ebeln ──▶ 
 | 2 | OpenAPI spec, Node SDK (`@zzapi-mes/sdk`), CLI (`@zzapi-mes/cli`) | Done |
 | 3 | Node hub (`apps/hub`) with bearer tokens, SAP auth abstracted | Done |
 | 4 | Persistent API keys (SQLite+argon2id), admin CLI, request ID, structured logs, /metrics, rate limiting, spec codegen, e2e tests | Done |
+| 5 | MES business endpoints: PO items, material master, production orders, goods receipt, confirmations | Proposed (`docs/phase-5-plan.md`) |
 
 ## Repo Layout
 

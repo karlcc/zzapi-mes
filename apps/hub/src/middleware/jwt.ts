@@ -1,12 +1,10 @@
 import { createMiddleware } from "hono/factory";
-import type { JWTPayload } from "hono/utils/jwt/types";
+import type { HubVariables } from "../types.js";
 
 const JWT_SECRET = () => process.env.HUB_JWT_SECRET ?? "";
 
 /** Verify bearer JWT on protected routes. Sets c.set("jwtPayload"). */
-export const requireJwt = createMiddleware<{
-  Variables: { jwtPayload: JWTPayload };
-}>(async (c, next) => {
+export const requireJwt = createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
   const header = c.req.header("Authorization");
   if (!header?.startsWith("Bearer ")) {
     return c.json({ error: "Missing or malformed Authorization header" }, 401);
@@ -24,9 +22,7 @@ export const requireJwt = createMiddleware<{
 
 /** Require that the JWT payload includes a specific scope. */
 export function requireScope(scope: string) {
-  return createMiddleware<{
-    Variables: { jwtPayload: JWTPayload };
-  }>(async (c, next) => {
+  return createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
     const payload = c.get("jwtPayload");
     const scopes = (payload?.scopes as string[] | undefined) ?? [];
     if (!scopes.includes(scope)) {

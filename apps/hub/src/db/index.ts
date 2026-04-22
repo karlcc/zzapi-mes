@@ -56,14 +56,22 @@ export function insertKey(
   db: Database.Database,
   record: Omit<ApiKeyRecord, "revoked_at">,
 ): void {
-  db.prepare(INSERT_KEY).run(
-    record.id,
-    record.hash,
-    record.label,
-    record.scopes,
-    record.rate_limit_per_min,
-    record.created_at,
-  );
+  try {
+    db.prepare(INSERT_KEY).run(
+      record.id,
+      record.hash,
+      record.label,
+      record.scopes,
+      record.rate_limit_per_min,
+      record.created_at,
+    );
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("UNIQUE constraint")) {
+      throw new Error(`Key '${record.id}' already exists`);
+    }
+    throw new Error(`Failed to insert key: ${msg}`);
+  }
 }
 
 export function listKeys(db: Database.Database): ApiKeyRecord[] {
@@ -71,6 +79,11 @@ export function listKeys(db: Database.Database): ApiKeyRecord[] {
 }
 
 export function revokeKey(db: Database.Database, id: string): boolean {
-  const result = db.prepare(REVOKE_KEY).run(Math.floor(Date.now() / 1000), id);
-  return result.changes > 0;
+  try {
+    const result = db.prepare(REVOKE_KEY).run(Math.floor(Date.now() / 1000), id);
+    return result.changes > 0;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to revoke key '${id}': ${msg}`);
+  }
 }

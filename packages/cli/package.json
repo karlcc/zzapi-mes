@@ -8,6 +8,8 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
+    "pretest": "pnpm run build",
+    "test": "node --test dist/cli.test.js",
     "prepublishOnly": "pnpm run build"
   },
   "license": "UNLICENSED",

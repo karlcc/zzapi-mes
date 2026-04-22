@@ -95,9 +95,17 @@ export class HubClient {
     if (res.status === 401) {
       this.tokenCache = null;
       const newToken = await this.getToken();
-      const retryRes = await fetch(url, {
-        headers: { authorization: `Bearer ${newToken}` },
-      });
+      const retryController = new AbortController();
+      const retryTimer = setTimeout(() => retryController.abort(), this.timeout);
+      let retryRes: Response;
+      try {
+        retryRes = await fetch(url, {
+          headers: { authorization: `Bearer ${newToken}` },
+          signal: retryController.signal,
+        });
+      } finally {
+        clearTimeout(retryTimer);
+      }
       return this.parseResponse<T>(retryRes);
     }
 

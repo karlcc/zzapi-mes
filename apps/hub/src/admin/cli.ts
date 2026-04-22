@@ -44,6 +44,13 @@ async function main(args: string[]): Promise<void> {
       const opts = parseArgs(args.slice(2));
       const label = opts["label"] ?? usage();
       const scopes = opts["scopes"] ?? "ping,po";
+      // Validate scopes against known values
+      const KNOWN_SCOPES = ["ping", "po"];
+      const invalidScopes = scopes.split(",").map(s => s.trim()).filter(s => s && !KNOWN_SCOPES.includes(s));
+      if (invalidScopes.length > 0) {
+        console.error(`Unknown scope(s): ${invalidScopes.join(", ")}. Valid scopes: ${KNOWN_SCOPES.join(", ")}`);
+        process.exit(1);
+      }
       const rateLimit = opts["rate-limit"] ? parseInt(opts["rate-limit"], 10) : null;
 
       // Generate key_id (12 hex chars from 6 random bytes)

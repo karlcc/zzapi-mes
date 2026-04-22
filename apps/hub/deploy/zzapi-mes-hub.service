@@ -27,7 +27,7 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
+MemoryDenyWriteExecute=false  # native addons (better-sqlite3, argon2) require mmap PROT_EXEC
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 [Install]

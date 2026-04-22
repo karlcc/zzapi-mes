@@ -15,6 +15,8 @@ export const accessLog: MiddlewareHandler = async (c, next) => {
     path: c.req.path,
     status: c.res.status,
     latency_ms: ms,
+    sap_status: c.get("sapStatus") ?? undefined,
+    sap_duration_ms: c.get("sapDurationMs") ?? undefined,
   });
   process.stdout.write(entry + "\n");
 };

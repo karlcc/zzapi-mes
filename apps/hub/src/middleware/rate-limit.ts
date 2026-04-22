@@ -1,5 +1,5 @@
 import { createMiddleware } from "hono/factory";
-import type { JWTPayload } from "hono/utils/jwt/types";
+import type { HubVariables } from "../types.js";
 
 interface Bucket {
   tokens: number;
@@ -35,9 +35,7 @@ function getTokens(keyId: string, rpm: number): { allowed: boolean; retryAfter: 
 }
 
 /** Per-key token-bucket rate limiting. Reads rate_limit_per_min from JWT. */
-export const rateLimit = createMiddleware<{
-  Variables: { jwtPayload: JWTPayload };
-}>(async (c, next) => {
+export const rateLimit = createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
   const payload = c.get("jwtPayload");
   const keyId = (payload?.key_id as string) ?? "unknown";
   const rpm = (payload?.rate_limit_per_min as number | undefined) ?? DEFAULT_RPM;
