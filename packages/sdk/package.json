@@ -1,0 +1,19 @@
+{
+  "name": "@zzapi-mes/sdk",
+  "version": "0.1.0",
+  "description": "Typed Node client for ZZAPI MES ICF REST endpoints",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/test/*.test.js",
+    "prepublishOnly": "npm run build"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}

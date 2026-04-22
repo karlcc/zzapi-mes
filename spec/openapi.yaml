@@ -1,0 +1,133 @@
+openapi: 3.0.3
+info:
+  title: ZZAPI MES
+  description: SAP ICF REST handlers for MES integration on SAP_BASIS 700
+  version: 0.1.0
+  license:
+    name: UNLICENSED
+
+servers:
+  - url: http://sapdev.fastcell.hk:8000
+    description: sapdev (Phase 1)
+
+security:
+  - basicAuth: []
+
+paths:
+  /sap/bc/zzapi_mes_ping:
+    get:
+      operationId: ping
+      summary: Health check
+      description: Lightweight probe — no database access, safe for monitoring.
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+      responses:
+        "200":
+          description: System reachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PingResponse"
+        "405":
+          description: HTTP method not allowed (only GET)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sap/bc/zzapi_mes:
+    get:
+      operationId: getPo
+      summary: Purchase order info
+      description: Returns PO header + delivery date for a given ebeln. JSON matches legacy BSP output byte-for-byte.
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+        - name: ebeln
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 10
+          description: Purchasing document number
+      responses:
+        "200":
+          description: PO found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoResponse"
+        "404":
+          description: PO not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: HTTP method not allowed (only GET)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+
+  parameters:
+    SapClient:
+      name: sap-client
+      in: query
+      required: true
+      schema:
+        type: integer
+        example: 200
+      description: SAP client number
+
+  schemas:
+    PingResponse:
+      type: object
+      required: [ok, sap_time]
+      properties:
+        ok:
+          type: boolean
+          example: true
+        sap_time:
+          type: string
+          pattern: "^[0-9]{14}$"
+          description: "YYYYMMDDHHMMSS"
+          example: "20260422163000"
+
+    PoResponse:
+      type: object
+      required: [ebeln, aedat, lifnr, eindt]
+      properties:
+        ebeln:
+          type: string
+          maxLength: 10
+          description: Purchasing document number
+          example: "3010000608"
+        aedat:
+          type: string
+          pattern: "^[0-9]{8}$"
+          description: "Change date (YYYYMMDD)"
+          example: "20170306"
+        lifnr:
+          type: string
+          maxLength: 10
+          description: Vendor account number
+          example: "0000500340"
+        eindt:
+          type: string
+          pattern: "^[0-9]{8}$"
+          description: "Delivery date (YYYYMMDD)"
+          example: "20170630"
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: "PO not found"

@@ -1,0 +1,21 @@
+{
+  "name": "@zzapi-mes/cli",
+  "version": "0.1.0",
+  "description": "CLI for ZZAPI MES ICF REST endpoints",
+  "bin": {
+    "zzapi-mes": "dist/cli.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@zzapi-mes/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}

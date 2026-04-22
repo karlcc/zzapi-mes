@@ -5,6 +5,8 @@
   "description": "SAP ICF REST handler SDK + CLI for MES integration",
   "license": "UNLICENSED",
   "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
     "smoke": "bash scripts/smoke.sh"
   },
   "engines": {
