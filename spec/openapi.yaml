@@ -234,6 +234,400 @@ paths:
         "403":
           description: Forbidden (non-localhost access)
 
+  # -----------------------------------------------------------------------
+  # Phase 5A — MES business endpoints (read-only)
+  # -----------------------------------------------------------------------
+
+  /sap/bc/zzapi_mes_prod_order:
+    get:
+      operationId: getProdOrder
+      summary: Production order detail
+      description: Returns production order header, operations, and component reservations.
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+        - name: aufnr
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 12
+          description: Production order number
+      responses:
+        "200":
+          description: Production order found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProdOrderResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sap/bc/zzapi_mes_material:
+    get:
+      operationId: getMaterial
+      summary: Material master
+      description: Returns material general + plant-level data and description.
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+        - name: matnr
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 18
+          description: Material number
+        - name: werks
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 4
+          description: Plant (optional, for plant-specific data)
+      responses:
+        "200":
+          description: Material found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaterialResponse"
+        "404":
+          description: Material not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sap/bc/zzapi_mes_stock:
+    get:
+      operationId: getStock
+      summary: Stock / availability
+      description: Returns current stock and ATP availability for a material at a plant.
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+        - name: matnr
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 18
+          description: Material number
+        - name: werks
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 4
+          description: Plant
+        - name: lgort
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 4
+          description: Storage location (optional)
+      responses:
+        "200":
+          description: Stock found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockResponse"
+        "404":
+          description: No stock data found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sap/bc/zzapi_mes_po_items:
+    get:
+      operationId: getPoItems
+      summary: Purchase order line items
+      description: Returns PO line items (EKPO) with delivery schedule (EKET) for a given PO number.
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+        - name: ebeln
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 10
+          description: Purchasing document number
+      responses:
+        "200":
+          description: PO items found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoItemsResponse"
+        "404":
+          description: PO not found or has no items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # -----------------------------------------------------------------------
+  # Hub mirrors for Phase 5A endpoints
+  # -----------------------------------------------------------------------
+
+  /prod-order/{aufnr}:
+    get:
+      operationId: hubGetProdOrder
+      summary: Production order detail via hub
+      description: Proxies to SAP production order handler. Requires `prod_order` scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: aufnr
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 12
+          description: Production order number
+      responses:
+        "200":
+          description: Production order found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProdOrderResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope (requires 'prod_order')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /material/{matnr}:
+    get:
+      operationId: hubGetMaterial
+      summary: Material master via hub
+      description: Proxies to SAP material handler. Requires `material` scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: matnr
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 18
+          description: Material number
+        - name: werks
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 4
+          description: Plant (optional)
+      responses:
+        "200":
+          description: Material found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaterialResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope (requires 'material')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Material not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /stock/{matnr}:
+    get:
+      operationId: hubGetStock
+      summary: Stock / availability via hub
+      description: Proxies to SAP stock handler. Requires `stock` scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: matnr
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 18
+          description: Material number
+        - name: werks
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 4
+          description: Plant
+        - name: lgort
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 4
+          description: Storage location (optional)
+      responses:
+        "200":
+          description: Stock data found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope (requires 'stock')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No stock data found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /po/{ebeln}/items:
+    get:
+      operationId: hubGetPoItems
+      summary: Purchase order line items via hub
+      description: Proxies to SAP PO items handler. Requires `po` scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ebeln
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 10
+          description: Purchasing document number
+      responses:
+        "200":
+          description: PO items found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoItemsResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope (requires 'po')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: PO not found or has no items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     basicAuth:
@@ -320,3 +714,237 @@ components:
         ok:
           type: boolean
           example: true
+
+    # -----------------------------------------------------------------
+    # Phase 5A schemas
+    # -----------------------------------------------------------------
+
+    ProdOrderResponse:
+      type: object
+      required: [aufnr, auart, werks, matnr, gamng, gstrp, gltrp]
+      properties:
+        aufnr:
+          type: string
+          maxLength: 12
+          description: Production order number
+          example: "1000000"
+        auart:
+          type: string
+          maxLength: 4
+          description: Order type
+          example: "PP01"
+        werks:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        matnr:
+          type: string
+          maxLength: 18
+          description: Material number
+          example: "10000001"
+        gamng:
+          type: number
+          description: Total order quantity
+          example: 1000
+        gmein:
+          type: string
+          maxLength: 3
+          description: Base unit of measure
+          example: "EA"
+        gstrp:
+          type: string
+          pattern: "^[0-9]{8}$"
+          description: Scheduled start date (YYYYMMDD)
+          example: "20260401"
+        gltrp:
+          type: string
+          pattern: "^[0-9]{8}$"
+          description: Scheduled finish date (YYYYMMDD)
+          example: "20260415"
+        operations:
+          type: array
+          description: Order operations
+          items:
+            $ref: "#/components/schemas/ProdOrderOperation"
+        components:
+          type: array
+          description: Component reservations
+          items:
+            $ref: "#/components/schemas/ProdOrderComponent"
+
+    ProdOrderOperation:
+      type: object
+      required: [vornr, ltxa1]
+      properties:
+        vornr:
+          type: string
+          maxLength: 4
+          description: Operation number
+          example: "0010"
+        ltxa1:
+          type: string
+          description: Operation description
+          example: "Turning"
+        arbpl:
+          type: string
+          maxLength: 8
+          description: Work center
+          example: "TURN1"
+        vgwrt:
+          type: number
+          description: Standard value (hours)
+          example: 2.5
+
+    ProdOrderComponent:
+      type: object
+      required: [matnr, bdmenge]
+      properties:
+        matnr:
+          type: string
+          maxLength: 18
+          description: Component material number
+          example: "20000001"
+        bdmenge:
+          type: number
+          description: Required quantity
+          example: 500
+        meins:
+          type: string
+          maxLength: 3
+          description: Unit of measure
+          example: "EA"
+        werks:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+
+    MaterialResponse:
+      type: object
+      required: [matnr, mtart, meins]
+      properties:
+        matnr:
+          type: string
+          maxLength: 18
+          description: Material number
+          example: "10000001"
+        mtart:
+          type: string
+          maxLength: 4
+          description: Material type
+          example: "FERT"
+        meins:
+          type: string
+          maxLength: 3
+          description: Base unit of measure
+          example: "EA"
+        maktx:
+          type: string
+          description: Material description
+          example: "Finished product A"
+        werks:
+          type: string
+          maxLength: 4
+          description: Plant (if plant-specific data requested)
+          example: "1000"
+        dispo:
+          type: string
+          maxLength: 3
+          description: MRP controller
+          example: "001"
+
+    StockResponse:
+      type: object
+      required: [matnr, werks]
+      properties:
+        matnr:
+          type: string
+          maxLength: 18
+          description: Material number
+          example: "10000001"
+        werks:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        items:
+          type: array
+          description: Stock by storage location/batch
+          items:
+            $ref: "#/components/schemas/StockItem"
+
+    StockItem:
+      type: object
+      required: [lgort, clabs]
+      properties:
+        lgort:
+          type: string
+          maxLength: 4
+          description: Storage location
+          example: "0001"
+        charg:
+          type: string
+          maxLength: 10
+          description: Batch number
+          example: "BATCH001"
+        clabs:
+          type: number
+          description: Unrestricted stock
+          example: 250
+        avail_qty:
+          type: number
+          description: Available quantity (ATP)
+          example: 200
+
+    PoItemsResponse:
+      type: object
+      required: [ebeln, items]
+      properties:
+        ebeln:
+          type: string
+          maxLength: 10
+          description: Purchasing document number
+          example: "3010000608"
+        items:
+          type: array
+          description: PO line items
+          items:
+            $ref: "#/components/schemas/PoItem"
+
+    PoItem:
+      type: object
+      required: [ebelp, matnr, menge, meins]
+      properties:
+        ebelp:
+          type: string
+          maxLength: 5
+          description: Item number
+          example: "00010"
+        matnr:
+          type: string
+          maxLength: 18
+          description: Material number
+          example: "10000001"
+        txz01:
+          type: string
+          description: Short text
+          example: "Raw material X"
+        menge:
+          type: number
+          description: Order quantity
+          example: 100
+        meins:
+          type: string
+          maxLength: 3
+          description: Unit of measure
+          example: "EA"
+        netpr:
+          type: number
+          description: Net price per unit
+          example: 12.50
+        eindt:
+          type: string
+          pattern: "^[0-9]{8}$"
+          description: Delivery date (YYYYMMDD)
+          example: "20170630"

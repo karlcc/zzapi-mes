@@ -1,5 +1,5 @@
 import { ensureProtocol } from "./index.js";
-import type { PingResponse, PoResponse } from "./index.js";
+import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse } from "./index.js";
 import { ZzapiMesHttpError } from "./index.js";
 
 export interface HubClientConfig {
@@ -40,6 +40,29 @@ export class HubClient {
   /** Look up a purchase order by ebeln via hub. */
   async getPo(ebeln: string): Promise<PoResponse> {
     return this.request<PoResponse>(`/po/${encodeURIComponent(ebeln)}`);
+  }
+
+  /** Look up a production order by aufnr via hub. */
+  async getProdOrder(aufnr: string): Promise<ProdOrderResponse> {
+    return this.request<ProdOrderResponse>(`/prod-order/${encodeURIComponent(aufnr)}`);
+  }
+
+  /** Look up material master via hub. */
+  async getMaterial(matnr: string, werks?: string): Promise<MaterialResponse> {
+    const query = werks ? `?werks=${encodeURIComponent(werks)}` : "";
+    return this.request<MaterialResponse>(`/material/${encodeURIComponent(matnr)}${query}`);
+  }
+
+  /** Look up stock/availability via hub. */
+  async getStock(matnr: string, werks: string, lgort?: string): Promise<StockResponse> {
+    const params = new URLSearchParams({ werks });
+    if (lgort) params.set("lgort", lgort);
+    return this.request<StockResponse>(`/stock/${encodeURIComponent(matnr)}?${params}`);
+  }
+
+  /** Look up PO line items via hub. */
+  async getPoItems(ebeln: string): Promise<PoItemsResponse> {
+    return this.request<PoItemsResponse>(`/po/${encodeURIComponent(ebeln)}/items`);
   }
 
   // -----------------------------------------------------------------------

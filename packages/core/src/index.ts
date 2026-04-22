@@ -8,9 +8,21 @@ export {
   PingResponseSchema,
   PoResponseSchema,
   ErrorResponseSchema,
+  ProdOrderResponseSchema,
+  MaterialResponseSchema,
+  StockResponseSchema,
+  PoItemsResponseSchema,
 } from "./generated/schemas.js";
 
-import { PingResponseSchema, PoResponseSchema, ErrorResponseSchema } from "./generated/schemas.js";
+import {
+  PingResponseSchema,
+  PoResponseSchema,
+  ErrorResponseSchema,
+  ProdOrderResponseSchema,
+  MaterialResponseSchema,
+  StockResponseSchema,
+  PoItemsResponseSchema,
+} from "./generated/schemas.js";
 
 // ---------------------------------------------------------------------------
 // Inferred TS types (for convenience; the Zod schemas are the source of truth)
@@ -19,6 +31,10 @@ import { PingResponseSchema, PoResponseSchema, ErrorResponseSchema } from "./gen
 export type PingResponse = z.infer<typeof PingResponseSchema>;
 export type PoResponse = z.infer<typeof PoResponseSchema>;
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
+export type ProdOrderResponse = z.infer<typeof ProdOrderResponseSchema>;
+export type MaterialResponse = z.infer<typeof MaterialResponseSchema>;
+export type StockResponse = z.infer<typeof StockResponseSchema>;
+export type PoItemsResponse = z.infer<typeof PoItemsResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Config & error types
@@ -92,6 +108,30 @@ export class SapClient {
   /** Look up a purchase order by ebeln. */
   async getPo(ebeln: string): Promise<PoResponse> {
     return this.request<PoResponse>({ path: "/sap/bc/zzapi_mes", params: { ebeln } });
+  }
+
+  /** Look up a production order by aufnr. */
+  async getProdOrder(aufnr: string): Promise<ProdOrderResponse> {
+    return this.request<ProdOrderResponse>({ path: "/sap/bc/zzapi_mes_prod_order", params: { aufnr } });
+  }
+
+  /** Look up material master by matnr, optionally filtered by plant. */
+  async getMaterial(matnr: string, werks?: string): Promise<MaterialResponse> {
+    const params: Record<string, string> = { matnr };
+    if (werks) params.werks = werks;
+    return this.request<MaterialResponse>({ path: "/sap/bc/zzapi_mes_material", params });
+  }
+
+  /** Look up stock/availability for a material at a plant. */
+  async getStock(matnr: string, werks: string, lgort?: string): Promise<StockResponse> {
+    const params: Record<string, string> = { matnr, werks };
+    if (lgort) params.lgort = lgort;
+    return this.request<StockResponse>({ path: "/sap/bc/zzapi_mes_stock", params });
+  }
+
+  /** Look up PO line items by ebeln. */
+  async getPoItems(ebeln: string): Promise<PoItemsResponse> {
+    return this.request<PoItemsResponse>({ path: "/sap/bc/zzapi_mes_po_items", params: { ebeln } });
   }
 
   private async request<T>(opts: { path: string; params?: Record<string, string> }): Promise<T> {

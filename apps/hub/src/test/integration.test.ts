@@ -22,6 +22,44 @@ function startMockSap(): Promise<{ server: Server; port: number }> {
 
       if (req.url?.includes("zzapi_mes_ping")) {
         res.end(JSON.stringify({ ok: true, sap_time: "20260422163000" }));
+      } else if (req.url?.includes("zzapi_mes_prod_order")) {
+        const match = req.url.match(/aufnr=([0-9]+)/);
+        const aufnr = match?.[1] ?? "0";
+        res.end(JSON.stringify({
+          aufnr,
+          auart: "PP01",
+          werks: "1000",
+          matnr: "10000001",
+          gamng: 1000,
+          gstrp: "20260401",
+          gltrp: "20260415",
+          operations: [{ vornr: "0010", ltxa1: "Turning", arbpl: "TURN1", vgwrt: 2.5 }],
+          components: [{ matnr: "20000001", bdmenge: 500, meins: "EA", werks: "1000" }],
+        }));
+      } else if (req.url?.includes("zzapi_mes_material")) {
+        const match = req.url.match(/matnr=([^&]+)/);
+        const matnr = match?.[1] ?? "0";
+        res.end(JSON.stringify({
+          matnr,
+          mtart: "FERT",
+          meins: "EA",
+          maktx: "Test material",
+        }));
+      } else if (req.url?.includes("zzapi_mes_stock")) {
+        const match = req.url.match(/matnr=([^&]+)/);
+        const matnr = match?.[1] ?? "0";
+        res.end(JSON.stringify({
+          matnr,
+          werks: "1000",
+          items: [{ lgort: "0001", clabs: 250, avail_qty: 200 }],
+        }));
+      } else if (req.url?.includes("zzapi_mes_po_items")) {
+        const match = req.url.match(/ebeln=([0-9]+)/);
+        const ebeln = match?.[1] ?? "0";
+        res.end(JSON.stringify({
+          ebeln,
+          items: [{ ebelp: "00010", matnr: "10000001", menge: 100, meins: "EA" }],
+        }));
       } else if (req.url?.includes("zzapi_mes") && req.url?.includes("ebeln=")) {
         const match = req.url.match(/ebeln=([0-9]+)/);
         const ebeln = match?.[1] ?? "0";
@@ -69,7 +107,7 @@ describe("E2E integration against mock SAP", () => {
       id: keyId,
       hash,
       label: "e2e test key",
-      scopes: "ping,po",
+      scopes: "ping,po,prod_order,material,stock",
       rate_limit_per_min: null,
       created_at: Math.floor(Date.now() / 1000),
     });
@@ -130,6 +168,31 @@ describe("E2E integration against mock SAP", () => {
     // 6. Healthz
     const healthRes = await app.fetch(new Request("http://localhost/healthz"));
     assert.equal(healthRes.status, 200);
+
+    // 7. Phase 5A endpoints
+    const prodOrderRes = await app.fetch(new Request("http://localhost/prod-order/1000000", {
+      headers: { authorization: `Bearer ${token}` },
+    }));
+    assert.equal(prodOrderRes.status, 200);
+    const prodOrderBody = await prodOrderRes.json() as Record<string, unknown>;
+    assert.equal(prodOrderBody.aufnr, "1000000");
+
+    const materialRes = await app.fetch(new Request("http://localhost/material/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    }));
+    assert.equal(materialRes.status, 200);
+    const materialBody = await materialRes.json() as Record<string, unknown>;
+    assert.equal(materialBody.mtart, "FERT");
+
+    const stockRes = await app.fetch(new Request("http://localhost/stock/10000001?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    }));
+    assert.equal(stockRes.status, 200);
+
+    const poItemsRes = await app.fetch(new Request("http://localhost/po/4500000001/items", {
+      headers: { authorization: `Bearer ${token}` },
+    }));
+    assert.equal(poItemsRes.status, 200);
   });
 
   it("rejects request without valid JWT", async () => {
@@ -159,9 +222,60 @@ describe("E2E integration against mock SAP", () => {
     });
     const app = createApp(sap, { db });
 
+    // po scope missing
     const res = await app.fetch(new Request("http://localhost/po/123", {
       headers: { authorization: `Bearer ${token}` },
     }));
     assert.equal(res.status, 403);
+  });
+
+  it("requires werks query param for stock endpoint", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    // Missing werks → 400
+    const res = await app.fetch(new Request("http://localhost/stock/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    }));
+    assert.equal(res.status, 400);
+  });
+
+  it("rejects Phase 5A endpoints without correct scope", async () => {
+    const token = await sign(
+      { key_id: "e2etestkey001", scopes: ["ping", "po"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    // prod_order scope missing → 403
+    const prodRes = await app.fetch(new Request("http://localhost/prod-order/1000000", {
+      headers: { authorization: `Bearer ${token}` },
+    }));
+    assert.equal(prodRes.status, 403);
+
+    // material scope missing → 403
+    const matRes = await app.fetch(new Request("http://localhost/material/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    }));
+    assert.equal(matRes.status, 403);
   });
 });

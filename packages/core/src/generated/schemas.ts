@@ -27,3 +27,69 @@ export const TokenResponseSchema = z.object({
 export const HealthzResponseSchema = z.object({
   ok: z.boolean(),
 });
+
+// Phase 5A schemas
+
+export const ProdOrderOperationSchema = z.object({
+  vornr: z.string().max(4),
+  ltxa1: z.string(),
+  arbpl: z.string().max(8).optional(),
+  vgwrt: z.number().optional(),
+});
+
+export const ProdOrderComponentSchema = z.object({
+  matnr: z.string().max(18),
+  bdmenge: z.number(),
+  meins: z.string().max(3).optional(),
+  werks: z.string().max(4).optional(),
+});
+
+export const ProdOrderResponseSchema = z.object({
+  aufnr: z.string().max(12),
+  auart: z.string().max(4),
+  werks: z.string().max(4),
+  matnr: z.string().max(18),
+  gamng: z.number(),
+  gmein: z.string().max(3).optional(),
+  gstrp: z.string().regex(/^[0-9]{8}$/),
+  gltrp: z.string().regex(/^[0-9]{8}$/),
+  operations: z.array(ProdOrderOperationSchema).optional(),
+  components: z.array(ProdOrderComponentSchema).optional(),
+});
+
+export const MaterialResponseSchema = z.object({
+  matnr: z.string().max(18),
+  mtart: z.string().max(4),
+  meins: z.string().max(3),
+  maktx: z.string().optional(),
+  werks: z.string().max(4).optional(),
+  dispo: z.string().max(3).optional(),
+});
+
+export const StockItemSchema = z.object({
+  lgort: z.string().max(4),
+  charg: z.string().max(10).optional(),
+  clabs: z.number(),
+  avail_qty: z.number().optional(),
+});
+
+export const StockResponseSchema = z.object({
+  matnr: z.string().max(18),
+  werks: z.string().max(4),
+  items: z.array(StockItemSchema).optional(),
+});
+
+export const PoItemSchema = z.object({
+  ebelp: z.string().max(5),
+  matnr: z.string().max(18),
+  txz01: z.string().optional(),
+  menge: z.number(),
+  meins: z.string().max(3),
+  netpr: z.number().optional(),
+  eindt: z.string().regex(/^[0-9]{8}$/).optional(),
+});
+
+export const PoItemsResponseSchema = z.object({
+  ebeln: z.string().max(10),
+  items: z.array(PoItemSchema),
+});

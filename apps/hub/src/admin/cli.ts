@@ -45,7 +45,7 @@ async function main(args: string[]): Promise<void> {
       const label = opts["label"] ?? usage();
       const scopes = opts["scopes"] ?? "ping,po";
       // Validate scopes against known values
-      const KNOWN_SCOPES = ["ping", "po"];
+      const KNOWN_SCOPES = ["ping", "po", "prod_order", "material", "stock"];
       const invalidScopes = scopes.split(",").map(s => s.trim()).filter(s => s && !KNOWN_SCOPES.includes(s));
       if (invalidScopes.length > 0) {
         console.error(`Unknown scope(s): ${invalidScopes.join(", ")}. Valid scopes: ${KNOWN_SCOPES.join(", ")}`);

@@ -9,6 +9,10 @@ import health from "./routes/health.js";
 import metricsRoute from "./routes/metrics.js";
 import { createPingRouter } from "./routes/ping.js";
 import { createPoRouter } from "./routes/po.js";
+import { createProdOrderRouter } from "./routes/prod-order.js";
+import { createMaterialRouter } from "./routes/material.js";
+import { createStockRouter } from "./routes/stock.js";
+import { createPoItemsRouter } from "./routes/po-items.js";
 import { z } from "zod";
 import { sign } from "hono/jwt";
 import type Database from "better-sqlite3";
@@ -112,8 +116,15 @@ export function createApp(sap?: SapClient, deps?: AppDeps) {
   // --- Protected routes (JWT + scope + rate limit) ---
   app.use("/ping", requireJwt, requireScope("ping"), rateLimit);
   app.use("/po/*", requireJwt, requireScope("po"), rateLimit);
-  app.route("/", createPingRouter(client));   // GET /ping
-  app.route("/", createPoRouter(client));      // GET /po/:ebeln
+  app.use("/prod-order/*", requireJwt, requireScope("prod_order"), rateLimit);
+  app.use("/material/*", requireJwt, requireScope("material"), rateLimit);
+  app.use("/stock/*", requireJwt, requireScope("stock"), rateLimit);
+  app.route("/", createPingRouter(client));         // GET /ping
+  app.route("/", createPoRouter(client));            // GET /po/:ebeln
+  app.route("/", createPoItemsRouter(client));       // GET /po/:ebeln/items
+  app.route("/", createProdOrderRouter(client));     // GET /prod-order/:aufnr
+  app.route("/", createMaterialRouter(client));      // GET /material/:matnr
+  app.route("/", createStockRouter(client));         // GET /stock/:matnr
 
   return app;
 }

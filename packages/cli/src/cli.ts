@@ -88,8 +88,16 @@ async function main() {
 Usage: zzapi-mes [--mode direct|hub] <command> [args]
 
 Commands:
-  ping           Health check
-  po <ebeln>     Look up purchase order
+  ping                Health check
+  po <ebeln>          Look up purchase order header
+  po-items <ebeln>    Look up purchase order line items
+  prod-order <aufnr>  Look up production order
+  material <matnr>    Look up material master
+  stock <matnr>       Look up stock/availability (requires --werks)
+
+Options for stock/material:
+  --werks <plant>     Plant code
+  --lgort <sloc>      Storage location (stock only)
 
 Modes:
   --mode direct  Talk to SAP directly (default)
@@ -123,6 +131,36 @@ Environment (hub mode):
     case "po": {
       const ebeln = args[0] || die("Usage: zzapi-mes po <ebeln>");
       const res = await client.getPo(ebeln);
+      console.log(JSON.stringify(res, null, 2));
+      break;
+    }
+    case "po-items": {
+      const ebeln = args[0] || die("Usage: zzapi-mes po-items <ebeln>");
+      const res = await client.getPoItems(ebeln);
+      console.log(JSON.stringify(res, null, 2));
+      break;
+    }
+    case "prod-order": {
+      const aufnr = args[0] || die("Usage: zzapi-mes prod-order <aufnr>");
+      const res = await client.getProdOrder(aufnr);
+      console.log(JSON.stringify(res, null, 2));
+      break;
+    }
+    case "material": {
+      const matnr = args[0] || die("Usage: zzapi-mes material <matnr>");
+      const werksIdx = args.indexOf("--werks");
+      const werks = werksIdx !== -1 ? args[werksIdx + 1] : undefined;
+      const res = await client.getMaterial(matnr, werks);
+      console.log(JSON.stringify(res, null, 2));
+      break;
+    }
+    case "stock": {
+      const matnr = args[0] || die("Usage: zzapi-mes stock <matnr> --werks <plant>");
+      const werksIdx = args.indexOf("--werks");
+      const werks = werksIdx !== -1 ? args[werksIdx + 1] : die("--werks is required for stock lookup");
+      const lgortIdx = args.indexOf("--lgort");
+      const lgort = lgortIdx !== -1 ? args[lgortIdx + 1] : undefined;
+      const res = await client.getStock(matnr, werks!, lgort);
       console.log(JSON.stringify(res, null, 2));
       break;
     }
