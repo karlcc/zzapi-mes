@@ -152,6 +152,14 @@ export function checkIdempotency(
   }
 }
 
+const IDEMP_UPDATE_STATUS = `
+  UPDATE idempotency_keys SET status = ? WHERE key = ?`;
+
+/** Update the stored status after the handler completes. */
+export function updateIdempotencyStatus(db: Database.Database, key: string, status: number): void {
+  db.prepare(IDEMP_UPDATE_STATUS).run(status, key);
+}
+
 /** Evict idempotency keys older than the given age in seconds. */
 export function evictIdempotencyKeys(db: Database.Database, maxAgeSeconds: number): number {
   const cutoff = Math.floor(Date.now() / 1000) - maxAgeSeconds;

@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, PingResponseSchema, PoResponseSchema, ErrorResponseSchema } from "../index.js";
+import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema } from "../index.js";
 
 const BASE = "http://sapdev.test:8000";
 const CFG = { host: BASE, client: 200, user: "u", password: "p", timeout: 5000 };
@@ -72,6 +72,50 @@ describe("SapClient", () => {
   it("ZzapiMesClient is SapClient (back-compat alias)", () => {
     assert.equal(ZzapiMesClient, SapClient);
   });
+
+  // Phase 5A methods
+
+  it("getProdOrder builds correct URL", async () => {
+    globalThis.fetch = mockFetch(200, '{"aufnr":"1000000","auart":"PP01","werks":"1000","matnr":"10000001","gamng":1000,"gstrp":"20260401","gltrp":"20260415"}');
+    await new SapClient(CFG).getProdOrder("1000000");
+    assert.match(capturedUrl!, /zzapi_mes_prod_order.*aufnr=1000000/);
+  });
+
+  it("getMaterial builds correct URL with optional werks", async () => {
+    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","mtart":"FERT","meins":"EA"}');
+    await new SapClient(CFG).getMaterial("10000001", "1000");
+    assert.match(capturedUrl!, /zzapi_mes_material.*matnr=10000001.*werks=1000/);
+  });
+
+  it("getStock builds correct URL with required werks", async () => {
+    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[{"lgort":"0001","clabs":250}]}');
+    await new SapClient(CFG).getStock("10000001", "1000");
+    assert.match(capturedUrl!, /zzapi_mes_stock.*matnr=10000001.*werks=1000/);
+  });
+
+  it("getStock includes optional lgort", async () => {
+    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[{"lgort":"0001","clabs":250}]}');
+    await new SapClient(CFG).getStock("10000001", "1000", "0001");
+    assert.match(capturedUrl!, /lgort=0001/);
+  });
+
+  it("getPoItems builds correct URL", async () => {
+    globalThis.fetch = mockFetch(200, '{"ebeln":"4500000001","items":[{"ebelp":"00010","matnr":"10000001","menge":100,"meins":"EA"}]}');
+    await new SapClient(CFG).getPoItems("4500000001");
+    assert.match(capturedUrl!, /zzapi_mes_po_items.*ebeln=4500000001/);
+  });
+
+  it("getRouting builds correct URL", async () => {
+    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","plnnr":"50000123","operations":[{"vornr":"0010","ltxa1":"Turning"}]}');
+    await new SapClient(CFG).getRouting("10000001", "1000");
+    assert.match(capturedUrl!, /zzapi_mes_routing.*matnr=10000001.*werks=1000/);
+  });
+
+  it("getWorkCenter builds correct URL", async () => {
+    globalThis.fetch = mockFetch(200, '{"arbpl":"TURN1","werks":"1000","ktext":"CNC Turning Center","steus":"PP01"}');
+    await new SapClient(CFG).getWorkCenter("TURN1", "1000");
+    assert.match(capturedUrl!, /zzapi_mes_wc.*arbpl=TURN1.*werks=1000/);
+  });
 });
 
 describe("ensureProtocol", () => {
@@ -107,5 +151,100 @@ describe("Zod schemas", () => {
   it("ErrorResponseSchema accepts error object", () => {
     const r = ErrorResponseSchema.parse({ error: "PO not found" });
     assert.equal(r.error, "PO not found");
+  });
+
+  // Phase 5A schemas
+
+  it("ProdOrderResponseSchema accepts valid prod order", () => {
+    const r = ProdOrderResponseSchema.parse({
+      aufnr: "1000000", auart: "PP01", werks: "1000", matnr: "10000001",
+      gamng: 1000, gstrp: "20260401", gltrp: "20260415",
+      operations: [{ vornr: "0010", ltxa1: "Turning", arbpl: "TURN1", vgwrt: 2.5 }],
+      components: [{ matnr: "20000001", bdmenge: 500, meins: "EA", werks: "1000" }],
+    });
+    assert.equal(r.aufnr, "1000000");
+    assert.equal(r.operations!.length, 1);
+  });
+
+  it("MaterialResponseSchema accepts valid material", () => {
+    const r = MaterialResponseSchema.parse({
+      matnr: "10000001", mtart: "FERT", meins: "EA", maktx: "Test material",
+    });
+    assert.equal(r.mtart, "FERT");
+  });
+
+  it("StockResponseSchema accepts valid stock", () => {
+    const r = StockResponseSchema.parse({
+      matnr: "10000001", werks: "1000",
+      items: [{ lgort: "0001", clabs: 250, avail_qty: 200 }],
+    });
+    assert.equal(r.items!.length, 1);
+  });
+
+  it("PoItemsResponseSchema accepts valid PO items", () => {
+    const r = PoItemsResponseSchema.parse({
+      ebeln: "4500000001",
+      items: [{ ebelp: "00010", matnr: "10000001", menge: 100, meins: "EA" }],
+    });
+    assert.equal(r.items.length, 1);
+  });
+
+  it("RoutingResponseSchema accepts valid routing", () => {
+    const r = RoutingResponseSchema.parse({
+      matnr: "10000001", werks: "1000", plnnr: "50000123",
+      operations: [{ vornr: "0010", ltxa1: "Turning", arbpl: "TURN1", vgwrt: 2.5 }],
+    });
+    assert.equal(r.plnnr, "50000123");
+  });
+
+  it("WorkCenterResponseSchema accepts valid work center", () => {
+    const r = WorkCenterResponseSchema.parse({
+      arbpl: "TURN1", werks: "1000", ktext: "CNC Turning Center", steus: "PP01",
+    });
+    assert.equal(r.steus, "PP01");
+  });
+
+  // Phase 5B schemas
+
+  it("ConfirmationRequestSchema accepts valid confirmation", () => {
+    const r = ConfirmationRequestSchema.parse({
+      orderid: "1000000", operation: "0010", yield: 50,
+    });
+    assert.equal(r.orderid, "1000000");
+  });
+
+  it("ConfirmationResponseSchema accepts valid response", () => {
+    const r = ConfirmationResponseSchema.parse({
+      orderid: "1000000", operation: "0010", yield: 50, scrap: 0, status: "confirmed",
+    });
+    assert.equal(r.status, "confirmed");
+  });
+
+  it("GoodsReceiptRequestSchema accepts valid GR", () => {
+    const r = GoodsReceiptRequestSchema.parse({
+      ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001",
+    });
+    assert.equal(r.ebeln, "4500000001");
+  });
+
+  it("GoodsReceiptResponseSchema accepts valid response", () => {
+    const r = GoodsReceiptResponseSchema.parse({
+      ebeln: "4500000001", ebelp: "00010", menge: 100, status: "posted",
+    });
+    assert.equal(r.status, "posted");
+  });
+
+  it("GoodsIssueRequestSchema accepts valid GI", () => {
+    const r = GoodsIssueRequestSchema.parse({
+      orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001",
+    });
+    assert.equal(r.orderid, "1000000");
+  });
+
+  it("GoodsIssueResponseSchema accepts valid response", () => {
+    const r = GoodsIssueResponseSchema.parse({
+      orderid: "1000000", matnr: "20000001", menge: 50, status: "posted",
+    });
+    assert.equal(r.status, "posted");
   });
 });

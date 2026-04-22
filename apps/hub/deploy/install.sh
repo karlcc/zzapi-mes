@@ -84,7 +84,7 @@ sudo systemctl enable zzapi-mes-hub
 echo ""
 echo "Done. Next steps:"
 echo "  1. Edit $ENV_FILE with your values"
-echo "  2. Create an API key:  zzapi-mes-hub-admin keys create --label first --scopes ping,po"
+echo "  2. Create an API key:  zzapi-mes-hub-admin keys create --label first --scopes ping,po,prod_order,material,stock,routing,work_center,conf,gr,gi"
 echo "  3. Start the hub:  sudo systemctl start zzapi-mes-hub"
 echo "  4. Check status:   sudo systemctl status zzapi-mes-hub"
 echo ""

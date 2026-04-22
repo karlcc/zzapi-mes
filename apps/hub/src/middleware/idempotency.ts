@@ -1,7 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import type { HubVariables } from "../types.js";
 import type Database from "better-sqlite3";
-import { checkIdempotency, type IdempotencyRecord } from "../db/index.js";
+import { checkIdempotency, updateIdempotencyStatus, type IdempotencyRecord } from "../db/index.js";
 
 /** Reject duplicate write-back requests within a 5-minute window. */
 export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
@@ -46,4 +46,9 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   c.set("idempotencyKey", idempotencyKey);
   c.set("idempotencyBodyHash", bodyHash);
   await next();
+
+  // Update stored status with actual response code
+  if (db && idempotencyKey) {
+    updateIdempotencyStatus(db, idempotencyKey, c.res.status);
+  }
 });

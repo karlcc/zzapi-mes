@@ -48,7 +48,8 @@ json_eq() {
 
 check() {
   local label="$1" url="$2" expect_status="$3" method="${4:-GET}"; shift 4
-  # Remaining args: pairs of (jq_path, expected_value) for body assertions
+  # Remaining args: pairs of (jq_path, expected_value) for body assertions,
+  # or -H/-d flags which are passed through to curl
 
   local t0 status body elapsed tmpf
   t0=${EPOCHREALTIME//./}
@@ -69,6 +70,16 @@ check() {
   fi
   if [[ "$method" != "GET" ]]; then curl_args+=(-X "$method"); fi
 
+  # Collect -H/-d curl flags and jq assertions from remaining args
+  local jq_assertions=()
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-H" || "$1" == "-d" ]]; then
+      curl_args+=("$1" "$2"); shift 2
+    else
+      jq_assertions+=("$1" "$2"); shift 2
+    fi
+  done
+
   # Single curl call: body to temp file, status via -w
   tmpf=$(mktemp)
   status=$(curl -o "$tmpf" -w "%{http_code}" "${curl_args[@]}" "${full_url}")
@@ -84,8 +95,10 @@ check() {
   fi
 
   # Body assertions (pairs of jq_path + expected value)
-  while [[ $# -ge 2 ]]; do
-    local jq_path="$1" expected_val="$2"; shift 2
+  local i=0
+  while [[ $i -lt ${#jq_assertions[@]} ]]; do
+    local jq_path="${jq_assertions[$i]}" expected_val="${jq_assertions[$((i+1))]}"
+    i=$((i+2))
     if ! json_eq "$body" "$jq_path" "$expected_val"; then
       echo "  FAIL  ${label}  status OK (${status}) but ${jq_path} mismatch"
       echo "        expected: ${expected_val}"
@@ -182,6 +195,77 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "401" GET \
     ".error" "Invalid or expired token"
   HUB_TOKEN="$SAVED_TOKEN"
+
+  # Phase 5A read endpoints (hub mode only)
+  echo ""
+  echo "-- Phase 5A: prod-order, material, stock, po-items, routing, work-center --"
+  check "prod-order returns aufnr" \
+    "${BASE_URL}/prod-order/1000000" \
+    "200" GET \
+    ".aufnr" "1000000"
+
+  check "material returns mtart" \
+    "${BASE_URL}/material/10000001" \
+    "200" GET \
+    ".mtart" "FERT"
+
+  check "stock with werks returns items" \
+    "${BASE_URL}/stock/10000001?werks=1000" \
+    "200" GET
+
+  check "stock without werks returns 400" \
+    "${BASE_URL}/stock/10000001" \
+    "400" GET
+
+  check "po-items returns ebeln" \
+    "${BASE_URL}/po/4500000001/items" \
+    "200" GET \
+    ".ebeln" "4500000001"
+
+  check "routing with werks returns plnnr" \
+    "${BASE_URL}/routing/10000001?werks=1000" \
+    "200" GET
+
+  check "work-center with werks returns arbpl" \
+    "${BASE_URL}/work-center/TURN1?werks=1000" \
+    "200" GET
+
+  # Phase 5B write-back endpoints (hub mode only)
+  echo ""
+  echo "-- Phase 5B: confirmation, goods-receipt, goods-issue --"
+
+  check "confirmation POST returns 201" \
+    "${BASE_URL}/confirmation" \
+    "201" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-conf-001" \
+    -d '{"orderid":"1000000","operation":"0010","yield":50}'
+
+  check "confirmation missing idempotency key returns 400" \
+    "${BASE_URL}/confirmation" \
+    "400" POST \
+    -H "content-type: application/json" \
+    -d '{"orderid":"1000000","operation":"0010","yield":50}'
+
+  check "goods-receipt POST returns 201" \
+    "${BASE_URL}/goods-receipt" \
+    "201" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-gr-001" \
+    -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
+
+  check "goods-issue POST returns 201" \
+    "${BASE_URL}/goods-issue" \
+    "201" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-gi-001" \
+    -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}'
+
+  check "goods-receipt missing idempotency key returns 400" \
+    "${BASE_URL}/goods-receipt" \
+    "400" POST \
+    -H "content-type: application/json" \
+    -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
 fi
 
 echo ""

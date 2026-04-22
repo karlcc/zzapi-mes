@@ -2,7 +2,7 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../server.js";
 import { SapClient, ZzapiMesHttpError } from "@zzapi-mes/core";
-import type { PingResponse, PoResponse } from "@zzapi-mes/core";
+import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse } from "@zzapi-mes/core";
 import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
@@ -19,7 +19,7 @@ process.env.HUB_JWT_TTL_SECONDS = "900";
 let db: Database.Database;
 let testKeyPlaintext: string;
 
-async function seedTestKey(scopes = "ping,po"): Promise<string> {
+async function seedTestKey(scopes = "ping,po,prod_order,material,stock,routing,work_center,conf,gr,gi"): Promise<string> {
   const keyId = "testkey1234";
   const secret = "abc123xyz789def456ghi012jkl345mno678pqr";
   const plaintext = `${keyId}.${secret}`;
@@ -41,6 +41,12 @@ async function seedTestKey(scopes = "ping,po"): Promise<string> {
 
 let mockPingResult: PingResponse | null = null;
 let mockPoResult: PoResponse | null = null;
+let mockProdOrderResult: ProdOrderResponse | null = null;
+let mockMaterialResult: MaterialResponse | null = null;
+let mockStockResult: StockResponse | null = null;
+let mockPoItemsResult: PoItemsResponse | null = null;
+let mockRoutingResult: RoutingResponse | null = null;
+let mockWorkCenterResult: WorkCenterResponse | null = null;
 let mockPingError: ZzapiMesHttpError | null = null;
 let mockPoError: ZzapiMesHttpError | null = null;
 
@@ -53,11 +59,35 @@ class MockSapClient {
     if (mockPoError) throw mockPoError;
     return mockPoResult!;
   }
+  async getProdOrder(aufnr: string): Promise<ProdOrderResponse> {
+    return mockProdOrderResult!;
+  }
+  async getMaterial(matnr: string, werks?: string): Promise<MaterialResponse> {
+    return mockMaterialResult!;
+  }
+  async getStock(matnr: string, werks: string, lgort?: string): Promise<StockResponse> {
+    return mockStockResult!;
+  }
+  async getPoItems(ebeln: string): Promise<PoItemsResponse> {
+    return mockPoItemsResult!;
+  }
+  async getRouting(matnr: string, werks: string): Promise<RoutingResponse> {
+    return mockRoutingResult!;
+  }
+  async getWorkCenter(arbpl: string, werks: string): Promise<WorkCenterResponse> {
+    return mockWorkCenterResult!;
+  }
 }
 
 beforeEach(async () => {
   mockPingResult = { ok: true, sap_time: "20260422163000" };
   mockPoResult = { ebeln: "3010000608", aedat: "20170306", lifnr: "0000500340", eindt: "20170630" };
+  mockProdOrderResult = { aufnr: "1000000", auart: "PP01", werks: "1000", matnr: "10000001", gamng: 1000, gstrp: "20260401", gltrp: "20260415" };
+  mockMaterialResult = { matnr: "10000001", mtart: "FERT", meins: "EA", maktx: "Test material" };
+  mockStockResult = { matnr: "10000001", werks: "1000", items: [{ lgort: "0001", clabs: 250, avail_qty: 200 }] };
+  mockPoItemsResult = { ebeln: "4500000001", items: [{ ebelp: "00010", matnr: "10000001", menge: 100, meins: "EA" }] };
+  mockRoutingResult = { matnr: "10000001", werks: "1000", plnnr: "50000123", operations: [{ vornr: "0010", ltxa1: "Turning" }] };
+  mockWorkCenterResult = { arbpl: "TURN1", werks: "1000", ktext: "CNC Turning Center", steus: "PP01" };
   mockPingError = null;
   mockPoError = null;
 
@@ -77,7 +107,7 @@ async function fetchApi(path: string, opts?: RequestInit) {
   return app().fetch(req);
 }
 
-async function validToken(scopes = ["ping", "po"]): Promise<string> {
+async function validToken(scopes = ["ping", "po", "prod_order", "material", "stock", "routing", "work_center", "conf", "gr", "gi"]): Promise<string> {
   return sign(
     { key_id: "testkey1234", scopes, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
     JWT_SECRET,
@@ -280,5 +310,210 @@ describe("Metrics", () => {
     assert.ok(text.includes("zzapi_hub_requests_total"));
     assert.ok(text.includes("zzapi_hub_request_duration_seconds"));
     assert.ok(text.includes("zzapi_hub_sap_duration_seconds"));
+  });
+});
+
+describe("Phase 5A routes", () => {
+  it("GET /prod-order/:aufnr proxies to SAP", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/prod-order/1000000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.aufnr, "1000000");
+  });
+
+  it("GET /material/:matnr proxies to SAP", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/material/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.mtart, "FERT");
+  });
+
+  it("GET /stock/:matnr requires werks", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/stock/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("GET /stock/:matnr with werks proxies to SAP", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/stock/10000001?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+  });
+
+  it("GET /po/:ebeln/items proxies to SAP", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/po/4500000001/items", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.ebeln, "4500000001");
+  });
+
+  it("GET /routing/:matnr requires werks", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/routing/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("GET /routing/:matnr with werks proxies to SAP", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/routing/10000001?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+  });
+
+  it("GET /work-center/:arbpl requires werks", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/work-center/TURN1", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("GET /work-center/:arbpl with werks proxies to SAP", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/work-center/TURN1?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.steus, "PP01");
+  });
+});
+
+describe("Phase 5B write-back routes", () => {
+  it("POST /confirmation with idempotency key returns 201", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "unit-test-conf-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.status, "confirmed");
+  });
+
+  it("POST /confirmation without idempotency key returns 400", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("POST /confirmation duplicate idempotency key returns 409", async () => {
+    const token = await validToken();
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "idempotency-key": "dup-unit-test-001",
+    };
+    const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+
+    const res1 = await fetchApi("/confirmation", { method: "POST", headers, body });
+    assert.equal(res1.status, 201);
+
+    const res2 = await fetchApi("/confirmation", { method: "POST", headers, body });
+    assert.equal(res2.status, 409);
+  });
+
+  it("POST /goods-receipt with idempotency key returns 201", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "unit-test-gr-001",
+      },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.status, "posted");
+  });
+
+  it("POST /goods-issue with idempotency key returns 201", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "unit-test-gi-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.status, "posted");
+  });
+
+  it("write-back routes require correct scope", async () => {
+    const token = await validToken(["ping"]);
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "idempotency-key": "scope-test-001",
+    };
+    const confRes = await fetchApi("/confirmation", {
+      method: "POST", headers,
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(confRes.status, 403);
+
+    const grRes = await fetchApi("/goods-receipt", {
+      method: "POST", headers: { ...headers, "idempotency-key": "scope-test-002" },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(grRes.status, 403);
+
+    const giRes = await fetchApi("/goods-issue", {
+      method: "POST", headers: { ...headers, "idempotency-key": "scope-test-003" },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(giRes.status, 403);
+  });
+
+  it("idempotency status is updated after handler", async () => {
+    const token = await validToken();
+    const idemKey = "status-update-test-001";
+    await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": idemKey,
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    // Check that the stored status was updated from 0 to 201
+    const row = db.prepare("SELECT status FROM idempotency_keys WHERE key = ?").get(idemKey) as { status: number } | undefined;
+    assert.ok(row);
+    assert.equal(row.status, 201);
   });
 });
