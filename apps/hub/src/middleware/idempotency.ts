@@ -1,10 +1,18 @@
 import { createMiddleware } from "hono/factory";
 import type { HubVariables } from "../types.js";
 import type Database from "better-sqlite3";
-import { checkIdempotency, updateIdempotencyStatus, type IdempotencyRecord } from "../db/index.js";
+import { checkIdempotency, updateIdempotencyStatus, evictIdempotencyKeys, type IdempotencyRecord } from "../db/index.js";
+
+/** Evict keys older than 5 minutes (300 seconds). */
+const IDEMPOTENCY_MAX_AGE_SECONDS = 300;
 
 /** Reject duplicate write-back requests within a 5-minute window. */
 export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
+  // Evict stale keys on each write-back request
+  const dbForEviction = c.get("db") as Database.Database | undefined;
+  if (dbForEviction) {
+    evictIdempotencyKeys(dbForEviction, IDEMPOTENCY_MAX_AGE_SECONDS);
+  }
   const idempotencyKey = c.req.header("idempotency-key");
   if (!idempotencyKey) {
     return c.json({ error: "Missing Idempotency-Key header" }, 400);
