@@ -18,7 +18,7 @@ INSTALL_DIR="/opt/zzapi-mes-hub"
 ENV_FILE="/etc/zzapi-mes-hub.env"
 SERVICE_USER="${SUDO_USER:-zzapi-mes}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.."/".." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # --- 1. Build if needed ---
 if [ ! -d "$REPO_ROOT/apps/hub/dist" ]; then
