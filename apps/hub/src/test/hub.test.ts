@@ -478,12 +478,20 @@ describe("Metrics", () => {
   });
 
   it("rejects non-localhost access with 403", async () => {
-    const res = await fetchApi("/metrics", {
-      headers: { "x-forwarded-for": "10.0.0.1" },
-    });
+    // Use a non-localhost URL to test the hostname check
+    const req = new Request("http://10.0.0.1/metrics");
+    const res = await app().fetch(req);
     assert.equal(res.status, 403);
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.error, "Forbidden");
+  });
+
+  it("allows metrics via trusted proxy (x-real-ip localhost)", async () => {
+    const req = new Request("http://10.0.0.1/metrics", {
+      headers: { "x-real-ip": "127.0.0.1" },
+    });
+    const res = await app().fetch(req);
+    assert.equal(res.status, 200);
   });
 });
 
@@ -1278,6 +1286,38 @@ describe("Rate limit per min = 0", () => {
     );
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${zeroRpmToken}` } });
     assert.equal(res.status, 403);
+  });
+});
+
+describe("Empty Idempotency-Key header", () => {
+  it("rejects empty string idempotency-key", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("Idempotency-Key"));
+  });
+
+  it("rejects whitespace-only idempotency-key", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "   ",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 400);
   });
 });
 

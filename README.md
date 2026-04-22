@@ -54,7 +54,7 @@ docs/            Walkthroughs
 2. Run smoke test:
 
 ```bash
-SAP_USER=api_user2 SAP_PASS='Pt@2026' pnpm smoke
+SAP_USER=<your_user> SAP_PASS='<your_password>' pnpm smoke
 ```
 
 3. Verify two endpoints respond:
@@ -69,8 +69,8 @@ import { ZzapiMesClient } from "@zzapi-mes/sdk";
 const client = new ZzapiMesClient({
   host: "http://sapdev.fastcell.hk:8000",
   client: 200,
-  user: "api_user2",
-  password: "Pt@2026",
+  user: process.env.SAP_USER!,
+  password: process.env.SAP_PASS!,
   timeout: 30000, // optional, default 30s
 });
 
@@ -85,15 +85,15 @@ const po = await client.getPo("3010000608");
 
 ```bash
 # Direct mode (default) — talks to SAP with Basic Auth
-SAP_USER=api_user2 SAP_PASS='Pt@2026' npx zzapi-mes ping
-SAP_USER=api_user2 SAP_PASS='Pt@2026' npx zzapi-mes po 3010000608
+SAP_USER=<your_user> SAP_PASS='<your_password>' npx zzapi-mes ping
+SAP_USER=<your_user> SAP_PASS='<your_password>' npx zzapi-mes po 3010000608
 
 # Hub mode — talks to the hub with API key, no SAP creds needed
 HUB_URL=http://localhost:8080 HUB_API_KEY=my-key npx zzapi-mes --mode hub ping
 HUB_URL=http://localhost:8080 HUB_API_KEY=my-key npx zzapi-mes --mode hub po 3010000608
 
 # Or via ~/.zzapirc
-echo '{"SAP_USER":"api_user2","SAP_PASS":"Pt@2026"}' > ~/.zzapirc
+echo '{"SAP_USER":"<your_user>","SAP_PASS":"<your_password>"}' > ~/.zzapirc
 npx zzapi-mes ping
 ```
 
@@ -152,7 +152,7 @@ All write-back endpoints require an `Idempotency-Key` header for deduplication.
 pnpm build
 HUB_JWT_SECRET=random-secret \
   SAP_HOST=sapdev.fastcell.hk:8000 SAP_CLIENT=200 \
-  SAP_USER=api_user2 SAP_PASS='Pt@2026' \
+  SAP_USER=<your_user> SAP_PASS='<your_password>' \
   pnpm --filter @zzapi-mes/hub start
 ```
 

@@ -170,4 +170,86 @@ describe("CLI", () => {
       assert.ok(stderr.includes("--lgort"));
     });
   });
+
+  // Phase 5A read commands — missing arg validation
+  describe("po-items command", () => {
+    it("exits if ebeln not provided", async () => {
+      const { stderr, code } = await run(["po-items"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("ebeln") || stderr.includes("Usage"));
+    });
+  });
+
+  describe("prod-order command", () => {
+    it("exits if aufnr not provided", async () => {
+      const { stderr, code } = await run(["prod-order"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("aufnr") || stderr.includes("Usage"));
+    });
+  });
+
+  describe("material command", () => {
+    it("exits if matnr not provided", async () => {
+      const { stderr, code } = await run(["material"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("matnr") || stderr.includes("Usage"));
+    });
+  });
+
+  describe("stock command", () => {
+    it("exits if matnr not provided", async () => {
+      const { stderr, code } = await run(["stock"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+    });
+
+    it("exits if --werks not provided", async () => {
+      const { stderr, code } = await run(["stock", "10000001"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--werks"));
+    });
+  });
+
+  describe("routing command", () => {
+    it("exits if matnr not provided", async () => {
+      const { stderr, code } = await run(["routing"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+    });
+
+    it("exits if --werks not provided", async () => {
+      const { stderr, code } = await run(["routing", "10000001"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--werks"));
+    });
+  });
+
+  describe("work-center command", () => {
+    it("exits if arbpl not provided", async () => {
+      const { stderr, code } = await run(["work-center"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+    });
+
+    it("exits if --werks not provided", async () => {
+      const { stderr, code } = await run(["work-center", "TURN1"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--werks"));
+    });
+  });
 });

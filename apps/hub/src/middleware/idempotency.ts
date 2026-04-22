@@ -19,7 +19,7 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
     }
   }
   const idempotencyKey = c.req.header("idempotency-key");
-  if (!idempotencyKey) {
+  if (!idempotencyKey || idempotencyKey.trim() === "") {
     return c.json({ error: "Missing Idempotency-Key header" }, 400);
   }
 

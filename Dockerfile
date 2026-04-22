@@ -53,4 +53,10 @@ ENV HUB_PORT=8080
 
 EXPOSE 8080
 
+# Run as non-root user
+USER node
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://localhost:8080/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+
 CMD ["node", "apps/hub/dist/index.js"]
