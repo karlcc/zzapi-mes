@@ -96,9 +96,9 @@ Commands:
   stock <matnr>       Look up stock/availability (requires --werks)
   routing <matnr>     Look up routing/recipe (requires --werks)
   work-center <arbpl> Look up work center (requires --werks)
-  confirm <orderid>   Production confirmation (hub mode only)
-  goods-receipt <ebeln> Goods receipt for PO (hub mode only)
-  goods-issue <orderid> Goods issue for prod order (hub mode only)
+  confirm <orderid>   Production confirmation
+  goods-receipt <ebeln> Goods receipt for PO
+  goods-issue <orderid> Goods issue for prod order
 
 Options:
   --werks <plant>     Plant code (required for stock, routing, work-center)
@@ -191,21 +191,22 @@ Environment (hub mode):
       break;
     }
     case "confirm": {
-      if (mode !== "hub") die("confirm command requires --mode hub (write-back endpoints are hub-only)");
-      const hub = client as HubClient;
       const orderid = args[0] || die("Usage: zzapi-mes confirm <orderid> --operation <op> --yield <qty>");
       const opIdx = args.indexOf("--operation");
       const operation = opIdx !== -1 ? args[opIdx + 1]! : "0010";
       const yieldIdx = args.indexOf("--yield");
       const yieldQty = yieldIdx !== -1 ? Number(args[yieldIdx + 1]) : die("--yield is required");
-      const idemKey = `cli-conf-${orderid}-${Date.now()}`;
-      const res = await hub.confirmProduction({ orderid, operation, yield: yieldQty }, idemKey);
+      let res;
+      if (mode === "hub") {
+        const idemKey = `cli-conf-${orderid}-${Date.now()}`;
+        res = await (client as HubClient).confirmProduction({ orderid, operation, yield: yieldQty }, idemKey);
+      } else {
+        res = await (client as InstanceType<typeof ZzapiMesClient>).postConfirmation({ orderid, operation, yield: yieldQty });
+      }
       console.log(JSON.stringify(res, null, 2));
       break;
     }
     case "goods-receipt": {
-      if (mode !== "hub") die("goods-receipt command requires --mode hub");
-      const hub = client as HubClient;
       const ebeln = args[0] || die("Usage: zzapi-mes goods-receipt <ebeln> --menge <qty> --werks <plant> --lgort <sloc>");
       const mengeIdx = args.indexOf("--menge");
       const menge = mengeIdx !== -1 ? Number(args[mengeIdx + 1]) : die("--menge is required");
@@ -215,14 +216,17 @@ Environment (hub mode):
       const lgort = lgortIdx !== -1 ? args[lgortIdx + 1]! : die("--lgort is required");
       const ebelpIdx = args.indexOf("--ebelp");
       const ebelp = ebelpIdx !== -1 ? args[ebelpIdx + 1]! : "00010";
-      const idemKey = `cli-gr-${ebeln}-${Date.now()}`;
-      const res = await hub.goodsReceipt({ ebeln, ebelp, menge, werks, lgort }, idemKey);
+      let res;
+      if (mode === "hub") {
+        const idemKey = `cli-gr-${ebeln}-${Date.now()}`;
+        res = await (client as HubClient).goodsReceipt({ ebeln, ebelp, menge, werks, lgort }, idemKey);
+      } else {
+        res = await (client as InstanceType<typeof ZzapiMesClient>).postGoodsReceipt({ ebeln, ebelp, menge, werks, lgort });
+      }
       console.log(JSON.stringify(res, null, 2));
       break;
     }
     case "goods-issue": {
-      if (mode !== "hub") die("goods-issue command requires --mode hub");
-      const hub = client as HubClient;
       const orderid = args[0] || die("Usage: zzapi-mes goods-issue <orderid> --matnr <mat> --menge <qty> --werks <plant> --lgort <sloc>");
       const matnrIdx = args.indexOf("--matnr");
       const matnr = matnrIdx !== -1 ? args[matnrIdx + 1]! : die("--matnr is required");
@@ -232,8 +236,13 @@ Environment (hub mode):
       const werks = werksIdx !== -1 ? args[werksIdx + 1]! : die("--werks is required");
       const lgortIdx = args.indexOf("--lgort");
       const lgort = lgortIdx !== -1 ? args[lgortIdx + 1]! : die("--lgort is required");
-      const idemKey = `cli-gi-${orderid}-${Date.now()}`;
-      const res = await hub.goodsIssue({ orderid, matnr, menge, werks, lgort }, idemKey);
+      let res;
+      if (mode === "hub") {
+        const idemKey = `cli-gi-${orderid}-${Date.now()}`;
+        res = await (client as HubClient).goodsIssue({ orderid, matnr, menge, werks, lgort }, idemKey);
+      } else {
+        res = await (client as InstanceType<typeof ZzapiMesClient>).postGoodsIssue({ orderid, matnr, menge, werks, lgort });
+      }
       console.log(JSON.stringify(res, null, 2));
       break;
     }

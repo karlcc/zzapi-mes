@@ -314,6 +314,40 @@ describe("GET /healthz", () => {
   });
 });
 
+describe("Request ID middleware", () => {
+  it("generates UUID when no x-request-id header is sent", async () => {
+    const res = await fetchApi("/healthz");
+    const reqId = res.headers.get("x-request-id");
+    assert.ok(reqId);
+    assert.match(reqId!, /^[0-9a-f]{8}-[0-9a-f]{4}-/);
+  });
+
+  it("echoes valid x-request-id header", async () => {
+    const res = await fetchApi("/healthz", {
+      headers: { "x-request-id": "my-req-id-1234" },
+    });
+    assert.equal(res.headers.get("x-request-id"), "my-req-id-1234");
+  });
+
+  it("replaces too-short x-request-id with UUID", async () => {
+    const res = await fetchApi("/healthz", {
+      headers: { "x-request-id": "short" },
+    });
+    const reqId = res.headers.get("x-request-id");
+    assert.ok(reqId);
+    assert.match(reqId!, /^[0-9a-f]{8}-/); // UUID, not "short"
+  });
+
+  it("replaces x-request-id with special chars with UUID", async () => {
+    const res = await fetchApi("/healthz", {
+      headers: { "x-request-id": "bad!@#$%^&*()" },
+    });
+    const reqId = res.headers.get("x-request-id");
+    assert.ok(reqId);
+    assert.match(reqId!, /^[0-9a-f]{8}-/);
+  });
+});
+
 describe("Rate limiting", () => {
   it("returns 429 when token bucket is exhausted", async () => {
     // Create a key with very low rate limit (2 req/min)
@@ -496,6 +530,25 @@ describe("Phase 5B write-back routes", () => {
 
     const res2 = await fetchApi("/confirmation", { method: "POST", headers, body });
     assert.equal(res2.status, 409);
+  });
+
+  it("idempotency key with different body returns 422", async () => {
+    const token = await validToken();
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "idempotency-key": "mismatch-test-001",
+    };
+    const body1 = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const body2 = JSON.stringify({ orderid: "2000000", operation: "0020", yield: 100 });
+
+    const res1 = await fetchApi("/confirmation", { method: "POST", headers, body: body1 });
+    assert.equal(res1.status, 201);
+
+    const res2 = await fetchApi("/confirmation", { method: "POST", headers, body: body2 });
+    assert.equal(res2.status, 422);
+    const data = await res2.json() as Record<string, unknown>;
+    assert.match(data.error as string, /different request body/);
   });
 
   it("POST /goods-receipt with idempotency key returns 201", async () => {

@@ -45,6 +45,13 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
 
   const existing = checkIdempotency(db, idempotencyKey, keyId, c.req.path, 0, bodyHash);
   if (existing) {
+    // Body hash mismatch: client reused idempotency key with different body
+    if (existing.body_hash !== bodyHash) {
+      return c.json(
+        { error: "Idempotency-Key already used with different request body" },
+        422,
+      );
+    }
     return c.json(
       { error: "Duplicate request", original_status: existing.status },
       409,
