@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../server.js";
-import { SapClient, ZzapiMesHttpError } from "@zzapi-mes/core";
+import { SapClient, ZzapiMesHttpError, ALL_SCOPES } from "@zzapi-mes/core";
 import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse, ConfirmationRequest, ConfirmationResponse, GoodsReceiptRequest, GoodsReceiptResponse, GoodsIssueRequest, GoodsIssueResponse } from "@zzapi-mes/core";
 import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
@@ -19,7 +19,7 @@ process.env.HUB_JWT_TTL_SECONDS = "900";
 let db: Database.Database;
 let testKeyPlaintext: string;
 
-async function seedTestKey(scopes = "ping,po,prod_order,material,stock,routing,work_center,conf,gr,gi"): Promise<string> {
+async function seedTestKey(scopes = ALL_SCOPES.join(",")): Promise<string> {
   const keyId = "testkey1234";
   const secret = "abc123xyz789def456ghi012jkl345mno678pqr";
   const plaintext = `${keyId}.${secret}`;
@@ -150,7 +150,7 @@ async function fetchApi(path: string, opts?: RequestInit) {
   return app().fetch(req);
 }
 
-async function validToken(scopes = ["ping", "po", "prod_order", "material", "stock", "routing", "work_center", "conf", "gr", "gi"]): Promise<string> {
+async function validToken(scopes: string[] = [...ALL_SCOPES]): Promise<string> {
   return sign(
     { key_id: "testkey1234", scopes, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
     JWT_SECRET,

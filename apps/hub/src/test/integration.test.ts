@@ -2,7 +2,7 @@ import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { createApp } from "../server.js";
-import { SapClient } from "@zzapi-mes/core";
+import { SapClient, ALL_SCOPES } from "@zzapi-mes/core";
 import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
@@ -215,7 +215,7 @@ describe("E2E integration against mock SAP", () => {
       id: keyId,
       hash,
       label: "e2e test key",
-      scopes: "ping,po,prod_order,material,stock,routing,work_center,conf,gr,gi",
+      scopes: ALL_SCOPES.join(","),
       rate_limit_per_min: null,
       created_at: Math.floor(Date.now() / 1000),
     });

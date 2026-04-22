@@ -8,6 +8,7 @@
  *   keys revoke <id>
  */
 import { openDb, runMigrations, insertKey, listKeys, revokeKey } from "../db/index.js";
+import { ALL_SCOPES } from "@zzapi-mes/core";
 import argon2 from "argon2";
 import { randomBytes } from "node:crypto";
 
@@ -45,10 +46,9 @@ async function main(args: string[]): Promise<void> {
       const label = opts["label"] ?? usage();
       const scopes = opts["scopes"] ?? "ping,po";
       // Validate scopes against known values
-      const KNOWN_SCOPES = ["ping", "po", "prod_order", "material", "stock", "routing", "work_center", "conf", "gr", "gi"];
-      const invalidScopes = scopes.split(",").map(s => s.trim()).filter(s => s && !KNOWN_SCOPES.includes(s));
+      const invalidScopes = scopes.split(",").map(s => s.trim()).filter(s => s && !ALL_SCOPES.includes(s as typeof ALL_SCOPES[number]));
       if (invalidScopes.length > 0) {
-        console.error(`Unknown scope(s): ${invalidScopes.join(", ")}. Valid scopes: ${KNOWN_SCOPES.join(", ")}`);
+        console.error(`Unknown scope(s): ${invalidScopes.join(", ")}. Valid scopes: ${ALL_SCOPES.join(", ")}`);
         process.exit(1);
       }
       const rateLimit = opts["rate-limit"] ? parseInt(opts["rate-limit"], 10) : null;

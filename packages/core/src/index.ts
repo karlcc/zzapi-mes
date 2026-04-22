@@ -61,6 +61,25 @@ export type GoodsIssueRequest = z.infer<typeof GoodsIssueRequestSchema>;
 export type GoodsIssueResponse = z.infer<typeof GoodsIssueResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// Scopes — single source of truth for all authorized scopes
+// ---------------------------------------------------------------------------
+
+export const ALL_SCOPES = [
+  "ping",
+  "po",
+  "prod_order",
+  "material",
+  "stock",
+  "routing",
+  "work_center",
+  "conf",
+  "gr",
+  "gi",
+] as const;
+
+export type Scope = typeof ALL_SCOPES[number];
+
+// ---------------------------------------------------------------------------
 // Config & error types
 // ---------------------------------------------------------------------------
 
