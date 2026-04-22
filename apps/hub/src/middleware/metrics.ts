@@ -14,6 +14,9 @@ export const metricsMiddleware: MiddlewareHandler = async (c, next) => {
     : c.req.path.startsWith("/prod-order/") ? "/prod-order/:aufnr"
     : c.req.path.startsWith("/material/") ? "/material/:matnr"
     : c.req.path.startsWith("/stock/") ? "/stock/:matnr"
+    : c.req.path.startsWith("/routing/") ? "/routing/:matnr"
+    : c.req.path.startsWith("/work-center/") ? "/work-center/:arbpl"
+    : c.req.path === "/confirmation" ? "/confirmation"
     : c.req.path;
 
   const keyId = (c.get("jwtPayload") as Record<string, unknown> | undefined)?.key_id as string ?? "-";

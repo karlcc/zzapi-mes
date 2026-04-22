@@ -395,6 +395,88 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /sap/bc/zzapi_mes_routing:
+    get:
+      operationId: getRouting
+      summary: Routing / recipe
+      description: Returns operation sequence and standard times for a material at a plant.
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+        - name: matnr
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 18
+          description: Material number
+        - name: werks
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 4
+          description: Plant
+      responses:
+        "200":
+          description: Routing found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingResponse"
+        "404":
+          description: Routing not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sap/bc/zzapi_mes_wc:
+    get:
+      operationId: getWorkCenter
+      summary: Work center
+      description: Returns work center details including capacity and cost center.
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+        - name: arbpl
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 8
+          description: Work center
+        - name: werks
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 4
+          description: Plant
+      responses:
+        "200":
+          description: Work center found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkCenterResponse"
+        "404":
+          description: Work center not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # -----------------------------------------------------------------------
   # Hub mirrors for Phase 5A endpoints
   # -----------------------------------------------------------------------
@@ -612,6 +694,124 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: PO not found or has no items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /routing/{matnr}:
+    get:
+      operationId: hubGetRouting
+      summary: Routing / recipe via hub
+      description: Proxies to SAP routing handler. Requires `routing` scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: matnr
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 18
+          description: Material number
+        - name: werks
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 4
+          description: Plant
+      responses:
+        "200":
+          description: Routing found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope (requires 'routing')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Routing not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /work-center/{arbpl}:
+    get:
+      operationId: hubGetWorkCenter
+      summary: Work center via hub
+      description: Proxies to SAP work center handler. Requires `work_center` scope.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: arbpl
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 8
+          description: Work center
+        - name: werks
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 4
+          description: Plant
+      responses:
+        "200":
+          description: Work center found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkCenterResponse"
+        "401":
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope (requires 'work_center')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work center not found
           content:
             application/json:
               schema:
@@ -948,3 +1148,99 @@ components:
           pattern: "^[0-9]{8}$"
           description: Delivery date (YYYYMMDD)
           example: "20170630"
+
+    # -----------------------------------------------------------------
+    # Phase 5A remaining schemas (routing + work center)
+    # -----------------------------------------------------------------
+
+    RoutingOperationSchema:
+      type: object
+      required: [vornr, ltxa1]
+      properties:
+        vornr:
+          type: string
+          maxLength: 4
+          description: Operation number
+          example: "0010"
+        ltxa1:
+          type: string
+          description: Operation text
+          example: "Turning"
+        arbpl:
+          type: string
+          maxLength: 8
+          description: Work center
+          example: "TURN1"
+        vgwrt:
+          type: number
+          description: Standard value (hours)
+          example: 2.5
+        meinh:
+          type: string
+          maxLength: 3
+          description: Unit for standard value
+          example: "H"
+
+    RoutingResponse:
+      type: object
+      required: [matnr, werks, plnnr, operations]
+      properties:
+        matnr:
+          type: string
+          maxLength: 18
+          description: Material number
+          example: "10000001"
+        werks:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        plnnr:
+          type: string
+          maxLength: 8
+          description: Task list group
+          example: "50000123"
+        plnal:
+          type: string
+          maxLength: 2
+          description: Group counter
+          example: "01"
+        operations:
+          type: array
+          description: Operation sequence
+          items:
+            $ref: "#/components/schemas/RoutingOperationSchema"
+
+    WorkCenterResponse:
+      type: object
+      required: [arbpl, werks]
+      properties:
+        arbpl:
+          type: string
+          maxLength: 8
+          description: Work center
+          example: "TURN1"
+        werks:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        ktext:
+          type: string
+          description: Work center description
+          example: "CNC Turning Center"
+        steus:
+          type: string
+          maxLength: 4
+          description: Control key
+          example: "PP01"
+        kapid:
+          type: string
+          maxLength: 8
+          description: Capacity ID
+          example: "10000001"
+        kostl:
+          type: string
+          maxLength: 10
+          description: Cost center
+          example: "10001000"

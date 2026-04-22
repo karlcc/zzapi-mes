@@ -4,4 +4,7 @@ export type HubVariables = {
   jwtPayload: Record<string, unknown>;
   sapStatus?: number;
   sapDurationMs?: number;
+  idempotencyKey?: string;
+  idempotencyBodyHash?: string;
+  db?: unknown; // Database.Database — typed loosely to avoid coupling
 };

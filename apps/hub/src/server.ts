@@ -5,6 +5,7 @@ import { requestId } from "./middleware/request-id.js";
 import { requireJwt, requireScope } from "./middleware/jwt.js";
 import { rateLimit } from "./middleware/rate-limit.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
+import type { HubVariables } from "./types.js";
 import health from "./routes/health.js";
 import metricsRoute from "./routes/metrics.js";
 import { createPingRouter } from "./routes/ping.js";
@@ -13,6 +14,10 @@ import { createProdOrderRouter } from "./routes/prod-order.js";
 import { createMaterialRouter } from "./routes/material.js";
 import { createStockRouter } from "./routes/stock.js";
 import { createPoItemsRouter } from "./routes/po-items.js";
+import { createRoutingRouter } from "./routes/routing.js";
+import { createWorkCenterRouter } from "./routes/work-center.js";
+import { createConfirmationRouter } from "./routes/confirmation.js";
+import { idempotencyGuard } from "./middleware/idempotency.js";
 import { z } from "zod";
 import { sign } from "hono/jwt";
 import type Database from "better-sqlite3";
@@ -61,7 +66,13 @@ export function createApp(sap?: SapClient, deps?: AppDeps) {
     return d;
   })();
 
-  const app = new Hono();
+  const app = new Hono<{ Variables: HubVariables }>();
+
+  // Expose db to Hono context for write-back middleware
+  app.use("*", async (c, next) => {
+    c.set("db", db);
+    await next();
+  });
 
   // Request ID on all routes
   app.use("*", requestId);
@@ -119,12 +130,19 @@ export function createApp(sap?: SapClient, deps?: AppDeps) {
   app.use("/prod-order/*", requireJwt, requireScope("prod_order"), rateLimit);
   app.use("/material/*", requireJwt, requireScope("material"), rateLimit);
   app.use("/stock/*", requireJwt, requireScope("stock"), rateLimit);
+  app.use("/routing/*", requireJwt, requireScope("routing"), rateLimit);
+  app.use("/work-center/*", requireJwt, requireScope("work_center"), rateLimit);
+  // Write-back routes: JWT + scope + idempotency + rate limit
+  app.use("/confirmation", requireJwt, requireScope("conf"), idempotencyGuard, rateLimit);
   app.route("/", createPingRouter(client));         // GET /ping
   app.route("/", createPoRouter(client));            // GET /po/:ebeln
   app.route("/", createPoItemsRouter(client));       // GET /po/:ebeln/items
   app.route("/", createProdOrderRouter(client));     // GET /prod-order/:aufnr
   app.route("/", createMaterialRouter(client));      // GET /material/:matnr
   app.route("/", createStockRouter(client));         // GET /stock/:matnr
+  app.route("/", createRoutingRouter(client));       // GET /routing/:matnr
+  app.route("/", createWorkCenterRouter(client));    // GET /work-center/:arbpl
+  app.route("/", createConfirmationRouter(client));  // POST /confirmation
 
   return app;
 }

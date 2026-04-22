@@ -94,9 +94,11 @@ Commands:
   prod-order <aufnr>  Look up production order
   material <matnr>    Look up material master
   stock <matnr>       Look up stock/availability (requires --werks)
+  routing <matnr>     Look up routing/recipe (requires --werks)
+  work-center <arbpl> Look up work center (requires --werks)
 
-Options for stock/material:
-  --werks <plant>     Plant code
+Options:
+  --werks <plant>     Plant code (required for stock, routing, work-center)
   --lgort <sloc>      Storage location (stock only)
 
 Modes:
@@ -161,6 +163,22 @@ Environment (hub mode):
       const lgortIdx = args.indexOf("--lgort");
       const lgort = lgortIdx !== -1 ? args[lgortIdx + 1] : undefined;
       const res = await client.getStock(matnr, werks!, lgort);
+      console.log(JSON.stringify(res, null, 2));
+      break;
+    }
+    case "routing": {
+      const matnr = args[0] || die("Usage: zzapi-mes routing <matnr> --werks <plant>");
+      const werksIdx = args.indexOf("--werks");
+      const werks = werksIdx !== -1 ? args[werksIdx + 1] : die("--werks is required for routing lookup");
+      const res = await client.getRouting(matnr, werks!);
+      console.log(JSON.stringify(res, null, 2));
+      break;
+    }
+    case "work-center": {
+      const arbpl = args[0] || die("Usage: zzapi-mes work-center <arbpl> --werks <plant>");
+      const werksIdx = args.indexOf("--werks");
+      const werks = werksIdx !== -1 ? args[werksIdx + 1] : die("--werks is required for work-center lookup");
+      const res = await client.getWorkCenter(arbpl, werks!);
       console.log(JSON.stringify(res, null, 2));
       break;
     }

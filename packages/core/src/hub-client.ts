@@ -1,5 +1,5 @@
 import { ensureProtocol } from "./index.js";
-import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse } from "./index.js";
+import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse } from "./index.js";
 import { ZzapiMesHttpError } from "./index.js";
 
 export interface HubClientConfig {
@@ -63,6 +63,18 @@ export class HubClient {
   /** Look up PO line items via hub. */
   async getPoItems(ebeln: string): Promise<PoItemsResponse> {
     return this.request<PoItemsResponse>(`/po/${encodeURIComponent(ebeln)}/items`);
+  }
+
+  /** Look up routing/recipe via hub. */
+  async getRouting(matnr: string, werks: string): Promise<RoutingResponse> {
+    const params = new URLSearchParams({ werks });
+    return this.request<RoutingResponse>(`/routing/${encodeURIComponent(matnr)}?${params}`);
+  }
+
+  /** Look up work center via hub. */
+  async getWorkCenter(arbpl: string, werks: string): Promise<WorkCenterResponse> {
+    const params = new URLSearchParams({ werks });
+    return this.request<WorkCenterResponse>(`/work-center/${encodeURIComponent(arbpl)}?${params}`);
   }
 
   // -----------------------------------------------------------------------

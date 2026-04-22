@@ -12,6 +12,8 @@ export {
   MaterialResponseSchema,
   StockResponseSchema,
   PoItemsResponseSchema,
+  RoutingResponseSchema,
+  WorkCenterResponseSchema,
 } from "./generated/schemas.js";
 
 import {
@@ -22,6 +24,8 @@ import {
   MaterialResponseSchema,
   StockResponseSchema,
   PoItemsResponseSchema,
+  RoutingResponseSchema,
+  WorkCenterResponseSchema,
 } from "./generated/schemas.js";
 
 // ---------------------------------------------------------------------------
@@ -35,6 +39,8 @@ export type ProdOrderResponse = z.infer<typeof ProdOrderResponseSchema>;
 export type MaterialResponse = z.infer<typeof MaterialResponseSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
 export type PoItemsResponse = z.infer<typeof PoItemsResponseSchema>;
+export type RoutingResponse = z.infer<typeof RoutingResponseSchema>;
+export type WorkCenterResponse = z.infer<typeof WorkCenterResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Config & error types
@@ -132,6 +138,16 @@ export class SapClient {
   /** Look up PO line items by ebeln. */
   async getPoItems(ebeln: string): Promise<PoItemsResponse> {
     return this.request<PoItemsResponse>({ path: "/sap/bc/zzapi_mes_po_items", params: { ebeln } });
+  }
+
+  /** Look up routing/recipe for a material at a plant. */
+  async getRouting(matnr: string, werks: string): Promise<RoutingResponse> {
+    return this.request<RoutingResponse>({ path: "/sap/bc/zzapi_mes_routing", params: { matnr, werks } });
+  }
+
+  /** Look up work center details. */
+  async getWorkCenter(arbpl: string, werks: string): Promise<WorkCenterResponse> {
+    return this.request<WorkCenterResponse>({ path: "/sap/bc/zzapi_mes_wc", params: { arbpl, werks } });
   }
 
   private async request<T>(opts: { path: string; params?: Record<string, string> }): Promise<T> {

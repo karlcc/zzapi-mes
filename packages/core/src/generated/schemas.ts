@@ -93,3 +93,30 @@ export const PoItemsResponseSchema = z.object({
   ebeln: z.string().max(10),
   items: z.array(PoItemSchema),
 });
+
+// Phase 5A remaining schemas
+
+export const RoutingOperationSchema = z.object({
+  vornr: z.string().max(4),
+  ltxa1: z.string(),
+  arbpl: z.string().max(8).optional(),
+  vgwrt: z.number().optional(),
+  meinh: z.string().max(3).optional(),
+});
+
+export const RoutingResponseSchema = z.object({
+  matnr: z.string().max(18),
+  werks: z.string().max(4),
+  plnnr: z.string().max(8),
+  plnal: z.string().max(2).optional(),
+  operations: z.array(RoutingOperationSchema),
+});
+
+export const WorkCenterResponseSchema = z.object({
+  arbpl: z.string().max(8),
+  werks: z.string().max(4),
+  ktext: z.string().optional(),
+  steus: z.string().max(4).optional(),
+  kapid: z.string().max(8).optional(),
+  kostl: z.string().max(10).optional(),
+});

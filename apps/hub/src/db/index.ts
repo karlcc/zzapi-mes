@@ -30,6 +30,26 @@ export function runMigrations(db: Database.Database): void {
       created_at          INTEGER NOT NULL,
       revoked_at          INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS idempotency_keys (
+      key        TEXT PRIMARY KEY,
+      key_id     TEXT NOT NULL,
+      path       TEXT NOT NULL,
+      status     INTEGER NOT NULL,
+      body_hash  TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      req_id      TEXT NOT NULL,
+      key_id      TEXT NOT NULL,
+      method      TEXT NOT NULL,
+      path        TEXT NOT NULL,
+      body        TEXT,
+      sap_status  INTEGER,
+      created_at  INTEGER NOT NULL
+    );
   `);
 }
 
@@ -86,4 +106,84 @@ export function revokeKey(db: Database.Database, id: string): boolean {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to revoke key '${id}': ${msg}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Idempotency (write-back dedup)
+// ---------------------------------------------------------------------------
+
+const IDEMP_INSERT = `
+  INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at)
+  VALUES (?, ?, ?, ?, ?, ?)`;
+
+const IDEMP_FIND = `
+  SELECT key, status, body_hash FROM idempotency_keys WHERE key = ?`;
+
+const IDEMP_EVICT = `
+  DELETE FROM idempotency_keys WHERE created_at < ?`;
+
+export interface IdempotencyRecord {
+  key: string;
+  status: number;
+  body_hash: string;
+}
+
+/** Check or register an idempotency key. Returns existing record if found. */
+export function checkIdempotency(
+  db: Database.Database,
+  key: string,
+  keyId: string,
+  path: string,
+  status: number,
+  bodyHash: string,
+): IdempotencyRecord | null {
+  const existing = db.prepare(IDEMP_FIND).get(key) as IdempotencyRecord | undefined;
+  if (existing) return existing;
+
+  try {
+    db.prepare(IDEMP_INSERT).run(key, keyId, path, status, bodyHash, Math.floor(Date.now() / 1000));
+    return null;
+  } catch (err: unknown) {
+    // Race: another request inserted the same key — read it back
+    if (err instanceof Error && err.message.includes("UNIQUE constraint")) {
+      return db.prepare(IDEMP_FIND).get(key) as IdempotencyRecord | null;
+    }
+    throw err;
+  }
+}
+
+/** Evict idempotency keys older than the given age in seconds. */
+export function evictIdempotencyKeys(db: Database.Database, maxAgeSeconds: number): number {
+  const cutoff = Math.floor(Date.now() / 1000) - maxAgeSeconds;
+  return db.prepare(IDEMP_EVICT).run(cutoff).changes;
+}
+
+// ---------------------------------------------------------------------------
+// Audit log (write-back trail)
+// ---------------------------------------------------------------------------
+
+const AUDIT_INSERT = `
+  INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?)`;
+
+export function writeAudit(
+  db: Database.Database,
+  record: {
+    req_id: string;
+    key_id: string;
+    method: string;
+    path: string;
+    body?: string;
+    sap_status?: number;
+  },
+): void {
+  db.prepare(AUDIT_INSERT).run(
+    record.req_id,
+    record.key_id,
+    record.method,
+    record.path,
+    record.body ?? null,
+    record.sap_status ?? null,
+    Math.floor(Date.now() / 1000),
+  );
 }
