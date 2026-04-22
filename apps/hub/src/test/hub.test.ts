@@ -476,6 +476,15 @@ describe("Metrics", () => {
     assert.ok(text.includes("zzapi_hub_request_duration_seconds"));
     assert.ok(text.includes("zzapi_hub_sap_duration_seconds"));
   });
+
+  it("rejects non-localhost access with 403", async () => {
+    const res = await fetchApi("/metrics", {
+      headers: { "x-forwarded-for": "10.0.0.1" },
+    });
+    assert.equal(res.status, 403);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Forbidden");
+  });
 });
 
 describe("Phase 5A routes", () => {
@@ -1086,5 +1095,58 @@ describe("Access log middleware", () => {
     const entry = JSON.parse(logLine!);
     assert.equal(entry.key_id, "-");
     assert.equal(entry.path, "/healthz");
+  });
+});
+
+describe("Failed write-back audit logging", () => {
+  it("POST /confirmation writes audit on SAP 422 rejection", async () => {
+    mockConfError = new ZzapiMesHttpError(422, "Order already confirmed");
+    const token = await validToken();
+    await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "audit-err-conf-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    const row = db.prepare("SELECT sap_status FROM audit_log WHERE path = '/confirmation' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number } | undefined;
+    assert.ok(row);
+    assert.equal(row.sap_status, 422);
+  });
+
+  it("POST /goods-receipt writes audit on SAP 502 upstream failure", async () => {
+    mockGrError = new ZzapiMesHttpError(500, "Internal Server Error");
+    const token = await validToken();
+    await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "audit-err-gr-001",
+      },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    const row = db.prepare("SELECT sap_status FROM audit_log WHERE path = '/goods-receipt' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number } | undefined;
+    assert.ok(row);
+    assert.equal(row.sap_status, 500);
+  });
+
+  it("POST /goods-issue writes audit on SAP 409 conflict", async () => {
+    mockGiError = new ZzapiMesHttpError(409, "Backflush conflict");
+    const token = await validToken();
+    await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "audit-err-gi-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    const row = db.prepare("SELECT sap_status FROM audit_log WHERE path = '/goods-issue' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number } | undefined;
+    assert.ok(row);
+    assert.equal(row.sap_status, 409);
   });
 });

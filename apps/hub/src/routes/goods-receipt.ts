@@ -28,21 +28,29 @@ export function createGoodsReceiptRouter(sap: SapClient) {
     const reqId = c.get("reqId") ?? "-";
 
     // Call SAP via SapClient POST
-    let result: Record<string, unknown>;
+    let result: Record<string, unknown> | null = null;
     let sapStatus: number;
+    let clientStatus: number;
+    let errorMsg: string | null = null;
     const start = performance.now();
     try {
       result = await sap.postGoodsReceipt(parsed.data) as Record<string, unknown>;
       sapStatus = 201;
+      clientStatus = 201;
     } catch (e) {
       if (e instanceof ZzapiMesHttpError) {
-        const status = e.status === 409 ? 409 : e.status === 422 ? 422 : 502;
-        return c.json({ error: e.message, ebeln: parsed.data.ebeln }, status);
+        sapStatus = e.status;
+        clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : 502;
+        errorMsg = e.message;
+      } else {
+        sapStatus = 502;
+        clientStatus = 502;
+        errorMsg = "SAP upstream error";
       }
-      return c.json({ error: "SAP upstream error" }, 502);
     }
     const durationMs = performance.now() - start;
 
+    // Audit log (both success and failure)
     const db = c.get("db") as Database.Database | undefined;
     if (db) {
       writeAudit(db, {
@@ -59,6 +67,9 @@ export function createGoodsReceiptRouter(sap: SapClient) {
     c.set("sapStatus", sapStatus);
     c.set("sapDurationMs", durationMs);
 
+    if (errorMsg !== null) {
+      return c.json({ error: errorMsg, ebeln: parsed.data.ebeln }, clientStatus as 409 | 422 | 502);
+    }
     return c.json(result, sapStatus as 201);
   });
 

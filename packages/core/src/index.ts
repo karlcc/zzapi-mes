@@ -225,6 +225,11 @@ export class SapClient {
         headers: { Authorization: `Basic ${this.auth}` },
         signal: controller.signal,
       });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new ZzapiMesHttpError(408, `Request timeout after ${this.timeout}ms`);
+      }
+      throw e;
     } finally {
       clearTimeout(timer);
     }
@@ -266,6 +271,11 @@ export class SapClient {
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new ZzapiMesHttpError(408, `Request timeout after ${this.timeout}ms`);
+      }
+      throw e;
     } finally {
       clearTimeout(timer);
     }

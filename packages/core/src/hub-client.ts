@@ -110,6 +110,11 @@ export class HubClient {
         body: JSON.stringify({ api_key: this.apiKey }),
         signal: controller.signal,
       });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new ZzapiMesHttpError(408, `Hub auth request timeout after ${this.timeout}ms`);
+      }
+      throw e;
     } finally {
       clearTimeout(timer);
     }
@@ -137,6 +142,11 @@ export class HubClient {
         headers: { authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
+      }
+      throw e;
     } finally {
       clearTimeout(timer);
     }
@@ -153,6 +163,11 @@ export class HubClient {
           headers: { authorization: `Bearer ${newToken}` },
           signal: retryController.signal,
         });
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
+        }
+        throw e;
       } finally {
         clearTimeout(retryTimer);
       }
@@ -180,6 +195,11 @@ export class HubClient {
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
+      }
+      throw e;
     } finally {
       clearTimeout(timer);
     }
@@ -202,6 +222,11 @@ export class HubClient {
           body: JSON.stringify(body),
           signal: retryController.signal,
         });
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
+        }
+        throw e;
       } finally {
         clearTimeout(retryTimer);
       }

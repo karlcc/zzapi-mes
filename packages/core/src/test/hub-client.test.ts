@@ -444,4 +444,36 @@ describe("HubClient", () => {
     assert.equal(authCalls, 2);
     assert.equal(result.status, "posted");
   });
+
+  it("GET request wraps timeout abort in ZzapiMesHttpError(408)", async () => {
+    let callCount = 0;
+    globalThis.fetch = mockFetch((url) => {
+      callCount++;
+      if (url.endsWith("/auth/token")) {
+        return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      }
+      throw new DOMException("The operation was aborted", "AbortError");
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY, timeout: 1 });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 408,
+    );
+  });
+
+  it("POST request wraps timeout abort in ZzapiMesHttpError(408)", async () => {
+    let callCount = 0;
+    globalThis.fetch = mockFetch((url) => {
+      callCount++;
+      if (url.endsWith("/auth/token")) {
+        return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      }
+      throw new DOMException("The operation was aborted", "AbortError");
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY, timeout: 1 });
+    await assert.rejects(
+      () => client.confirmProduction({ orderid: "1000000", operation: "0010", yield: 50 }, "timeout-key"),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 408,
+    );
+  });
 });

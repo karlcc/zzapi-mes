@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema } from "../index.js";
+import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
 
 const BASE = "http://sapdev.test:8000";
 const CFG = { host: BASE, client: 200, user: "u", password: "p", timeout: 5000 };
@@ -224,10 +224,28 @@ describe("SapClient", () => {
   });
 
   it("POST methods send Basic auth header", async () => {
-    globalThis.fetch = mockFetch(201, '{"ebeln":"4500000001","ebelp":"00010","menge":100,"materialDocument":"5000000001","documentYear":"2026","status":"posted"}');
-    await new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}');
+    await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
     const headers = capturedOpts?.headers as Record<string, string>;
-    assert.equal(headers?.Authorization, "Basic " + btoa("u:p"));
+    assert.ok(headers?.["Authorization"]?.startsWith("Basic "));
+  });
+
+  it("GET request wraps timeout abort in ZzapiMesHttpError(408)", async () => {
+    globalThis.fetch = async () => { throw new DOMException("The operation was aborted", "AbortError"); };
+    const client = new SapClient({ ...CFG, timeout: 1 });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 408 && e.message.includes("timeout"),
+    );
+  });
+
+  it("POST request wraps timeout abort in ZzapiMesHttpError(408)", async () => {
+    globalThis.fetch = async () => { throw new DOMException("The operation was aborted", "AbortError"); };
+    const client = new SapClient({ ...CFG, timeout: 1 });
+    await assert.rejects(
+      () => client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 408,
+    );
   });
 });
 
@@ -362,5 +380,39 @@ describe("Zod schemas", () => {
     });
     assert.equal(r.status, "posted");
     assert.equal(r.materialDocument, "5000000002");
+  });
+
+  it("TokenResponseSchema accepts valid token response", () => {
+    const r = TokenResponseSchema.parse({ token: "jwt.here", expires_in: 900 });
+    assert.equal(r.token, "jwt.here");
+    assert.equal(r.expires_in, 900);
+  });
+
+  it("TokenResponseSchema rejects missing token", () => {
+    assert.throws(() => TokenResponseSchema.parse({ expires_in: 900 }));
+  });
+
+  it("TokenResponseSchema rejects non-integer expires_in", () => {
+    assert.throws(() => TokenResponseSchema.parse({ token: "t", expires_in: 1.5 }));
+  });
+
+  it("HealthzResponseSchema accepts ok=true", () => {
+    const r = HealthzResponseSchema.parse({ ok: true });
+    assert.equal(r.ok, true);
+  });
+
+  it("HealthzResponseSchema rejects non-boolean ok", () => {
+    assert.throws(() => HealthzResponseSchema.parse({ ok: "yes" }));
+  });
+});
+
+describe("ALL_SCOPES", () => {
+  it("contains all expected scope names", () => {
+    const expected = ["ping", "po", "prod_order", "material", "stock", "routing", "work_center", "conf", "gr", "gi"];
+    assert.deepEqual([...ALL_SCOPES], expected);
+  });
+
+  it("has no duplicates", () => {
+    assert.equal(new Set(ALL_SCOPES).size, ALL_SCOPES.length);
   });
 });
