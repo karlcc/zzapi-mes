@@ -1,21 +1,10 @@
 import { Hono } from "hono";
 import type { SapClient } from "@zzapi-mes/core";
-import { ZzapiMesHttpError } from "@zzapi-mes/core";
+import { ZzapiMesHttpError, GoodsReceiptRequestSchema } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import type Database from "better-sqlite3";
 import { writeAudit } from "../db/index.js";
-import { z } from "zod";
-
-const GoodsReceiptRequestSchema = z.object({
-  ebeln: z.string().min(1),
-  ebelp: z.string().min(1),
-  menge: z.number().min(0),
-  werks: z.string().min(1),
-  lgort: z.string().min(1),
-  budat: z.string().regex(/^[0-9]{8}$/).optional(),
-  charg: z.string().min(1).optional(),
-});
 
 export function createGoodsReceiptRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();

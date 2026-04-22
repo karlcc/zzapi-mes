@@ -15,7 +15,7 @@ process.env.HUB_JWT_TTL_SECONDS = "900";
 
 // --- Mock SAP server ---
 
-function startMockSap(): Promise<{ server: Server; port: number }> {
+function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: number }> {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json");
@@ -25,12 +25,24 @@ function startMockSap(): Promise<{ server: Server; port: number }> {
         let body = "";
         req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         req.on("end", () => {
+          if (errorMode === "conf-422") {
+            res.statusCode = 422;
+            res.end(JSON.stringify({ error: "Order already confirmed" }));
+            return;
+          }
+          if (errorMode === "conf-500") {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: "Internal Server Error" }));
+            return;
+          }
           const data = JSON.parse(body);
           res.end(JSON.stringify({
             orderid: data.orderid,
             operation: data.operation,
             yield: data.yield,
             scrap: data.scrap ?? 0,
+            confNo: "00000100",
+            confCnt: "0001",
             status: "confirmed",
             message: "Production confirmation recorded",
           }));
@@ -41,12 +53,23 @@ function startMockSap(): Promise<{ server: Server; port: number }> {
         let body = "";
         req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         req.on("end", () => {
+          if (errorMode === "gr-422") {
+            res.statusCode = 422;
+            res.end(JSON.stringify({ error: "PO already received" }));
+            return;
+          }
+          if (errorMode === "gr-500") {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: "Internal Server Error" }));
+            return;
+          }
           const data = JSON.parse(body);
           res.end(JSON.stringify({
             ebeln: data.ebeln,
             ebelp: data.ebelp,
             menge: data.menge,
-            material_document: "5000000001",
+            materialDocument: "5000000001",
+            documentYear: "2026",
             status: "posted",
             message: "Goods receipt posted",
           }));
@@ -57,12 +80,28 @@ function startMockSap(): Promise<{ server: Server; port: number }> {
         let body = "";
         req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         req.on("end", () => {
+          if (errorMode === "gi-409") {
+            res.statusCode = 409;
+            res.end(JSON.stringify({ error: "Backflush is active for this order" }));
+            return;
+          }
+          if (errorMode === "gi-422") {
+            res.statusCode = 422;
+            res.end(JSON.stringify({ error: "Material not found" }));
+            return;
+          }
+          if (errorMode === "gi-500") {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: "Internal Server Error" }));
+            return;
+          }
           const data = JSON.parse(body);
           res.end(JSON.stringify({
             orderid: data.orderid,
             matnr: data.matnr,
             menge: data.menge,
-            material_document: "5000000002",
+            materialDocument: "5000000002",
+            documentYear: "2026",
             status: "posted",
             message: "Goods issue posted",
           }));
@@ -656,5 +695,313 @@ describe("E2E integration against mock SAP", () => {
       }),
     }));
     assert.equal(giRes.status, 403);
+  });
+
+  // --- Phase 5B SAP error path tests ---
+
+  it("POST /confirmation returns 422 when SAP rejects business logic", async () => {
+    const errSap = await startMockSap("conf-422");
+    try {
+      const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
+      const app = createApp(sap, { db });
+
+      const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: testKeyPlaintext }),
+      }));
+      const { token } = await authRes.json() as { token: string };
+
+      const res = await app.fetch(new Request("http://localhost/confirmation", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "err-conf-422" },
+        body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+      }));
+      assert.equal(res.status, 422);
+    } finally {
+      errSap.server.close();
+    }
+  });
+
+  it("POST /confirmation returns 502 on SAP upstream failure", async () => {
+    const errSap = await startMockSap("conf-500");
+    try {
+      const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
+      const app = createApp(sap, { db });
+
+      const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: testKeyPlaintext }),
+      }));
+      const { token } = await authRes.json() as { token: string };
+
+      const res = await app.fetch(new Request("http://localhost/confirmation", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "err-conf-502" },
+        body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+      }));
+      assert.equal(res.status, 502);
+    } finally {
+      errSap.server.close();
+    }
+  });
+
+  it("POST /goods-receipt returns 422 when SAP rejects business logic", async () => {
+    const errSap = await startMockSap("gr-422");
+    try {
+      const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
+      const app = createApp(sap, { db });
+
+      const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: testKeyPlaintext }),
+      }));
+      const { token } = await authRes.json() as { token: string };
+
+      const res = await app.fetch(new Request("http://localhost/goods-receipt", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "err-gr-422" },
+        body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+      }));
+      assert.equal(res.status, 422);
+    } finally {
+      errSap.server.close();
+    }
+  });
+
+  it("POST /goods-receipt returns 502 on SAP upstream failure", async () => {
+    const errSap = await startMockSap("gr-500");
+    try {
+      const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
+      const app = createApp(sap, { db });
+
+      const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: testKeyPlaintext }),
+      }));
+      const { token } = await authRes.json() as { token: string };
+
+      const res = await app.fetch(new Request("http://localhost/goods-receipt", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "err-gr-502" },
+        body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+      }));
+      assert.equal(res.status, 502);
+    } finally {
+      errSap.server.close();
+    }
+  });
+
+  it("POST /goods-issue returns 409 on SAP backflush conflict", async () => {
+    const errSap = await startMockSap("gi-409");
+    try {
+      const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
+      const app = createApp(sap, { db });
+
+      const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: testKeyPlaintext }),
+      }));
+      const { token } = await authRes.json() as { token: string };
+
+      const res = await app.fetch(new Request("http://localhost/goods-issue", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "err-gi-409" },
+        body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+      }));
+      assert.equal(res.status, 409);
+    } finally {
+      errSap.server.close();
+    }
+  });
+
+  it("POST /goods-issue returns 422 when SAP rejects business logic", async () => {
+    const errSap = await startMockSap("gi-422");
+    try {
+      const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
+      const app = createApp(sap, { db });
+
+      const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: testKeyPlaintext }),
+      }));
+      const { token } = await authRes.json() as { token: string };
+
+      const res = await app.fetch(new Request("http://localhost/goods-issue", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "err-gi-422" },
+        body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+      }));
+      assert.equal(res.status, 422);
+    } finally {
+      errSap.server.close();
+    }
+  });
+
+  it("POST /goods-issue returns 502 on SAP upstream failure", async () => {
+    const errSap = await startMockSap("gi-500");
+    try {
+      const sap = new SapClient({ host: `http://127.0.0.1:${errSap.port}`, client: 200, user: "test", password: "test" });
+      const app = createApp(sap, { db });
+
+      const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: testKeyPlaintext }),
+      }));
+      const { token } = await authRes.json() as { token: string };
+
+      const res = await app.fetch(new Request("http://localhost/goods-issue", {
+        method: "POST",
+        headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "err-gi-502" },
+        body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+      }));
+      assert.equal(res.status, 502);
+    } finally {
+      errSap.server.close();
+    }
+  });
+
+  it("POST /goods-receipt rejects duplicate idempotency key", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const headers = {
+      "authorization": `Bearer ${token}`,
+      "content-type": "application/json",
+      "idempotency-key": "dup-gr-key-001",
+    };
+    const reqBody = JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
+
+    const res1 = await app.fetch(new Request("http://localhost/goods-receipt", { method: "POST", headers, body: reqBody }));
+    assert.equal(res1.status, 201);
+
+    const res2 = await app.fetch(new Request("http://localhost/goods-receipt", { method: "POST", headers, body: reqBody }));
+    assert.equal(res2.status, 409);
+  });
+
+  it("POST /goods-issue rejects duplicate idempotency key", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const headers = {
+      "authorization": `Bearer ${token}`,
+      "content-type": "application/json",
+      "idempotency-key": "dup-gi-key-001",
+    };
+    const reqBody = JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" });
+
+    const res1 = await app.fetch(new Request("http://localhost/goods-issue", { method: "POST", headers, body: reqBody }));
+    assert.equal(res1.status, 201);
+
+    const res2 = await app.fetch(new Request("http://localhost/goods-issue", { method: "POST", headers, body: reqBody }));
+    assert.equal(res2.status, 409);
+  });
+
+  it("POST /confirmation rejects invalid request body", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const res = await app.fetch(new Request("http://localhost/confirmation", {
+      method: "POST",
+      headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "zod-conf-001" },
+      body: JSON.stringify({ orderid: "1000000", yield: -1 }),
+    }));
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("yield"));
+  });
+
+  it("POST /goods-receipt rejects invalid request body", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const res = await app.fetch(new Request("http://localhost/goods-receipt", {
+      method: "POST",
+      headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "zod-gr-001" },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: -5, werks: "1000", lgort: "0001" }),
+    }));
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("menge"));
+  });
+
+  it("POST /goods-issue rejects invalid request body", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const app = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const res = await app.fetch(new Request("http://localhost/goods-issue", {
+      method: "POST",
+      headers: { "authorization": `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "zod-gi-001" },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: -1, werks: "1000", lgort: "0001" }),
+    }));
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("menge"));
   });
 });

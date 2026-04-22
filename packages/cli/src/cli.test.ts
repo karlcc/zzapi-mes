@@ -94,4 +94,104 @@ describe("CLI", () => {
       assert.ok(stderr.includes("ebeln") || stderr.includes("Usage"));
     });
   });
+
+  describe("confirm command", () => {
+    it("requires --mode hub", async () => {
+      const { stderr, code } = await run(["confirm", "1000000", "--yield", "50"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("hub"));
+    });
+
+    it("exits if HUB_URL/HUB_API_KEY not set", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "confirm", "1000000", "--yield", "50"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("HUB_URL"));
+    });
+
+    it("exits if --yield not provided", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "confirm", "1000000"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--yield"));
+    });
+  });
+
+  describe("goods-receipt command", () => {
+    it("requires --mode hub", async () => {
+      const { stderr, code } = await run(["goods-receipt", "4500000001", "--menge", "100", "--werks", "1000", "--lgort", "0001"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("hub"));
+    });
+
+    it("exits if --menge not provided", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "goods-receipt", "4500000001", "--werks", "1000", "--lgort", "0001"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--menge"));
+    });
+
+    it("exits if --werks not provided", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "goods-receipt", "4500000001", "--menge", "100", "--lgort", "0001"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--werks"));
+    });
+
+    it("exits if --lgort not provided", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "goods-receipt", "4500000001", "--menge", "100", "--werks", "1000"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--lgort"));
+    });
+  });
+
+  describe("goods-issue command", () => {
+    it("requires --mode hub", async () => {
+      const { stderr, code } = await run(["goods-issue", "1000000", "--matnr", "20000001", "--menge", "50", "--werks", "1000", "--lgort", "0001"], {
+        SAP_USER: "u", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("hub"));
+    });
+
+    it("exits if --matnr not provided", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "goods-issue", "1000000", "--menge", "50", "--werks", "1000", "--lgort", "0001"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--matnr"));
+    });
+
+    it("exits if --menge not provided", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "goods-issue", "1000000", "--matnr", "20000001", "--werks", "1000", "--lgort", "0001"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--menge"));
+    });
+
+    it("exits if --werks not provided", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "goods-issue", "1000000", "--matnr", "20000001", "--menge", "50", "--lgort", "0001"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--werks"));
+    });
+
+    it("exits if --lgort not provided", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "goods-issue", "1000000", "--matnr", "20000001", "--menge", "50", "--werks", "1000"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--lgort"));
+    });
+  });
 });

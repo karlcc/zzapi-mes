@@ -116,6 +116,9 @@ npx zzapi-mes ping
 | `ZCL_ZZAPI_MES_PO_ITEMS` | `/sap/bc/zzapi_mes_po_items` | GET | PO line items |
 | `ZCL_ZZAPI_MES_ROUTING` | `/sap/bc/zzapi_mes_routing` | GET | Routing / recipe |
 | `ZCL_ZZAPI_MES_WC` | `/sap/bc/zzapi_mes_wc` | GET | Work center |
+| `ZCL_ZZAPI_MES_CONF` | `/sap/bc/zzapi_mes_conf` | POST | Production confirmation |
+| `ZCL_ZZAPI_MES_GR` | `/sap/bc/zzapi_mes_gr` | POST | Goods receipt for PO |
+| `ZCL_ZZAPI_MES_GI` | `/sap/bc/zzapi_mes_gi` | POST | Goods issue for prod order |
 
 ### Hub Write-Back Endpoints (Phase 5B)
 

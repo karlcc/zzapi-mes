@@ -118,7 +118,7 @@ describe("SapClient", () => {
   });
 
   it("postConfirmation sends POST with JSON body to zzapi_mes_conf", async () => {
-    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"status":"confirmed"}');
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}');
     const res = await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
     assert.equal(capturedOpts?.method, "POST");
     assert.match(capturedUrl!, /zzapi_mes_conf/);
@@ -129,7 +129,7 @@ describe("SapClient", () => {
   });
 
   it("postGoodsReceipt sends POST with JSON body to zzapi_mes_gr", async () => {
-    globalThis.fetch = mockFetch(201, '{"ebeln":"4500000001","ebelp":"00010","menge":100,"status":"posted"}');
+    globalThis.fetch = mockFetch(201, '{"ebeln":"4500000001","ebelp":"00010","menge":100,"materialDocument":"5000000001","documentYear":"2026","status":"posted"}');
     const res = await new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
     assert.equal(capturedOpts?.method, "POST");
     assert.match(capturedUrl!, /zzapi_mes_gr/);
@@ -137,7 +137,7 @@ describe("SapClient", () => {
   });
 
   it("postGoodsIssue sends POST with JSON body to zzapi_mes_gi", async () => {
-    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","matnr":"20000001","menge":50,"status":"posted"}');
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","matnr":"20000001","menge":50,"materialDocument":"5000000002","documentYear":"2026","status":"posted"}');
     const res = await new SapClient(CFG).postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" });
     assert.equal(capturedOpts?.method, "POST");
     assert.match(capturedUrl!, /zzapi_mes_gi/);
@@ -193,14 +193,14 @@ describe("SapClient", () => {
   });
 
   it("POST methods send Content-Type application/json", async () => {
-    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"status":"confirmed"}');
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}');
     await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
     const headers = capturedOpts?.headers as Record<string, string>;
     assert.equal(headers?.["Content-Type"], "application/json");
   });
 
   it("POST methods send Basic auth header", async () => {
-    globalThis.fetch = mockFetch(201, '{"ebeln":"4500000001","ebelp":"00010","menge":100,"status":"posted"}');
+    globalThis.fetch = mockFetch(201, '{"ebeln":"4500000001","ebelp":"00010","menge":100,"materialDocument":"5000000001","documentYear":"2026","status":"posted"}');
     await new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
     const headers = capturedOpts?.headers as Record<string, string>;
     assert.equal(headers?.Authorization, "Basic " + btoa("u:p"));
@@ -302,11 +302,12 @@ describe("Zod schemas", () => {
     assert.equal(r.orderid, "1000000");
   });
 
-  it("ConfirmationResponseSchema accepts valid response", () => {
+  it("ConfirmationResponseSchema accepts valid response with confNo/confCnt", () => {
     const r = ConfirmationResponseSchema.parse({
-      orderid: "1000000", operation: "0010", yield: 50, scrap: 0, status: "confirmed",
+      orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed",
     });
     assert.equal(r.status, "confirmed");
+    assert.equal(r.confNo, "00000100");
   });
 
   it("GoodsReceiptRequestSchema accepts valid GR", () => {
@@ -316,11 +317,12 @@ describe("Zod schemas", () => {
     assert.equal(r.ebeln, "4500000001");
   });
 
-  it("GoodsReceiptResponseSchema accepts valid response", () => {
+  it("GoodsReceiptResponseSchema accepts valid response with materialDocument", () => {
     const r = GoodsReceiptResponseSchema.parse({
-      ebeln: "4500000001", ebelp: "00010", menge: 100, status: "posted",
+      ebeln: "4500000001", ebelp: "00010", menge: 100, materialDocument: "5000000001", documentYear: "2026", status: "posted",
     });
     assert.equal(r.status, "posted");
+    assert.equal(r.materialDocument, "5000000001");
   });
 
   it("GoodsIssueRequestSchema accepts valid GI", () => {
@@ -330,10 +332,11 @@ describe("Zod schemas", () => {
     assert.equal(r.orderid, "1000000");
   });
 
-  it("GoodsIssueResponseSchema accepts valid response", () => {
+  it("GoodsIssueResponseSchema accepts valid response with materialDocument", () => {
     const r = GoodsIssueResponseSchema.parse({
-      orderid: "1000000", matnr: "20000001", menge: 50, status: "posted",
+      orderid: "1000000", matnr: "20000001", menge: 50, materialDocument: "5000000002", documentYear: "2026", status: "posted",
     });
     assert.equal(r.status, "posted");
+    assert.equal(r.materialDocument, "5000000002");
   });
 });

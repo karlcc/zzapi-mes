@@ -1497,6 +1497,14 @@ components:
           type: number
           description: Scrap quantity confirmed
           example: 0
+        confNo:
+          type: string
+          description: Confirmation number from SAP
+          example: "00000100"
+        confCnt:
+          type: string
+          description: Confirmation counter from SAP
+          example: "0001"
         status:
           type: string
           description: Confirmation status
@@ -1562,10 +1570,14 @@ components:
           type: number
           description: Quantity received
           example: 100
-        material_document:
+        materialDocument:
           type: string
           description: Material document number
           example: "5000000001"
+        documentYear:
+          type: string
+          description: Material document year
+          example: "2026"
         status:
           type: string
           description: Receipt status
@@ -1631,10 +1643,14 @@ components:
           type: number
           description: Quantity issued
           example: 50
-        material_document:
+        materialDocument:
           type: string
           description: Material document number
           example: "5000000002"
+        documentYear:
+          type: string
+          description: Material document year
+          example: "2026"
         status:
           type: string
           description: Issue status

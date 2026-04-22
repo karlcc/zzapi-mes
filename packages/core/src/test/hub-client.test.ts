@@ -278,7 +278,7 @@ describe("HubClient", () => {
     globalThis.fetch = mockFetch((url, init) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
       capturedHeaders = init?.headers as Record<string, string>;
-      return jsonResponse(201, { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, status: "confirmed" });
+      return jsonResponse(201, { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed" });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
       { orderid: "1000000", operation: "0010", yield: 50 },
@@ -292,7 +292,7 @@ describe("HubClient", () => {
   it("goodsReceipt sends POST with idempotency-key header", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(201, { ebeln: "4500000001", ebelp: "00010", menge: 100, status: "posted" });
+      return jsonResponse(201, { ebeln: "4500000001", ebelp: "00010", menge: 100, materialDocument: "5000000001", documentYear: "2026", status: "posted" });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).goodsReceipt(
       { ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" },
@@ -305,7 +305,7 @@ describe("HubClient", () => {
   it("goodsIssue sends POST with idempotency-key header", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(201, { orderid: "1000000", matnr: "20000001", menge: 50, status: "posted" });
+      return jsonResponse(201, { orderid: "1000000", matnr: "20000001", menge: 50, materialDocument: "5000000002", documentYear: "2026", status: "posted" });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).goodsIssue(
       { orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" },
@@ -325,7 +325,7 @@ describe("HubClient", () => {
       }
       postCalls++;
       if (postCalls === 1) return jsonResponse(401, { error: "expired" });
-      return jsonResponse(201, { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, status: "confirmed" });
+      return jsonResponse(201, { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed" });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
       { orderid: "1000000", operation: "0010", yield: 50 },

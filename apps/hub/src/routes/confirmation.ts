@@ -1,20 +1,10 @@
 import { Hono } from "hono";
 import type { SapClient } from "@zzapi-mes/core";
-import { ZzapiMesHttpError } from "@zzapi-mes/core";
+import { ZzapiMesHttpError, ConfirmationRequestSchema } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import type Database from "better-sqlite3";
 import { writeAudit } from "../db/index.js";
-import { z } from "zod";
-
-const ConfirmationRequestSchema = z.object({
-  orderid: z.string().min(1),
-  operation: z.string().min(1),
-  yield: z.number().min(0),
-  scrap: z.number().min(0).optional(),
-  work_actual: z.number().min(0).optional(),
-  postg_date: z.string().regex(/^[0-9]{8}$/).optional(),
-});
 
 export function createConfirmationRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();

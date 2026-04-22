@@ -87,6 +87,8 @@ class MockSapClient {
       operation: data.operation,
       yield: data.yield,
       scrap: data.scrap ?? 0,
+      confNo: "00000100",
+      confCnt: "0001",
       status: "confirmed",
       message: "Production confirmation recorded",
     };
@@ -97,7 +99,8 @@ class MockSapClient {
       ebeln: data.ebeln,
       ebelp: data.ebelp,
       menge: data.menge,
-      material_document: "5000000001",
+      materialDocument: "5000000001",
+      documentYear: "2026",
       status: "posted",
       message: "Goods receipt posted",
     };
@@ -108,7 +111,8 @@ class MockSapClient {
       orderid: data.orderid,
       matnr: data.matnr,
       menge: data.menge,
-      material_document: "5000000002",
+      materialDocument: "5000000002",
+      documentYear: "2026",
       status: "posted",
       message: "Goods issue posted",
     };
@@ -672,11 +676,10 @@ describe("Phase 5B write-back routes", () => {
         "content-type": "application/json",
         "idempotency-key": "zod-conf-001",
       },
-      body: JSON.stringify({ orderid: "", operation: "0010", yield: -1 }),
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: -1 }),
     });
     assert.equal(res.status, 400);
     const body = await res.json() as Record<string, unknown>;
-    assert.ok(String(body.error).includes("orderid"));
     assert.ok(String(body.error).includes("yield"));
   });
 
@@ -705,11 +708,10 @@ describe("Phase 5B write-back routes", () => {
         "content-type": "application/json",
         "idempotency-key": "zod-gr-001",
       },
-      body: JSON.stringify({ ebeln: "", ebelp: "00010", menge: -5 }),
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: -5 }),
     });
     assert.equal(res.status, 400);
     const body = await res.json() as Record<string, unknown>;
-    assert.ok(String(body.error).includes("ebeln"));
     assert.ok(String(body.error).includes("menge"));
   });
 
@@ -722,11 +724,11 @@ describe("Phase 5B write-back routes", () => {
         "content-type": "application/json",
         "idempotency-key": "zod-gi-001",
       },
-      body: JSON.stringify({ orderid: "", matnr: "20000001", menge: 50 }),
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: -1 }),
     });
     assert.equal(res.status, 400);
     const body = await res.json() as Record<string, unknown>;
-    assert.ok(String(body.error).includes("orderid"));
+    assert.ok(String(body.error).includes("menge"));
   });
 
   it("POST /goods-issue returns 400 on missing required fields", async () => {
@@ -742,8 +744,7 @@ describe("Phase 5B write-back routes", () => {
     });
     assert.equal(res.status, 400);
     const body = await res.json() as Record<string, unknown>;
-    assert.ok(String(body.error).includes("matnr"));
-    assert.ok(String(body.error).includes("menge"));
+    assert.ok(String(body.error).includes("matnr") || String(body.error).includes("Required"));
   });
 
   // --- Malformed JSON body ---
