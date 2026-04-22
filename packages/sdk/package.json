@@ -7,8 +7,9 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
+    "pretest": "tsc",
     "test": "node --test dist/test/*.test.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "license": "UNLICENSED",
   "dependencies": {},

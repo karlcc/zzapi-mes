@@ -51,7 +51,19 @@ curl -u api_user2:Pt@2026 \
 {"ok":true,"sap_time":"20260422163000"}
 ```
 
-If you see this, ICF handler registration is working. Move to Handler 2.
+```bash
+# POST should be rejected — expect 405
+curl -u api_user2:Pt@2026 -X POST \
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_ping?sap-client=200"
+```
+
+**Expected:**
+
+```json
+{"error":"Method not allowed"}
+```
+
+If you see both responses, ICF handler registration is working. Move to Handler 2.
 
 ---
 
@@ -127,6 +139,7 @@ curl -u api_user2:Pt@2026 -X POST \
 |---|---|---|
 | 404 from curl | Service node not activated in SICF | Right-click node → Activate Service |
 | 401/403 | Wrong credentials or ICF auth settings | Check user/pass; verify ICF node auth is set to "Standard" |
+| 405 on GET | Handler class not assigned in SICF (ICF default returns 405) | Handler List tab must list the class name exactly |
 | 500 internal error | ABAP dump in handler | Check ST22 for runtime errors; verify ZMES001 and ZZ_CL_JSON exist |
 | Empty response | Handler class not assigned in SICF | Handler List tab must list the class name exactly |
 | `sy-subrc` always 4 | Wrong client — forgot `sap-client=200` | Add `&sap-client=200` to URL |
