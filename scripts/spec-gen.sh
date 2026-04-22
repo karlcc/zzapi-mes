@@ -15,8 +15,12 @@ npx openapi-zod-client spec/openapi.yaml -o packages/core/src/generated/schemas.
 
 FILE="packages/core/src/generated/schemas.ts"
 
-# Step 2: Strip @zodios/core import line
-sed -i '' '/^import { makeApi, Zodios, type ZodiosOptions } from "@zodios\/core";$/d' "$FILE"
+# Step 2: Strip @zodios/core import line (portable sed -i)
+if [[ "$(uname)" == "Darwin" ]]; then
+  sed -i '' '/^import { makeApi, Zodios, type ZodiosOptions } from "@zodios\/core";$/d' "$FILE"
+else
+  sed -i '/^import { makeApi, Zodios, type ZodiosOptions } from "@zodios\/core";$/d' "$FILE"
+fi
 
 # Step 3: Remove everything from "const endpoints" to EOF
 # Find the line number where "const endpoints" starts and truncate
