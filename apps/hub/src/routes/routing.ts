@@ -14,6 +14,7 @@ export function createRoutingRouter(sap: SapClient) {
     if (!werks) {
       return c.json({ error: "Missing required query parameter: werks" }, 400);
     }
+    if (werks.length > 4) return c.json({ error: "Query parameter 'werks' exceeds maximum length of 4" }, 400);
     try {
       const start = performance.now();
       const result = await sap.getRouting(matnr, werks);

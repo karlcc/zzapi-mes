@@ -54,6 +54,9 @@ export const rateLimit = createMiddleware<{ Variables: HubVariables }>(async (c,
   const payload = c.get("jwtPayload");
   const keyId = (payload?.key_id as string) ?? "unknown";
   const rpm = (payload?.rate_limit_per_min as number | undefined) ?? DEFAULT_RPM;
+  if (rpm <= 0) {
+    return c.json({ error: "Rate limit disabled for this key" }, 403);
+  }
 
   const { allowed, retryAfter } = getTokens(keyId, rpm);
 

@@ -1207,3 +1207,106 @@ describe("Request body size limit", () => {
     assert.ok(String(body.error).includes("too large"));
   });
 });
+
+describe("JWT edge cases", () => {
+  it("rejects JWT signed with wrong secret", async () => {
+    const forged = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      "wrong-secret-12345",
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${forged}` } });
+    assert.equal(res.status, 401);
+  });
+
+  it("rejects empty bearer token", async () => {
+    const res = await fetchApi("/ping", { headers: { authorization: "Bearer " } });
+    assert.equal(res.status, 401);
+  });
+
+  it("rejects token missing scopes claim", async () => {
+    const noScopes = await sign(
+      { key_id: "testkey1234", iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${noScopes}` } });
+    // Token verifies but scope is empty → 403
+    assert.equal(res.status, 403);
+  });
+});
+
+describe("Query parameter validation", () => {
+  it("rejects werks exceeding maxLength on /stock", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/stock/10000001?werks=ABCDE&lgort=0001", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("werks"));
+  });
+
+  it("rejects lgort exceeding maxLength on /stock", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/stock/10000001?werks=1000&lgort=ABCDE", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("lgort"));
+  });
+
+  it("rejects werks exceeding maxLength on /routing", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/routing/10000001?werks=ABCDE", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 400);
+  });
+
+  it("rejects werks exceeding maxLength on /work-center", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/work-center/TURN1?werks=ABCDE", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 400);
+  });
+
+  it("rejects werks exceeding maxLength on /material", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/material/10000001?werks=ABCDE", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 400);
+  });
+});
+
+describe("Rate limit per min = 0", () => {
+  it("rejects request with rate_limit_per_min=0", async () => {
+    const zeroRpmToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: 0, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${zeroRpmToken}` } });
+    assert.equal(res.status, 403);
+  });
+});
+
+describe("Idempotency key reuse across routes", () => {
+  it("rejects same idempotency key on a different route", async () => {
+    const token = await validToken();
+    const confBody = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const confRes = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "cross-route-1",
+      },
+      body: confBody,
+    });
+    assert.equal(confRes.status, 201);
+
+    const grBody = JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
+    const grRes = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "cross-route-1",
+      },
+      body: grBody,
+    });
+    // Same idempotency key on different route → 422 (hash mismatch) or 409
+    assert.ok(grRes.status === 409 || grRes.status === 422, `Expected 409 or 422, got ${grRes.status}`);
+  });
+});

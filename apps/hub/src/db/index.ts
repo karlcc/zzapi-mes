@@ -76,6 +76,13 @@ export function runMigrations(db: Database.Database): void {
       INSERT INTO _migrations (version, applied_at) VALUES (2, ${Math.floor(Date.now() / 1000)});
     `);
   }
+
+  if (v < 3) {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_audit_log_path ON audit_log(path);
+      INSERT INTO _migrations (version, applied_at) VALUES (3, ${Math.floor(Date.now() / 1000)});
+    `);
+  }
 }
 
 const FIND_BY_ID = `

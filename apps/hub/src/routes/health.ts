@@ -6,8 +6,11 @@ const health = new Hono<{ Variables: HubVariables }>();
 
 health.get("/healthz", (c) => {
   const db = c.get("db") as Database.Database | undefined;
+  if (!db) {
+    return c.json({ ok: false, error: "database unreachable" }, 503);
+  }
   try {
-    db!.prepare("SELECT 1").get();
+    db.prepare("SELECT 1").get();
   } catch {
     return c.json({ ok: false, error: "database unreachable" }, 503);
   }
