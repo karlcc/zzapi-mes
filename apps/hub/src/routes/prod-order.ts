@@ -9,6 +9,7 @@ export function createProdOrderRouter(sap: SapClient) {
 
   router.get("/prod-order/:aufnr", async (c) => {
     const aufnr = c.req.param("aufnr");
+    if (aufnr.length > 12) return c.json({ error: "Parameter 'aufnr' exceeds maximum length of 12" }, 400);
     try {
       const start = performance.now();
       const result = await sap.getProdOrder(aufnr);

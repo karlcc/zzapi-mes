@@ -1150,3 +1150,60 @@ describe("Failed write-back audit logging", () => {
     assert.equal(row.sap_status, 409);
   });
 });
+
+describe("Path parameter validation", () => {
+  it("GET /po/:ebeln rejects ebeln longer than 10 chars", async () => {
+    const token = await validToken();
+    const res = await fetchApi(`/po/${"A".repeat(11)}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("ebeln"));
+  });
+
+  it("GET /prod-order/:aufnr rejects aufnr longer than 12 chars", async () => {
+    const token = await validToken();
+    const res = await fetchApi(`/prod-order/${"A".repeat(13)}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("GET /material/:matnr allows matnr up to 18 chars", async () => {
+    const token = await validToken();
+    const res = await fetchApi(`/material/${"1".repeat(18)}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    // Should reach SAP (200 or error from mock), not 400 from validation
+    assert.notEqual(res.status, 400);
+  });
+
+  it("GET /work-center/:arbpl rejects arbpl longer than 8 chars", async () => {
+    const token = await validToken();
+    const res = await fetchApi(`/work-center/${"A".repeat(9)}?werks=1000`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
+describe("Request body size limit", () => {
+  it("rejects request body larger than 1 MB with 413", async () => {
+    const token = await validToken();
+    const bigBody = "x".repeat(1_048_577); // just over 1 MB
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "content-length": String(bigBody.length),
+        "idempotency-key": "oversized-001",
+      },
+      body: bigBody,
+    });
+    assert.equal(res.status, 413);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("too large"));
+  });
+});

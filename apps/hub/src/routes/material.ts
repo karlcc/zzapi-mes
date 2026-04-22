@@ -9,6 +9,7 @@ export function createMaterialRouter(sap: SapClient) {
 
   router.get("/material/:matnr", async (c) => {
     const matnr = c.req.param("matnr");
+    if (matnr.length > 18) return c.json({ error: "Parameter 'matnr' exceeds maximum length of 18" }, 400);
     const werks = c.req.query("werks");
     try {
       const start = performance.now();

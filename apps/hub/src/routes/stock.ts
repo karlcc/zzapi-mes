@@ -9,6 +9,7 @@ export function createStockRouter(sap: SapClient) {
 
   router.get("/stock/:matnr", async (c) => {
     const matnr = c.req.param("matnr");
+    if (matnr.length > 18) return c.json({ error: "Parameter 'matnr' exceeds maximum length of 18" }, 400);
     const werks = c.req.query("werks");
     const lgort = c.req.query("lgort");
     if (!werks) {

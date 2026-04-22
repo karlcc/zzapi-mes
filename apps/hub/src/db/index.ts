@@ -21,6 +21,11 @@ export function openDb(path?: string): Database.Database {
 
 export function runMigrations(db: Database.Database): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS _migrations (
+      version     INTEGER PRIMARY KEY,
+      applied_at  INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS api_keys (
       id                  TEXT PRIMARY KEY,
       hash                TEXT NOT NULL,
@@ -51,6 +56,19 @@ export function runMigrations(db: Database.Database): void {
       created_at  INTEGER NOT NULL
     );
   `);
+
+  // Apply versioned migrations
+  const currentVersion = db.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number | null };
+  const v = currentVersion?.v ?? 0;
+
+  if (v < 1) {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_key_id ON audit_log(key_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
+      INSERT INTO _migrations (version, applied_at) VALUES (1, ${Math.floor(Date.now() / 1000)});
+    `);
+  }
 }
 
 const FIND_BY_ID = `

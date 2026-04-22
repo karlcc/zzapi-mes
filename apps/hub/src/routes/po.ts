@@ -9,6 +9,7 @@ export function createPoRouter(sap: SapClient) {
 
   router.get("/po/:ebeln", async (c) => {
     const ebeln = c.req.param("ebeln");
+    if (ebeln.length > 10) return c.json({ error: "Parameter 'ebeln' exceeds maximum length of 10" }, 400);
     try {
       const start = performance.now();
       const result = await sap.getPo(ebeln);

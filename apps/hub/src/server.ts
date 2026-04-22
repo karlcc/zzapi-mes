@@ -76,6 +76,15 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
     await next();
   });
 
+  // Reject oversized request bodies (1 MB limit)
+  app.use("*", async (c, next) => {
+    const contentLength = c.req.header("content-length");
+    if (contentLength && Number(contentLength) > 1_048_576) {
+      return c.json({ error: "Request body too large (max 1 MB)" }, 413);
+    }
+    await next();
+  });
+
   // Request ID on all routes
   app.use("*", requestId);
 

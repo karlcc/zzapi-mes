@@ -9,6 +9,7 @@ export function createWorkCenterRouter(sap: SapClient) {
 
   router.get("/work-center/:arbpl", async (c) => {
     const arbpl = c.req.param("arbpl");
+    if (arbpl.length > 8) return c.json({ error: "Parameter 'arbpl' exceeds maximum length of 8" }, 400);
     const werks = c.req.query("werks");
     if (!werks) {
       return c.json({ error: "Missing required query parameter: werks" }, 400);

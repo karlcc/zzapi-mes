@@ -9,6 +9,7 @@ export function createRoutingRouter(sap: SapClient) {
 
   router.get("/routing/:matnr", async (c) => {
     const matnr = c.req.param("matnr");
+    if (matnr.length > 18) return c.json({ error: "Parameter 'matnr' exceeds maximum length of 18" }, 400);
     const werks = c.req.query("werks");
     if (!werks) {
       return c.json({ error: "Missing required query parameter: werks" }, 400);
