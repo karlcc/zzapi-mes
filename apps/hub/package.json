@@ -16,7 +16,6 @@
   "license": "UNLICENSED",
   "dependencies": {
     "@hono/node-server": "^1.13.0",
-    "@hono/zod-openapi": "^0.19.0",
     "@zzapi-mes/core": "workspace:*",
     "hono": "^4.6.0",
     "zod": "^3.23.0"
