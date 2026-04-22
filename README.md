@@ -31,7 +31,7 @@ MES client ──(JWT)──────▶ Hub GET /ping, /po/:ebeln ──▶ 
 | 1 | Deploy handlers on sapdev, curl round-trip verified | Pending (SAP GUI) |
 | 2 | OpenAPI spec, Node SDK (`@zzapi-mes/sdk`), CLI (`@zzapi-mes/cli`) | Done |
 | 3 | Node hub (`apps/hub`) with bearer tokens, SAP auth abstracted | Done |
-| 4 | Operability & security: persistent API keys, metrics, rate limiting, spec codegen, e2e tests | Proposed (`docs/phase-4-plan.md`) |
+| 4 | Persistent API keys (SQLite+argon2id), admin CLI, request ID, structured logs, /metrics, rate limiting, spec codegen, e2e tests | Done |
 
 ## Repo Layout
 
@@ -116,19 +116,72 @@ npx zzapi-mes ping
 
 ```bash
 pnpm build
-HUB_API_KEYS=my-key HUB_JWT_SECRET=random-secret \
+HUB_JWT_SECRET=random-secret \
   SAP_HOST=sapdev.fastcell.hk:8000 SAP_CLIENT=200 \
   SAP_USER=api_user2 SAP_PASS='Pt@2026' \
   pnpm --filter @zzapi-mes/hub start
 ```
 
-2. Get a token and test:
+2. Create an API key (plaintext printed once, save it):
+
+```bash
+pnpm --filter @zzapi-mes/hub migrate  # first run only
+API_KEY=$(node apps/hub/dist/admin/cli.js keys create --label local-dev --scopes ping,po)
+```
+
+3. Get a token and test:
 
 ```bash
 TOKEN=$(curl -s localhost:8080/auth/token \
-  -d '{"api_key":"my-key"}' -H 'content-type: application/json' | jq -r .token)
+  -d "{\"api_key\":\"$API_KEY\"}" -H 'content-type: application/json' | jq -r .token)
 curl -H "authorization: Bearer $TOKEN" localhost:8080/ping
 curl -H "authorization: Bearer $TOKEN" localhost:8080/po/3010000608
+curl localhost:8080/healthz
+curl localhost:8080/metrics
 ```
 
-3. Deploy as systemd unit — see `apps/hub/deploy/`.
+4. Deploy as systemd unit — see `apps/hub/deploy/`.
+
+## Operating the Hub
+
+### Key Management
+
+```bash
+# Create a key (plaintext printed once — save it)
+zzapi-mes-hub-admin keys create --label prod-mes --scopes ping,po
+
+# List all keys
+zzapi-mes-hub-admin keys list
+
+# Revoke a key (immediately invalidates outstanding JWTs from that key)
+zzapi-mes-hub-admin keys revoke <key_id>
+```
+
+### Rotating HUB_JWT_SECRET
+
+Changing `HUB_JWT_SECRET` invalidates all outstanding JWTs. Clients will get 401 and must re-authenticate with their API key. Steps:
+
+1. Update `HUB_JWT_SECRET` in `/etc/zzapi-mes-hub.env`
+2. `sudo systemctl restart zzapi-mes-hub`
+
+### Metrics
+
+Scrape `GET /metrics` from Prometheus (localhost-only by default). Key counters:
+
+- `zzapi_hub_requests_total{route,status,key_id}`
+- `zzapi_hub_request_duration_seconds{route}`
+- `zzapi_hub_sap_duration_seconds{route}`
+
+### Structured Logs
+
+The hub writes JSON lines to stdout (captured by journald):
+
+```bash
+journalctl -u zzapi-mes-hub -f
+```
+
+Each line includes `req_id`, `key_id`, `method`, `path`, `status`, `latency_ms`.
+
+### systemd LoadCredential (alternative to plaintext env)
+
+For systemd 250+, you can store secrets encrypted on disk instead of plaintext env files. See the commented `LoadCredential=` section in `zzapi-mes-hub.service`.

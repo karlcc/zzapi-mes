@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# deploy.sh — install zzapi-mes hub on a Linux host
-# Run from the repo root:  bash apps/hub/deploy/deploy.sh
+# install.sh — install zzapi-mes hub on a Linux host
+# Run from the repo root:  bash apps/hub/deploy/install.sh
 #
 # Prerequisites:
 #   - Node 20+ installed at /usr/bin/node
@@ -10,14 +10,16 @@
 #   1. Builds the project if dist/ is missing
 #   2. Creates the zzapi-mes system user if missing
 #   3. Copies hub dist + node_modules to /opt/zzapi-mes-hub
-#   4. Installs the env file if none exists (mode 640, root:zzapi-mes)
-#   5. Installs and enables the systemd unit
+#   4. Runs DB migration
+#   5. Installs the env file if none exists (mode 600, root:zzapi-mes)
+#   6. Symlinks admin CLI to /usr/local/bin
+#   7. Installs and enables the systemd unit
 
 set -euo pipefail
 
 INSTALL_DIR="/opt/zzapi-mes-hub"
+DATA_DIR="/var/lib/zzapi-mes-hub"
 ENV_FILE="/etc/zzapi-mes-hub.env"
-SERVICE_USER="${SUDO_USER:-zzapi-mes}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
@@ -39,7 +41,6 @@ sudo mkdir -p "$INSTALL_DIR"
 sudo rsync -a --delete --chown=root:zzapi-mes "$REPO_ROOT/apps/hub/dist/" "$INSTALL_DIR/dist/"
 
 # Copy node_modules needed at runtime
-# We need @hono/node-server, hono, zod, and @zzapi-mes/core + its deps
 if [ -d "$REPO_ROOT/apps/hub/node_modules" ]; then
   sudo rsync -a "$REPO_ROOT/apps/hub/node_modules/" "$INSTALL_DIR/node_modules/"
 else
@@ -51,27 +52,41 @@ else
   sudo rsync -a "$REPO_ROOT/packages/core/dist/" "$INSTALL_DIR/node_modules/@zzapi-mes/core/dist/"
 fi
 
-# --- 4. Env file ---
+# --- 4. DB migration ---
+echo "Setting up data directory..."
+sudo mkdir -p "$DATA_DIR"
+sudo chown zzapi-mes:zzapi-mes "$DATA_DIR"
+echo "Running DB migration..."
+sudo -u zzapi-mes node "$INSTALL_DIR/dist/scripts/migrate.js"
+
+# --- 5. Env file ---
 if [ ! -f "$ENV_FILE" ]; then
   echo "Installing example env file to $ENV_FILE"
   sudo cp "$SCRIPT_DIR/zzapi-mes-hub.env.example" "$ENV_FILE"
-  sudo chown root:zzapi-mes "$ENV_FILE"
-  sudo chmod 640 "$ENV_FILE"
+  sudo chown zzapi-mes:zzapi-mes "$ENV_FILE"
+  sudo chmod 600 "$ENV_FILE"
   echo "!! Edit $ENV_FILE with your values before starting the service !!"
 else
   echo "Env file $ENV_FILE already exists — not overwriting"
 fi
 
-# --- 5. Systemd unit ---
+# --- 6. Admin CLI symlink ---
+echo "Installing admin CLI..."
+sudo ln -sf "$INSTALL_DIR/dist/admin/cli.js" /usr/local/bin/zzapi-mes-hub-admin
+sudo chmod +x "$INSTALL_DIR/dist/admin/cli.js"
+
+# --- 7. Systemd unit ---
 echo "Installing systemd unit..."
 sudo cp "$SCRIPT_DIR/zzapi-mes-hub.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable zzapi-mes-hub
 
 echo ""
-echo "Done. To start the hub:"
-echo "  sudo systemctl start zzapi-mes-hub"
-echo "  sudo systemctl status zzapi-mes-hub"
+echo "Done. Next steps:"
+echo "  1. Edit $ENV_FILE with your values"
+echo "  2. Create an API key:  zzapi-mes-hub-admin keys create --label first --scopes ping,po"
+echo "  3. Start the hub:  sudo systemctl start zzapi-mes-hub"
+echo "  4. Check status:   sudo systemctl status zzapi-mes-hub"
 echo ""
 echo "To view logs:"
 echo "  journalctl -u zzapi-mes-hub -f"

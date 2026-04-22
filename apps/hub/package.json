@@ -4,11 +4,15 @@
   "private": true,
   "description": "Token-gated reverse proxy fronting SAP ICF handlers",
   "main": "dist/index.js",
+  "bin": {
+    "zzapi-mes-hub-admin": "./dist/admin/cli.js"
+  },
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
+    "migrate": "node dist/scripts/migrate.js",
     "pretest": "tsc",
     "test": "node --test dist/test/*.test.js",
     "prepublishOnly": "pnpm run build"
@@ -17,10 +21,14 @@
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@zzapi-mes/core": "workspace:*",
+    "argon2": "^0.41.0",
+    "better-sqlite3": "^11.0.0",
     "hono": "^4.6.0",
+    "prom-client": "^15.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.4.0"

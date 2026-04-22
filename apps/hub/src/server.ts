@@ -1,13 +1,19 @@
 import { Hono } from "hono";
 import { SapClient } from "@zzapi-mes/core";
 import { accessLog } from "./middleware/log.js";
-import { requireJwt } from "./middleware/jwt.js";
+import { requestId } from "./middleware/request-id.js";
+import { requireJwt, requireScope } from "./middleware/jwt.js";
+import { rateLimit } from "./middleware/rate-limit.js";
+import { metricsMiddleware } from "./middleware/metrics.js";
 import health from "./routes/health.js";
+import metricsRoute from "./routes/metrics.js";
 import { createPingRouter } from "./routes/ping.js";
 import { createPoRouter } from "./routes/po.js";
 import { z } from "zod";
 import { sign } from "hono/jwt";
-import { createHash } from "node:crypto";
+import type Database from "better-sqlite3";
+import { openDb, runMigrations } from "./db/index.js";
+import { verifyApiKey } from "./auth/verify.js";
 
 function requireEnv(name: string): string {
   const val = process.env[name];
@@ -19,27 +25,24 @@ function requireEnv(name: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Auth route (inlined to avoid Hono sub-app routing issues)
+// Auth route
 // ---------------------------------------------------------------------------
 
 const TokenRequestSchema = z.object({ api_key: z.string().min(1) });
-
-const JWT_SECRET = () => process.env.HUB_JWT_SECRET ?? "";
-const API_KEYS = () => (process.env.HUB_API_KEYS ?? "").split(",").map(k => k.trim()).filter(Boolean);
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return mismatch === 0;
-}
 
 // ---------------------------------------------------------------------------
 // App factory
 // ---------------------------------------------------------------------------
 
+export interface AppDeps {
+  db?: Database.Database;
+}
+
 /** Build the Hono app. Callers provide a SapClient (or one is created from env). */
-export function createApp(sap?: SapClient) {
+export function createApp(sap?: SapClient, deps?: AppDeps) {
+  const jwtSecret = requireEnv("HUB_JWT_SECRET");
+  const jwtTtl = Number(process.env.HUB_JWT_TTL_SECONDS) || 900;
+
   const client = sap ?? new SapClient({
     host: requireEnv("SAP_HOST"),
     client: Number(requireEnv("SAP_CLIENT")),
@@ -47,12 +50,28 @@ export function createApp(sap?: SapClient) {
     password: requireEnv("SAP_PASS"),
   });
 
+  // Open DB if not provided (production path)
+  const db = deps?.db ?? (() => {
+    const d = openDb();
+    runMigrations(d);
+    return d;
+  })();
+
   const app = new Hono();
+
+  // Request ID on all routes
+  app.use("*", requestId);
 
   // Access logging on all routes
   app.use("*", accessLog);
 
+  // Metrics on all routes
+  app.use("*", metricsMiddleware);
+
   // --- Public routes ---
+
+  // GET /metrics (no auth, but localhost-only — enforced inside the route)
+  app.route("/", metricsRoute);
 
   // POST /auth/token
   app.post("/auth/token", async (c) => {
@@ -67,23 +86,32 @@ export function createApp(sap?: SapClient) {
       return c.json({ error: "Request body must be { api_key: string }" }, 400);
     }
     const { api_key } = parsed.data;
-    const validKeys = API_KEYS();
-    const matched = validKeys.some(k => timingSafeEqual(k, api_key));
-    if (!matched) {
+
+    const verified = await verifyApiKey(db, api_key);
+    if (!verified) {
       return c.json({ error: "Invalid API key" }, 401);
     }
-    const sub = createHash("sha256").update(api_key).digest("hex").slice(0, 8);
-    const exp = Math.floor(Date.now() / 1000) + 15 * 60;
-    const token = await sign({ sub, exp }, JWT_SECRET());
-    return c.json({ token, expires_in: 900 });
+
+    const now = Math.floor(Date.now() / 1000);
+    const token = await sign(
+      {
+        key_id: verified.key_id,
+        scopes: verified.scopes,
+        iat: now,
+        exp: now + jwtTtl,
+        rate_limit_per_min: verified.rate_limit_per_min,
+      },
+      jwtSecret,
+    );
+    return c.json({ token, expires_in: jwtTtl });
   });
 
   // GET /healthz
   app.route("/", health);
 
-  // --- Protected routes ---
-  app.use("/ping", requireJwt);
-  app.use("/po/*", requireJwt);
+  // --- Protected routes (JWT + scope + rate limit) ---
+  app.use("/ping", requireJwt, requireScope("ping"), rateLimit);
+  app.use("/po/*", requireJwt, requireScope("po"), rateLimit);
   app.route("/", createPingRouter(client));   // GET /ping
   app.route("/", createPoRouter(client));      // GET /po/:ebeln
 

@@ -1,16 +1,41 @@
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../server.js";
 import { SapClient, ZzapiMesHttpError } from "@zzapi-mes/core";
 import type { PingResponse, PoResponse } from "@zzapi-mes/core";
 import { sign } from "hono/jwt";
+import Database from "better-sqlite3";
+import argon2 from "argon2";
+import { runMigrations, insertKey } from "../db/index.js";
 
 const JWT_SECRET = "test-secret";
-const API_KEY = "test-key-123";
 
 // Set env vars before creating app
 process.env.HUB_JWT_SECRET = JWT_SECRET;
-process.env.HUB_API_KEYS = API_KEY;
+process.env.HUB_JWT_TTL_SECONDS = "900";
+
+// --- In-memory DB setup ---
+
+let db: Database.Database;
+let testKeyPlaintext: string;
+
+async function seedTestKey(scopes = "ping,po"): Promise<string> {
+  const keyId = "testkey1234";
+  const secret = "abc123xyz789def456ghi012jkl345mno678pqr";
+  const plaintext = `${keyId}.${secret}`;
+  const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+
+  insertKey(db, {
+    id: keyId,
+    hash,
+    label: "test key",
+    scopes,
+    rate_limit_per_min: null,
+    created_at: Math.floor(Date.now() / 1000),
+  });
+
+  return plaintext;
+}
 
 // --- Mock SapClient ---
 
@@ -30,17 +55,21 @@ class MockSapClient {
   }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   mockPingResult = { ok: true, sap_time: "20260422163000" };
   mockPoResult = { ebeln: "3010000608", aedat: "20170306", lifnr: "0000500340", eindt: "20170630" };
   mockPingError = null;
   mockPoError = null;
+
+  db = new Database(":memory:");
+  runMigrations(db);
+  testKeyPlaintext = await seedTestKey();
 });
 
 // --- Helpers ---
 
 function app() {
-  return createApp(new MockSapClient() as unknown as SapClient);
+  return createApp(new MockSapClient() as unknown as SapClient, { db });
 }
 
 async function fetchApi(path: string, opts?: RequestInit) {
@@ -48,12 +77,18 @@ async function fetchApi(path: string, opts?: RequestInit) {
   return app().fetch(req);
 }
 
-async function validToken(): Promise<string> {
-  return sign({ sub: "test-user", exp: Math.floor(Date.now() / 1000) + 900 }, JWT_SECRET);
+async function validToken(scopes = ["ping", "po"]): Promise<string> {
+  return sign(
+    { key_id: "testkey1234", scopes, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+    JWT_SECRET,
+  );
 }
 
 async function expiredToken(): Promise<string> {
-  return sign({ sub: "test-user", exp: Math.floor(Date.now() / 1000) - 60 }, JWT_SECRET);
+  return sign(
+    { key_id: "testkey1234", scopes: ["ping", "po"], iat: Math.floor(Date.now() / 1000) - 960, exp: Math.floor(Date.now() / 1000) - 60 },
+    JWT_SECRET,
+  );
 }
 
 // --- Tests ---
@@ -63,10 +98,10 @@ describe("POST /auth/token", () => {
     const res = await fetchApi("/auth/token", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ api_key: API_KEY }),
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
     });
     assert.equal(res.status, 200);
-    const body = await res.json();
+    const body = await res.json() as Record<string, unknown>;
     assert.ok(typeof body.token === "string");
     assert.equal(body.expires_in, 900);
   });
@@ -75,7 +110,18 @@ describe("POST /auth/token", () => {
     const res = await fetchApi("/auth/token", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ api_key: "wrong" }),
+      body: JSON.stringify({ api_key: "wrong.key" }),
+    });
+    assert.equal(res.status, 401);
+  });
+
+  it("rejects revoked key with 401", async () => {
+    // Revoke the test key
+    db.prepare("UPDATE api_keys SET revoked_at = ? WHERE id = ?").run(Math.floor(Date.now() / 1000), "testkey1234");
+    const res = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
     });
     assert.equal(res.status, 401);
   });
@@ -109,7 +155,7 @@ describe("Protected routes with valid JWT", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 200);
-    const body = await res.json();
+    const body = await res.json() as Record<string, unknown>;
     assert.equal(body.ok, true);
   });
 
@@ -119,7 +165,7 @@ describe("Protected routes with valid JWT", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 200);
-    const body = await res.json();
+    const body = await res.json() as Record<string, unknown>;
     assert.equal(body.ebeln, "3010000608");
   });
 
@@ -131,8 +177,34 @@ describe("Protected routes with valid JWT", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 404);
-    const body = await res.json();
+    const body = await res.json() as Record<string, unknown>;
     assert.equal(body.error, "PO not found");
+  });
+});
+
+describe("JWT scope enforcement", () => {
+  it("denies /ping with ping scope missing", async () => {
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 403);
+  });
+
+  it("denies /po/:ebeln with po scope missing", async () => {
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/po/3010000608", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 403);
+  });
+
+  it("allows /ping with correct scope", async () => {
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
   });
 });
 
@@ -150,7 +222,7 @@ describe("GET /healthz", () => {
   it("returns ok without auth", async () => {
     const res = await fetchApi("/healthz");
     assert.equal(res.status, 200);
-    const body = await res.json();
+    const body = await res.json() as Record<string, unknown>;
     assert.equal(body.ok, true);
   });
 });

@@ -1,24 +1,16 @@
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
-// Zod schemas (derived from spec/openapi.yaml)
+// Zod schemas (source of truth: spec/openapi.yaml → generated/schemas.ts)
 // ---------------------------------------------------------------------------
 
-export const PingResponseSchema = z.object({
-  ok: z.boolean(),
-  sap_time: z.string().regex(/^[0-9]{14}$/, "YYYYMMDDHHMMSS"),
-});
+export {
+  PingResponseSchema,
+  PoResponseSchema,
+  ErrorResponseSchema,
+} from "./generated/schemas.js";
 
-export const PoResponseSchema = z.object({
-  ebeln: z.string().max(10),
-  aedat: z.string().regex(/^[0-9]{8}$/, "YYYYMMDD"),
-  lifnr: z.string().max(10),
-  eindt: z.string().regex(/^[0-9]{8}$/, "YYYYMMDD"),
-});
-
-export const ErrorResponseSchema = z.object({
-  error: z.string(),
-});
+import { PingResponseSchema, PoResponseSchema, ErrorResponseSchema } from "./generated/schemas.js";
 
 // ---------------------------------------------------------------------------
 // Inferred TS types (for convenience; the Zod schemas are the source of truth)
@@ -43,6 +35,10 @@ export interface SapClientConfig {
   password: string;
   /** Request timeout in ms (default 30000) */
   timeout?: number;
+  /** Hook called before each SAP request */
+  onRequest?: (ctx: { url: string; method: string }) => void;
+  /** Hook called after each SAP response */
+  onResponse?: (ctx: { url: string; status: number; durationMs: number }) => void;
 }
 
 /** Back-compat alias — existing SDK consumers still reference this name. */
@@ -76,12 +72,16 @@ export class SapClient {
   private client: number;
   private auth: string;
   private timeout: number;
+  private onRequest?: SapClientConfig["onRequest"];
+  private onResponse?: SapClientConfig["onResponse"];
 
   constructor(config: SapClientConfig) {
     this.host = ensureProtocol(config.host).replace(/\/+$/, "");
     this.client = config.client;
     this.auth = btoa(`${config.user}:${config.password}`);
     this.timeout = config.timeout ?? 30_000;
+    this.onRequest = config.onRequest;
+    this.onResponse = config.onResponse;
   }
 
   /** Health check — no DB hit, safe for monitoring probes. */
@@ -99,8 +99,11 @@ export class SapClient {
     const query = new URLSearchParams({ ...params, "sap-client": String(this.client) });
     const url = `${this.host}${path}?${query}`;
 
+    this.onRequest?.({ url, method: "GET" });
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
+    const start = performance.now();
 
     let res: Response;
     try {
@@ -111,6 +114,8 @@ export class SapClient {
     } finally {
       clearTimeout(timer);
     }
+
+    this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
 
     const body = await res.text();
     let json: Record<string, unknown>;
