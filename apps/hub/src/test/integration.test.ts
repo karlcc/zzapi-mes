@@ -20,6 +20,57 @@ function startMockSap(): Promise<{ server: Server; port: number }> {
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json");
 
+      // --- POST write-back endpoints ---
+      if (req.method === "POST" && req.url?.includes("zzapi_mes_conf")) {
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("end", () => {
+          const data = JSON.parse(body);
+          res.end(JSON.stringify({
+            orderid: data.orderid,
+            operation: data.operation,
+            yield: data.yield,
+            scrap: data.scrap ?? 0,
+            status: "confirmed",
+            message: "Production confirmation recorded",
+          }));
+        });
+        return;
+      }
+      if (req.method === "POST" && req.url?.includes("zzapi_mes_gr")) {
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("end", () => {
+          const data = JSON.parse(body);
+          res.end(JSON.stringify({
+            ebeln: data.ebeln,
+            ebelp: data.ebelp,
+            menge: data.menge,
+            material_document: "5000000001",
+            status: "posted",
+            message: "Goods receipt posted",
+          }));
+        });
+        return;
+      }
+      if (req.method === "POST" && req.url?.includes("zzapi_mes_gi")) {
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("end", () => {
+          const data = JSON.parse(body);
+          res.end(JSON.stringify({
+            orderid: data.orderid,
+            matnr: data.matnr,
+            menge: data.menge,
+            material_document: "5000000002",
+            status: "posted",
+            message: "Goods issue posted",
+          }));
+        });
+        return;
+      }
+
+      // --- GET read endpoints ---
       if (req.url?.includes("zzapi_mes_ping")) {
         res.end(JSON.stringify({ ok: true, sap_time: "20260422163000" }));
       } else if (req.url?.includes("zzapi_mes_prod_order")) {

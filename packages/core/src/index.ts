@@ -168,6 +168,21 @@ export class SapClient {
     return this.request<WorkCenterResponse>({ path: "/sap/bc/zzapi_mes_wc", params: { arbpl, werks } });
   }
 
+  /** Post a production order confirmation. */
+  async postConfirmation(data: ConfirmationRequest): Promise<ConfirmationResponse> {
+    return this.postRequest<ConfirmationResponse>("/sap/bc/zzapi_mes_conf", data);
+  }
+
+  /** Post a goods receipt against a purchase order. */
+  async postGoodsReceipt(data: GoodsReceiptRequest): Promise<GoodsReceiptResponse> {
+    return this.postRequest<GoodsReceiptResponse>("/sap/bc/zzapi_mes_gr", data);
+  }
+
+  /** Post a goods issue for a production order. */
+  async postGoodsIssue(data: GoodsIssueRequest): Promise<GoodsIssueResponse> {
+    return this.postRequest<GoodsIssueResponse>("/sap/bc/zzapi_mes_gi", data);
+  }
+
   private async request<T>(opts: { path: string; params?: Record<string, string> }): Promise<T> {
     const { path, params = {} } = opts;
     const query = new URLSearchParams({ ...params, "sap-client": String(this.client) });
@@ -195,6 +210,47 @@ export class SapClient {
     let json: Record<string, unknown>;
     try {
       json = JSON.parse(body);
+    } catch {
+      throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
+    }
+
+    if ("error" in json) {
+      throw new ZzapiMesHttpError(res.status, json.error as string);
+    }
+
+    return json as T;
+  }
+
+  private async postRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
+    const url = `${this.host}${path}?sap-client=${this.client}`;
+
+    this.onRequest?.({ url, method: "POST" });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+    const start = performance.now();
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${this.auth}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
+
+    const text = await res.text();
+    let json: Record<string, unknown>;
+    try {
+      json = JSON.parse(text);
     } catch {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }

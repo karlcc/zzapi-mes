@@ -2,7 +2,7 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../server.js";
 import { SapClient, ZzapiMesHttpError } from "@zzapi-mes/core";
-import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse } from "@zzapi-mes/core";
+import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse, ConfirmationRequest, ConfirmationResponse, GoodsReceiptRequest, GoodsReceiptResponse, GoodsIssueRequest, GoodsIssueResponse } from "@zzapi-mes/core";
 import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
@@ -49,6 +49,9 @@ let mockRoutingResult: RoutingResponse | null = null;
 let mockWorkCenterResult: WorkCenterResponse | null = null;
 let mockPingError: ZzapiMesHttpError | null = null;
 let mockPoError: ZzapiMesHttpError | null = null;
+let mockConfError: ZzapiMesHttpError | null = null;
+let mockGrError: ZzapiMesHttpError | null = null;
+let mockGiError: ZzapiMesHttpError | null = null;
 
 class MockSapClient {
   async ping(): Promise<PingResponse> {
@@ -77,6 +80,39 @@ class MockSapClient {
   async getWorkCenter(arbpl: string, werks: string): Promise<WorkCenterResponse> {
     return mockWorkCenterResult!;
   }
+  async postConfirmation(data: ConfirmationRequest): Promise<ConfirmationResponse> {
+    if (mockConfError) throw mockConfError;
+    return {
+      orderid: data.orderid,
+      operation: data.operation,
+      yield: data.yield,
+      scrap: data.scrap ?? 0,
+      status: "confirmed",
+      message: "Production confirmation recorded",
+    };
+  }
+  async postGoodsReceipt(data: GoodsReceiptRequest): Promise<GoodsReceiptResponse> {
+    if (mockGrError) throw mockGrError;
+    return {
+      ebeln: data.ebeln,
+      ebelp: data.ebelp,
+      menge: data.menge,
+      material_document: "5000000001",
+      status: "posted",
+      message: "Goods receipt posted",
+    };
+  }
+  async postGoodsIssue(data: GoodsIssueRequest): Promise<GoodsIssueResponse> {
+    if (mockGiError) throw mockGiError;
+    return {
+      orderid: data.orderid,
+      matnr: data.matnr,
+      menge: data.menge,
+      material_document: "5000000002",
+      status: "posted",
+      message: "Goods issue posted",
+    };
+  }
 }
 
 beforeEach(async () => {
@@ -90,6 +126,9 @@ beforeEach(async () => {
   mockWorkCenterResult = { arbpl: "TURN1", werks: "1000", ktext: "CNC Turning Center", steus: "PP01" };
   mockPingError = null;
   mockPoError = null;
+  mockConfError = null;
+  mockGrError = null;
+  mockGiError = null;
 
   db = new Database(":memory:");
   runMigrations(db);
@@ -515,5 +554,50 @@ describe("Phase 5B write-back routes", () => {
     const row = db.prepare("SELECT status FROM idempotency_keys WHERE key = ?").get(idemKey) as { status: number } | undefined;
     assert.ok(row);
     assert.equal(row.status, 201);
+  });
+
+  it("POST /confirmation returns 422 when SAP rejects business logic", async () => {
+    mockConfError = new ZzapiMesHttpError(422, "Order already confirmed");
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "sapi-err-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 422);
+  });
+
+  it("POST /goods-issue returns 409 when SAP rejects backflush conflict", async () => {
+    mockGiError = new ZzapiMesHttpError(409, "Backflush is active for this order");
+    const token = await validToken();
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "sapi-gi-err-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 409);
+  });
+
+  it("POST write-back returns 502 on SAP upstream failure", async () => {
+    mockGrError = new ZzapiMesHttpError(500, "Internal Server Error");
+    const token = await validToken();
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "sapi-gr-err-001",
+      },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 502);
   });
 });

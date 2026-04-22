@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { SapClient } from "@zzapi-mes/core";
+import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import type Database from "better-sqlite3";
@@ -37,15 +38,21 @@ export function createGoodsIssueRouter(sap: SapClient) {
     const keyId = (payload?.key_id as string) ?? "unknown";
     const reqId = c.get("reqId") ?? "-";
 
-    // Placeholder response — actual SAP BAPI call requires ABAP handler deployment
-    const result = {
-      orderid: parsed.data.orderid,
-      matnr: parsed.data.matnr,
-      menge: parsed.data.menge,
-      material_document: "5000000002",
-      status: "posted",
-      message: "Goods issue recorded (SAP BAPI call pending Phase 1 deployment)",
-    };
+    // Call SAP via SapClient POST
+    let result: Record<string, unknown>;
+    let sapStatus: number;
+    const start = performance.now();
+    try {
+      result = await sap.postGoodsIssue(parsed.data) as Record<string, unknown>;
+      sapStatus = 201;
+    } catch (e) {
+      if (e instanceof ZzapiMesHttpError) {
+        const status = e.status === 409 ? 409 : e.status === 422 ? 422 : 502;
+        return c.json({ error: e.message, orderid: parsed.data.orderid }, status);
+      }
+      return c.json({ error: "SAP upstream error" }, 502);
+    }
+    const durationMs = performance.now() - start;
 
     const db = c.get("db") as Database.Database | undefined;
     if (db) {
@@ -55,15 +62,15 @@ export function createGoodsIssueRouter(sap: SapClient) {
         method: "POST",
         path: "/goods-issue",
         body: JSON.stringify(parsed.data),
-        sap_status: 200,
+        sap_status: sapStatus,
       });
     }
 
-    sapDuration.labels({ route: "/goods-issue" }).observe(0);
-    c.set("sapStatus", 200);
-    c.set("sapDurationMs", 0);
+    sapDuration.labels({ route: "/goods-issue" }).observe(durationMs / 1000);
+    c.set("sapStatus", sapStatus);
+    c.set("sapDurationMs", durationMs);
 
-    return c.json(result, 201);
+    return c.json(result, sapStatus as 201);
   });
 
   return router;

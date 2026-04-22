@@ -116,6 +116,41 @@ describe("SapClient", () => {
     await new SapClient(CFG).getWorkCenter("TURN1", "1000");
     assert.match(capturedUrl!, /zzapi_mes_wc.*arbpl=TURN1.*werks=1000/);
   });
+
+  it("postConfirmation sends POST with JSON body to zzapi_mes_conf", async () => {
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"status":"confirmed"}');
+    const res = await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    assert.equal(capturedOpts?.method, "POST");
+    assert.match(capturedUrl!, /zzapi_mes_conf/);
+    assert.match(capturedUrl!, /sap-client=200/);
+    assert.equal(res.status, "confirmed");
+    const body = JSON.parse(capturedOpts?.body as string);
+    assert.equal(body.orderid, "1000000");
+  });
+
+  it("postGoodsReceipt sends POST with JSON body to zzapi_mes_gr", async () => {
+    globalThis.fetch = mockFetch(201, '{"ebeln":"4500000001","ebelp":"00010","menge":100,"status":"posted"}');
+    const res = await new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
+    assert.equal(capturedOpts?.method, "POST");
+    assert.match(capturedUrl!, /zzapi_mes_gr/);
+    assert.equal(res.status, "posted");
+  });
+
+  it("postGoodsIssue sends POST with JSON body to zzapi_mes_gi", async () => {
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","matnr":"20000001","menge":50,"status":"posted"}');
+    const res = await new SapClient(CFG).postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" });
+    assert.equal(capturedOpts?.method, "POST");
+    assert.match(capturedUrl!, /zzapi_mes_gi/);
+    assert.equal(res.status, "posted");
+  });
+
+  it("postRequest throws ZzapiMesHttpError on SAP error", async () => {
+    globalThis.fetch = mockFetch(422, '{"error":"Order already confirmed"}');
+    await assert.rejects(
+      () => new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 422,
+    );
+  });
 });
 
 describe("ensureProtocol", () => {

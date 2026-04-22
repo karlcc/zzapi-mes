@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { SapClient } from "@zzapi-mes/core";
+import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import type Database from "better-sqlite3";
@@ -37,15 +38,21 @@ export function createGoodsReceiptRouter(sap: SapClient) {
     const keyId = (payload?.key_id as string) ?? "unknown";
     const reqId = c.get("reqId") ?? "-";
 
-    // Placeholder response — actual SAP BAPI call requires ABAP handler deployment
-    const result = {
-      ebeln: parsed.data.ebeln,
-      ebelp: parsed.data.ebelp,
-      menge: parsed.data.menge,
-      material_document: "5000000001",
-      status: "posted",
-      message: "Goods receipt recorded (SAP BAPI call pending Phase 1 deployment)",
-    };
+    // Call SAP via SapClient POST
+    let result: Record<string, unknown>;
+    let sapStatus: number;
+    const start = performance.now();
+    try {
+      result = await sap.postGoodsReceipt(parsed.data) as Record<string, unknown>;
+      sapStatus = 201;
+    } catch (e) {
+      if (e instanceof ZzapiMesHttpError) {
+        const status = e.status === 422 ? 422 : 502;
+        return c.json({ error: e.message, ebeln: parsed.data.ebeln }, status);
+      }
+      return c.json({ error: "SAP upstream error" }, 502);
+    }
+    const durationMs = performance.now() - start;
 
     const db = c.get("db") as Database.Database | undefined;
     if (db) {
@@ -55,15 +62,15 @@ export function createGoodsReceiptRouter(sap: SapClient) {
         method: "POST",
         path: "/goods-receipt",
         body: JSON.stringify(parsed.data),
-        sap_status: 200,
+        sap_status: sapStatus,
       });
     }
 
-    sapDuration.labels({ route: "/goods-receipt" }).observe(0);
-    c.set("sapStatus", 200);
-    c.set("sapDurationMs", 0);
+    sapDuration.labels({ route: "/goods-receipt" }).observe(durationMs / 1000);
+    c.set("sapStatus", sapStatus);
+    c.set("sapDurationMs", durationMs);
 
-    return c.json(result, 201);
+    return c.json(result, sapStatus as 201);
   });
 
   return router;
