@@ -20,6 +20,8 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
+      - name: Install build tools for native modules
+        run: sudo apt-get update && sudo apt-get install -y python3 make g++
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test
