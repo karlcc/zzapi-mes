@@ -146,7 +146,7 @@ HUB_JWT_SECRET=random-secret \
 
 ```bash
 pnpm --filter @zzapi-mes/hub migrate  # first run only
-API_KEY=$(node apps/hub/dist/admin/cli.js keys create --label local-dev --scopes ping,po)
+API_KEY=$(node apps/hub/dist/admin/cli.js keys create --label local-dev --scopes ping,po,prod_order,material,stock,routing,work_center,conf,gr,gi)
 ```
 
 3. Get a token and test:
@@ -168,7 +168,7 @@ curl localhost:8080/metrics
 
 ```bash
 # Create a key (plaintext printed once — save it)
-zzapi-mes-hub-admin keys create --label prod-mes --scopes ping,po
+zzapi-mes-hub-admin keys create --label prod-mes --scopes ping,po,prod_order,material,stock,routing,work_center,conf,gr,gi
 
 # List all keys
 zzapi-mes-hub-admin keys list

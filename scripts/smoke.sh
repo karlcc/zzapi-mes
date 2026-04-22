@@ -304,6 +304,40 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "400" POST \
     -H "content-type: application/json" \
     -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
+
+  check "goods-issue missing idempotency key returns 400" \
+    "${BASE_URL}/goods-issue" \
+    "400" POST \
+    -H "content-type: application/json" \
+    -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}'
+
+  check "confirmation duplicate idempotency key returns 409" \
+    "${BASE_URL}/confirmation" \
+    "409" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-conf-001" \
+    -d '{"orderid":"1000000","operation":"0010","yield":50}'
+
+  check "confirmation invalid body returns 400" \
+    "${BASE_URL}/confirmation" \
+    "400" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-zod-001" \
+    -d '{"orderid":"","operation":"0010","yield":0}'
+
+  check "goods-receipt invalid body returns 400" \
+    "${BASE_URL}/goods-receipt" \
+    "400" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-zod-002" \
+    -d '{"ebeln":"","ebelp":"00010","menge":0,"werks":"1000","lgort":"0001"}'
+
+  check "goods-issue invalid body returns 400" \
+    "${BASE_URL}/goods-issue" \
+    "400" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-zod-003" \
+    -d '{"orderid":"","matnr":"20000001","menge":0,"werks":"1000","lgort":"0001"}'
 fi
 
 echo ""

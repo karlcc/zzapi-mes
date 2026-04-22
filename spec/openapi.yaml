@@ -1448,17 +1448,19 @@ components:
       properties:
         orderid:
           type: string
+          minLength: 1
           maxLength: 12
           description: Production order number
           example: "1000000"
         operation:
           type: string
+          minLength: 1
           maxLength: 4
           description: Operation number
           example: "0010"
         yield:
           type: number
-          minimum: 0
+          minimum: 1
           description: Yield quantity
           example: 50
         scrap:
@@ -1520,26 +1522,30 @@ components:
       properties:
         ebeln:
           type: string
+          minLength: 1
           maxLength: 10
           description: Purchasing document number
           example: "4500000001"
         ebelp:
           type: string
+          minLength: 1
           maxLength: 5
           description: Item number
           example: "00010"
         menge:
           type: number
-          minimum: 0
+          minimum: 1
           description: Quantity to receive
           example: 100
         werks:
           type: string
+          minLength: 1
           maxLength: 4
           description: Plant
           example: "1000"
         lgort:
           type: string
+          minLength: 1
           maxLength: 4
           description: Storage location
           example: "0001"
@@ -1593,26 +1599,30 @@ components:
       properties:
         orderid:
           type: string
+          minLength: 1
           maxLength: 12
           description: Production order number
           example: "1000000"
         matnr:
           type: string
+          minLength: 1
           maxLength: 18
           description: Component material number
           example: "20000001"
         menge:
           type: number
-          minimum: 0
+          minimum: 1
           description: Quantity to issue
           example: 50
         werks:
           type: string
+          minLength: 1
           maxLength: 4
           description: Plant
           example: "1000"
         lgort:
           type: string
+          minLength: 1
           maxLength: 4
           description: Storage location
           example: "0001"
