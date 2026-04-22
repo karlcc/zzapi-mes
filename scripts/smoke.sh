@@ -177,6 +177,44 @@ if [[ "$HUB_MODE" != "1" ]]; then
     "$PO_POST_URL" \
     "405" POST \
     ".error" "Method not allowed"
+
+  # Phase 5A direct SAP endpoints
+  echo ""
+  echo "-- Phase 5A: prod-order, material, stock, po-items, routing, work-center (direct) --"
+
+  check "prod-order returns aufnr" \
+    "${BASE_URL}/sap/bc/zzapi_mes_prod_order?aufnr=1000000" \
+    "200" GET \
+    ".aufnr" "1000000"
+
+  check "prod-order missing aufnr returns 400" \
+    "${BASE_URL}/sap/bc/zzapi_mes_prod_order" \
+    "400" GET
+
+  check "material returns matnr" \
+    "${BASE_URL}/sap/bc/zzapi_mes_material?matnr=10000001" \
+    "200" GET
+
+  check "stock with werks returns data" \
+    "${BASE_URL}/sap/bc/zzapi_mes_stock?matnr=10000001&werks=1000" \
+    "200" GET
+
+  check "stock without werks returns 400" \
+    "${BASE_URL}/sap/bc/zzapi_mes_stock?matnr=10000001" \
+    "400" GET
+
+  check "po-items returns ebeln" \
+    "${BASE_URL}/sap/bc/zzapi_mes_po_items?ebeln=4500000001" \
+    "200" GET \
+    ".ebeln" "4500000001"
+
+  check "routing with werks returns data" \
+    "${BASE_URL}/sap/bc/zzapi_mes_routing?matnr=10000001&werks=1000" \
+    "200" GET
+
+  check "work-center with werks returns arbpl" \
+    "${BASE_URL}/sap/bc/zzapi_mes_wc?arbpl=TURN1&werks=1000" \
+    "200" GET
 fi
 
 if [[ "$HUB_MODE" == "1" ]]; then
