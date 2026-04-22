@@ -7,7 +7,7 @@ ENDCLASS.
 CLASS zcl_zzapi_mes_po_items IMPLEMENTATION.
   METHOD if_http_extension~handle_request.
     " PO line items — Strategy D ICF REST endpoint.
-    " Returns PO items (EKPO) with delivery schedule (EKET).
+    " Returns EKPO items + EKET delivery schedule for a PO.
     " Tables: EKPO, EKET.
 
     DATA: lv_method TYPE string,
@@ -26,37 +26,31 @@ CLASS zcl_zzapi_mes_po_items IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        " --- Check PO exists ---
-        DATA: lv_exists TYPE abap_bool.
-        SELECT SINGLE @abap_true INTO @lv_exists FROM ekko WHERE ebeln = @lv_ebeln.
-        IF lv_exists <> abap_true.
-          server->response->set_status( code = 404 reason = 'Not Found' ).
-          server->response->set_content_type( 'application/json' ).
-          server->response->set_cdata( '{"error":"PO not found"}' ).
-          RETURN.
-        ENDIF.
-
-        " --- PO items (EKPO) ---
+        " --- PO line items (EKPO) ---
         DATA: lt_ekpo TYPE TABLE OF ekpo,
               lv_ekpo_json TYPE string.
+
         SELECT * INTO TABLE lt_ekpo FROM ekpo
           WHERE ebeln = lv_ebeln
           ORDER BY ebelp.
-        IF lines( lt_ekpo ) > 0.
-          lv_ekpo_json = zz_cl_json=>serialize(
-            data        = lt_ekpo
-            compress    = abap_true
-            pretty_name = zz_cl_json=>pretty_mode-camel_case ).
-        ELSE.
-          lv_ekpo_json = '[]'.
+        IF lines( lt_ekpo ) = 0.
+          server->response->set_status( code = 404 reason = 'Not Found' ).
+          server->response->set_content_type( 'application/json' ).
+          server->response->set_cdata( '{"error":"No items found for PO"}' ).
+          RETURN.
         ENDIF.
+
+        lv_ekpo_json = zz_cl_json=>serialize(
+          data        = lt_ekpo
+          compress    = abap_true
+          pretty_name = zz_cl_json=>pretty_mode-camel_case ).
 
         " --- Delivery schedule (EKET) ---
         DATA: lt_eket TYPE TABLE OF eket,
               lv_eket_json TYPE string.
         SELECT * INTO TABLE lt_eket FROM eket
           WHERE ebeln = lv_ebeln
-          ORDER BY ebelp.
+          ORDER BY ebelp etenr.
         IF lines( lt_eket ) > 0.
           lv_eket_json = zz_cl_json=>serialize(
             data        = lt_eket

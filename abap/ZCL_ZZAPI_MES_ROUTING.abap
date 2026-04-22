@@ -7,8 +7,8 @@ ENDCLASS.
 CLASS zcl_zzapi_mes_routing IMPLEMENTATION.
   METHOD if_http_extension~handle_request.
     " Routing / recipe lookup — Strategy D ICF REST endpoint.
-    " Returns operation sequence and standard times for a material at a plant.
-    " Tables: MAPL (task list assignment), PLKO (header), PLPO (operations).
+    " Returns operation sequence + standard times for a material at a plant.
+    " Tables: MAPL (material→task list), PLKO (header), PLPO (operations).
 
     DATA: lv_method TYPE string,
           lv_matnr  TYPE matnr,
@@ -33,35 +33,49 @@ CLASS zcl_zzapi_mes_routing IMPLEMENTATION.
         SELECT SINGLE * INTO ls_mapl FROM mapl
           WHERE matnr = lv_matnr
             AND werks = lv_werks
+            AND plnty = 'R'          " Routing
             AND loekz = abap_false
-          ORDER BY PRIMARY KEY.
+            AND plnal = '01'.        " Default alternative
         IF sy-subrc <> 0.
-          server->response->set_status( code = 404 reason = 'Not Found' ).
-          server->response->set_content_type( 'application/json' ).
-          server->response->set_cdata( '{"error":"Routing not found for given material/plant"}' ).
-          RETURN.
+          " Try any non-deleted routing
+          SELECT SINGLE * INTO ls_mapl FROM mapl
+            WHERE matnr = lv_matnr
+              AND werks = lv_werks
+              AND plnty = 'R'
+              AND loekz = abap_false.
+          IF sy-subrc <> 0.
+            server->response->set_status( code = 404 reason = 'Not Found' ).
+            server->response->set_content_type( 'application/json' ).
+            server->response->set_cdata( '{"error":"No routing found for material/plant"}' ).
+            RETURN.
+          ENDIF.
         ENDIF.
 
         " --- Task list header (PLKO) ---
-        DATA: ls_plko TYPE plko.
+        DATA: ls_plko TYPE plko,
+              lv_plko_json TYPE string.
         SELECT SINGLE * INTO ls_plko FROM plko
-          WHERE plnnr = ls_mapl-plnnr
-            AND plnal = ls_mapl-plnal.
-        DATA: lv_plko_json TYPE string.
-        lv_plko_json = zz_cl_json=>serialize(
-          data        = ls_plko
-          compress    = abap_true
-          pretty_name = zz_cl_json=>pretty_mode-camel_case ).
+          WHERE plnty = ls_mapl-plnty
+            AND plnnr = ls_mapl-plnnr
+            AND plnal = ls_mapl-plnal
+            AND loekz = abap_false.
+        IF sy-subrc = 0.
+          lv_plko_json = zz_cl_json=>serialize(
+            data        = ls_plko
+            compress    = abap_true
+            pretty_name = zz_cl_json=>pretty_mode-camel_case ).
+        ELSE.
+          lv_plko_json = 'null'.
+        ENDIF.
 
         " --- Operations (PLPO) ---
         DATA: lt_plpo TYPE TABLE OF plpo,
               lv_ops_json TYPE string.
         SELECT * INTO TABLE lt_plpo FROM plpo
-          WHERE plnnr = ls_mapl-plnnr
-            AND plnkn IN ( SELECT plnkn FROM plfh
-                           WHERE plnnr = ls_mapl-plnnr
-                             AND plnal = ls_mapl-plnal
-                             AND loekz = abap_false )
+          WHERE plnty = ls_mapl-plnty
+            AND plnnr = ls_mapl-plnnr
+            AND plnal = ls_mapl-plnal
+            AND loekz = abap_false
           ORDER BY vornr.
         IF lines( lt_plpo ) > 0.
           lv_ops_json = zz_cl_json=>serialize(
@@ -77,6 +91,8 @@ CLASS zcl_zzapi_mes_routing IMPLEMENTATION.
           '{'
             '"matnr":"' lv_matnr '",'
             '"werks":"' lv_werks '",'
+            '"plnnr":"' ls_mapl-plnnr '",'
+            '"plnal":"' ls_mapl-plnal '",'
             '"header":' lv_plko_json ','
             '"operations":' lv_ops_json
           '}'
