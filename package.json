@@ -1,0 +1,14 @@
+{
+  "name": "zzapi-mes",
+  "private": true,
+  "version": "0.0.0",
+  "description": "SAP ICF REST handler SDK + CLI for MES integration",
+  "license": "UNLICENSED",
+  "scripts": {
+    "smoke": "bash scripts/smoke.sh"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}
