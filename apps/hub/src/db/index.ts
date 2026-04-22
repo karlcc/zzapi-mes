@@ -69,6 +69,13 @@ export function runMigrations(db: Database.Database): void {
       INSERT INTO _migrations (version, applied_at) VALUES (1, ${Math.floor(Date.now() / 1000)});
     `);
   }
+
+  if (v < 2) {
+    db.exec(`
+      ALTER TABLE audit_log ADD COLUMN sap_duration_ms INTEGER;
+      INSERT INTO _migrations (version, applied_at) VALUES (2, ${Math.floor(Date.now() / 1000)});
+    `);
+  }
 }
 
 const FIND_BY_ID = `
@@ -189,8 +196,8 @@ export function evictIdempotencyKeys(db: Database.Database, maxAgeSeconds: numbe
 // ---------------------------------------------------------------------------
 
 const AUDIT_INSERT = `
-  INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, created_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?)`;
+  INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
 export function writeAudit(
   db: Database.Database,
@@ -201,6 +208,7 @@ export function writeAudit(
     path: string;
     body?: string;
     sap_status?: number;
+    sap_duration_ms?: number;
   },
 ): void {
   db.prepare(AUDIT_INSERT).run(
@@ -210,6 +218,7 @@ export function writeAudit(
     record.path,
     record.body ?? null,
     record.sap_status ?? null,
+    record.sap_duration_ms ?? null,
     Math.floor(Date.now() / 1000),
   );
 }

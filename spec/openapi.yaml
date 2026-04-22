@@ -171,6 +171,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body too large (max 1 MB)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
@@ -208,6 +214,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Insufficient scope (requires 'po')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid path parameter (exceeds maxLength)
           content:
             application/json:
               schema:
@@ -533,6 +545,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid path parameter (exceeds maxLength)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Order not found
           content:
@@ -594,6 +612,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Insufficient scope (requires 'material')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid path parameter (exceeds maxLength)
           content:
             application/json:
               schema:
@@ -670,6 +694,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid path parameter (exceeds maxLength)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: No stock data found
           content:
@@ -724,6 +754,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Insufficient scope (requires 'po')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid path parameter (exceeds maxLength)
           content:
             application/json:
               schema:
@@ -793,6 +829,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid path parameter (exceeds maxLength)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Routing not found
           content:
@@ -854,6 +896,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Insufficient scope (requires 'work_center')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid path parameter (exceeds maxLength)
           content:
             application/json:
               schema:
@@ -921,6 +969,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Insufficient scope (requires 'conf')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body too large (max 1 MB)
           content:
             application/json:
               schema:
@@ -1000,6 +1054,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body too large (max 1 MB)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Duplicate Idempotency-Key
           content:
@@ -1071,6 +1131,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Insufficient scope (requires 'gi')
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body too large (max 1 MB)
           content:
             application/json:
               schema:

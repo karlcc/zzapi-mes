@@ -60,6 +60,7 @@ export function createGoodsReceiptRouter(sap: SapClient) {
         path: "/goods-receipt",
         body: JSON.stringify(parsed.data),
         sap_status: sapStatus,
+        sap_duration_ms: Math.round(durationMs),
       });
     }
 

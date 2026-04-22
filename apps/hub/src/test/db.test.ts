@@ -148,6 +148,7 @@ describe("DB layer — audit_log", () => {
       path: "/confirmation",
       body: '{"orderid":"1000000"}',
       sap_status: 201,
+      sap_duration_ms: 123,
     });
     const row = db.prepare("SELECT * FROM audit_log WHERE req_id = ?").get("req-1") as Record<string, unknown> | undefined;
     assert.ok(row);
@@ -155,6 +156,7 @@ describe("DB layer — audit_log", () => {
     assert.equal(row!.path, "/confirmation");
     assert.equal(row!.sap_status, 201);
     assert.equal(row!.key_id, "kid1");
+    assert.equal(row!.sap_duration_ms, 123);
   });
 
   it("writeAudit with optional fields null", () => {
@@ -168,5 +170,43 @@ describe("DB layer — audit_log", () => {
     assert.ok(row);
     assert.equal(row!.body, null);
     assert.equal(row!.sap_status, null);
+    assert.equal(row!.sap_duration_ms, null);
+  });
+
+  it("v2 adds sap_duration_ms column", () => {
+    // Insert a row so the SELECT works even with an empty table
+    writeAudit(db, { req_id: "v2test", key_id: "k", method: "GET", path: "/t", sap_duration_ms: 42 });
+    const row = db.prepare("SELECT sap_duration_ms FROM audit_log WHERE req_id = ?").get("v2test") as Record<string, unknown> | undefined;
+    assert.ok(row);
+    assert.equal(row!.sap_duration_ms, 42);
+  });
+});
+
+describe("DB layer — migrations", () => {
+  it("runMigrations creates _migrations table", () => {
+    const table = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='_migrations'").get() as { name: string } | undefined;
+    assert.ok(table);
+    assert.equal(table!.name, "_migrations");
+  });
+
+  it("runMigrations applies latest version", () => {
+    const row = db.prepare("SELECT version FROM _migrations ORDER BY version DESC LIMIT 1").get() as { version: number } | undefined;
+    assert.ok(row);
+    assert.ok(row!.version >= 2);
+  });
+
+  it("runMigrations is idempotent — calling twice does not re-apply v1", () => {
+    const before = db.prepare("SELECT COUNT(*) AS cnt FROM _migrations").get() as { cnt: number };
+    runMigrations(db); // second call
+    const after = db.prepare("SELECT COUNT(*) AS cnt FROM _migrations").get() as { cnt: number };
+    assert.equal(after.cnt, before.cnt);
+  });
+
+  it("v1 creates expected indexes", () => {
+    const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'").all() as { name: string }[];
+    const names = indexes.map(i => i.name);
+    assert.ok(names.includes("idx_idempotency_created_at"));
+    assert.ok(names.includes("idx_audit_log_key_id"));
+    assert.ok(names.includes("idx_audit_log_created_at"));
   });
 });

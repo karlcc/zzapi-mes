@@ -60,6 +60,7 @@ export function createConfirmationRouter(sap: SapClient) {
         path: "/confirmation",
         body: JSON.stringify(parsed.data),
         sap_status: sapStatus,
+        sap_duration_ms: Math.round(durationMs),
       });
     }
 

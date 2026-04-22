@@ -60,6 +60,7 @@ export function createGoodsIssueRouter(sap: SapClient) {
         path: "/goods-issue",
         body: JSON.stringify(parsed.data),
         sap_status: sapStatus,
+        sap_duration_ms: Math.round(durationMs),
       });
     }
 
