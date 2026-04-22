@@ -20,7 +20,8 @@ With the hub (Phase 3):
 
 ```
 MES client ──(API key)──▶ Hub POST /auth/token ──▶ JWT (15 min)
-MES client ──(JWT)──────▶ Hub GET /ping, /po/:ebeln ──▶ SAP ICF (Basic Auth)
+MES client ──(JWT)──────▶ Hub GET /ping, /po/:ebeln, /prod-order/:aufnr, … ──▶ SAP ICF (Basic Auth)
+MES client ──(JWT)──────▶ Hub POST /confirmation, /goods-receipt, /goods-issue ──▶ SAP ICF (Basic Auth)
 ```
 
 ## Phase Roadmap
@@ -120,6 +121,19 @@ npx zzapi-mes ping
 | `ZCL_ZZAPI_MES_GR` | `/sap/bc/zzapi_mes_gr` | POST | Goods receipt for PO |
 | `ZCL_ZZAPI_MES_GI` | `/sap/bc/zzapi_mes_gi` | POST | Goods issue for prod order |
 
+### Hub Read Endpoints (Phase 5A)
+
+| Path | Method | Scope | Description |
+|---|---|---|---|
+| `/ping` | GET | `ping` | Health check |
+| `/po/:ebeln` | GET | `po` | PO info |
+| `/prod-order/:aufnr` | GET | `prod_order` | Production order detail |
+| `/material/:matnr` | GET | `material` | Material master |
+| `/stock/:matnr` | GET | `stock` | Stock / availability |
+| `/po/:ebeln/items` | GET | `po` | PO line items |
+| `/routing/:matnr` | GET | `routing` | Routing / recipe |
+| `/work-center/:arbpl` | GET | `work_center` | Work center |
+
 ### Hub Write-Back Endpoints (Phase 5B)
 
 | Path | Method | Scope | Description |
@@ -154,8 +168,31 @@ API_KEY=$(node apps/hub/dist/admin/cli.js keys create --label local-dev --scopes
 ```bash
 TOKEN=$(curl -s localhost:8080/auth/token \
   -d "{\"api_key\":\"$API_KEY\"}" -H 'content-type: application/json' | jq -r .token)
+
+# Read endpoints
 curl -H "authorization: Bearer $TOKEN" localhost:8080/ping
 curl -H "authorization: Bearer $TOKEN" localhost:8080/po/3010000608
+curl -H "authorization: Bearer $TOKEN" localhost:8080/prod-order/1000000
+curl -H "authorization: Bearer $TOKEN" localhost:8080/material/10000001
+curl -H "authorization: Bearer $TOKEN" "localhost:8080/stock/10000001?werks=1000"
+curl -H "authorization: Bearer $TOKEN" localhost:8080/po/4500000001/items
+curl -H "authorization: Bearer $TOKEN" "localhost:8080/routing/10000001?werks=1000"
+curl -H "authorization: Bearer $TOKEN" "localhost:8080/work-center/TURN1?werks=1000"
+
+# Write-back endpoints (require idempotency key)
+curl -H "authorization: Bearer $TOKEN" -H "idempotency-key: conf-001" \
+  -H "content-type: application/json" \
+  -d '{"orderid":"1000000","operation":"0010","yield":50}' \
+  localhost:8080/confirmation
+curl -H "authorization: Bearer $TOKEN" -H "idempotency-key: gr-001" \
+  -H "content-type: application/json" \
+  -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}' \
+  localhost:8080/goods-receipt
+curl -H "authorization: Bearer $TOKEN" -H "idempotency-key: gi-001" \
+  -H "content-type: application/json" \
+  -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}' \
+  localhost:8080/goods-issue
+
 curl localhost:8080/healthz
 curl localhost:8080/metrics
 ```

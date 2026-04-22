@@ -298,6 +298,20 @@ describe("GET /healthz", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.ok, true);
   });
+
+  it("returns 503 when DB is unreachable", async () => {
+    // Create app with a db that throws on prepare()
+    const brokenDb = {
+      prepare: () => { throw new Error("disk I/O error"); },
+    } as unknown as Database.Database;
+    const brokenApp = createApp(new MockSapClient() as unknown as SapClient, { db: brokenDb });
+    const req = new Request("http://localhost/healthz");
+    const res = await brokenApp.fetch(req);
+    assert.equal(res.status, 503);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "database unreachable");
+  });
 });
 
 describe("Rate limiting", () => {

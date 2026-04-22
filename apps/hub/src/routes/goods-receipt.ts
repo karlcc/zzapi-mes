@@ -36,7 +36,7 @@ export function createGoodsReceiptRouter(sap: SapClient) {
       sapStatus = 201;
     } catch (e) {
       if (e instanceof ZzapiMesHttpError) {
-        const status = e.status === 422 ? 422 : 502;
+        const status = e.status === 409 ? 409 : e.status === 422 ? 422 : 502;
         return c.json({ error: e.message, ebeln: parsed.data.ebeln }, status);
       }
       return c.json({ error: "SAP upstream error" }, 502);

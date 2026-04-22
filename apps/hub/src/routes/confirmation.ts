@@ -36,8 +36,8 @@ export function createConfirmationRouter(sap: SapClient) {
       sapStatus = 201;
     } catch (e) {
       if (e instanceof ZzapiMesHttpError) {
-        // Map SAP error back to client — 422 from SAP means business logic rejection
-        const status = e.status === 422 ? 422 : 502;
+        // Map SAP error back to client — 409 conflict, 422 business logic rejection
+        const status = e.status === 409 ? 409 : e.status === 422 ? 422 : 502;
         return c.json({ error: e.message, orderid: parsed.data.orderid }, status);
       }
       return c.json({ error: "SAP upstream error" }, 502);

@@ -404,4 +404,44 @@ describe("HubClient", () => {
       (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 502,
     );
   });
+
+  it("goodsReceipt retries on 401", async () => {
+    let authCalls = 0;
+    let postCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      postCalls++;
+      if (postCalls === 1) return jsonResponse(401, { error: "expired" });
+      return jsonResponse(201, { ebeln: "4500000001", ebelp: "00010", menge: 100, materialDocument: "5000000001", documentYear: "2026", status: "posted" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).goodsReceipt(
+      { ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" },
+      "retry-gr-001",
+    );
+    assert.equal(authCalls, 2);
+    assert.equal(result.status, "posted");
+  });
+
+  it("goodsIssue retries on 401", async () => {
+    let authCalls = 0;
+    let postCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      postCalls++;
+      if (postCalls === 1) return jsonResponse(401, { error: "expired" });
+      return jsonResponse(201, { orderid: "1000000", matnr: "20000001", menge: 50, materialDocument: "5000000002", documentYear: "2026", status: "posted" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).goodsIssue(
+      { orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" },
+      "retry-gi-001",
+    );
+    assert.equal(authCalls, 2);
+    assert.equal(result.status, "posted");
+  });
 });

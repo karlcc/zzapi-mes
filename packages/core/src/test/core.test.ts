@@ -73,6 +73,30 @@ describe("SapClient", () => {
     assert.equal(ZzapiMesClient, SapClient);
   });
 
+  it("calls onRequest hook before each request", async () => {
+    globalThis.fetch = mockFetch(200, '{"ok":true,"sap_time":"20260422163000"}');
+    const hookCalls: Array<{ url: string; method: string }> = [];
+    await new SapClient({
+      ...CFG,
+      onRequest: (ctx) => { hookCalls.push(ctx); },
+    }).ping();
+    assert.equal(hookCalls.length, 1);
+    assert.equal(hookCalls[0]!.method, "GET");
+    assert.match(hookCalls[0]!.url, /zzapi_mes_ping/);
+  });
+
+  it("calls onResponse hook after each response", async () => {
+    globalThis.fetch = mockFetch(200, '{"ok":true,"sap_time":"20260422163000"}');
+    const hookCalls: Array<{ url: string; status: number; durationMs: number }> = [];
+    await new SapClient({
+      ...CFG,
+      onResponse: (ctx) => { hookCalls.push(ctx); },
+    }).ping();
+    assert.equal(hookCalls.length, 1);
+    assert.equal(hookCalls[0]!.status, 200);
+    assert.ok(hookCalls[0]!.durationMs >= 0);
+  });
+
   // Phase 5A methods
 
   it("getProdOrder builds correct URL", async () => {
