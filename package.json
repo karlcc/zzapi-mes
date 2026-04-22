@@ -8,7 +8,7 @@
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "smoke": "bash scripts/smoke.sh",
-    "spec:gen": "openapi-zod-client spec/openapi.yaml -o packages/core/src/generated/schemas.ts --export-schemas"
+    "spec:gen": "bash scripts/spec-gen.sh"
   },
   "devDependencies": {
     "openapi-zod-client": "^1.18.0"

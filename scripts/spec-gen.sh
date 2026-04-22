@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# spec-gen.sh — regenerate Zod schemas from OpenAPI spec and clean up zodios code
+#
+# Usage: pnpm spec:gen  (calls this script)
+#
+# openapi-zod-client produces zodios API code + Zod schemas. We strip
+# the zodios parts and add Schema-suffix re-exports that the codebase depends on.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+# Step 1: Regenerate from spec
+npx openapi-zod-client spec/openapi.yaml -o packages/core/src/generated/schemas.ts --export-schemas
+
+FILE="packages/core/src/generated/schemas.ts"
+
+# Step 2: Strip @zodios/core import line
+sed -i '' '/^import { makeApi, Zodios, type ZodiosOptions } from "@zodios\/core";$/d' "$FILE"
+
+# Step 3: Remove everything from "const endpoints" to EOF
+# Find the line number where "const endpoints" starts and truncate
+ENDPOINTS_LINE=$(grep -n '^const endpoints' "$FILE" | head -1 | cut -d: -f1)
+if [ -n "$ENDPOINTS_LINE" ]; then
+  # Keep everything before the endpoints line
+  head -n $((ENDPOINTS_LINE - 1)) "$FILE" > "${FILE}.tmp" && mv "${FILE}.tmp" "$FILE"
+fi
+
+# Step 4: Trim trailing blank lines before the schemas closing brace
+perl -i -00 -pe 's/\n{3,}$/\n\n/' "$FILE"
+
+# Step 5: Add Schema-suffix re-exports
+cat >> "$FILE" <<'REEXPORTS'
+// Re-export with Schema suffix for consumers that depend on the XxxSchema naming convention
+export const PingResponseSchema = PingResponse;
+export const PoResponseSchema = PoResponse;
+export const ErrorResponseSchema = ErrorResponse;
+export const ProdOrderResponseSchema = ProdOrderResponse;
+export const MaterialResponseSchema = MaterialResponse;
+export const StockResponseSchema = StockResponse;
+export const PoItemsResponseSchema = PoItemsResponse;
+export const RoutingResponseSchema = RoutingResponse;
+export const WorkCenterResponseSchema = WorkCenterResponse;
+export const ConfirmationRequestSchema = ConfirmationRequest;
+export const ConfirmationResponseSchema = ConfirmationResponse;
+export const GoodsReceiptRequestSchema = GoodsReceiptRequest;
+export const GoodsReceiptResponseSchema = GoodsReceiptResponse;
+export const GoodsIssueRequestSchema = GoodsIssueRequest;
+export const GoodsIssueResponseSchema = GoodsIssueResponse;
+REEXPORTS
+
+echo "Done — schemas.ts regenerated and cleaned"
