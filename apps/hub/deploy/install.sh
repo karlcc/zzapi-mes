@@ -4,13 +4,14 @@
 #
 # Prerequisites:
 #   - Node 20+ installed at /usr/bin/node
-#   - A non-root user (e.g. zzapi-mes) to run the service
+#   - sudo privileges
 #
 # What this does:
 #   1. Builds the project if dist/ is missing
-#   2. Copies hub dist + node_modules to /opt/zzapi-mes-hub
-#   3. Installs the env file if none exists
-#   4. Installs and enables the systemd unit
+#   2. Creates the zzapi-mes system user if missing
+#   3. Copies hub dist + node_modules to /opt/zzapi-mes-hub
+#   4. Installs the env file if none exists (mode 640, root:zzapi-mes)
+#   5. Installs and enables the systemd unit
 
 set -euo pipefail
 
@@ -20,16 +21,22 @@ SERVICE_USER="${SUDO_USER:-zzapi-mes}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-# --- 1. Build if needed ---
+# --- 1. Build if needed (runs as invoking user) ---
 if [ ! -d "$REPO_ROOT/apps/hub/dist" ]; then
   echo "Building project..."
   (cd "$REPO_ROOT" && pnpm build)
 fi
 
-# --- 2. Copy to install dir ---
+# --- 2. Ensure service user exists ---
+if ! id -u zzapi-mes >/dev/null 2>&1; then
+  echo "Creating system user zzapi-mes..."
+  sudo useradd --system --no-create-home --shell /usr/sbin/nologin zzapi-mes
+fi
+
+# --- 3. Copy to install dir ---
 echo "Installing to $INSTALL_DIR..."
 sudo mkdir -p "$INSTALL_DIR"
-sudo rsync -a --delete "$REPO_ROOT/apps/hub/dist/" "$INSTALL_DIR/dist/"
+sudo rsync -a --delete --chown=root:zzapi-mes "$REPO_ROOT/apps/hub/dist/" "$INSTALL_DIR/dist/"
 
 # Copy node_modules needed at runtime
 # We need @hono/node-server, hono, zod, and @zzapi-mes/core + its deps
@@ -44,16 +51,18 @@ else
   sudo rsync -a "$REPO_ROOT/packages/core/dist/" "$INSTALL_DIR/node_modules/@zzapi-mes/core/dist/"
 fi
 
-# --- 3. Env file ---
+# --- 4. Env file ---
 if [ ! -f "$ENV_FILE" ]; then
   echo "Installing example env file to $ENV_FILE"
   sudo cp "$SCRIPT_DIR/zzapi-mes-hub.env.example" "$ENV_FILE"
+  sudo chown root:zzapi-mes "$ENV_FILE"
+  sudo chmod 640 "$ENV_FILE"
   echo "!! Edit $ENV_FILE with your values before starting the service !!"
 else
   echo "Env file $ENV_FILE already exists — not overwriting"
 fi
 
-# --- 4. Systemd unit ---
+# --- 5. Systemd unit ---
 echo "Installing systemd unit..."
 sudo cp "$SCRIPT_DIR/zzapi-mes-hub.service" /etc/systemd/system/
 sudo systemctl daemon-reload

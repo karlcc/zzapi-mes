@@ -31,6 +31,7 @@ MES client ──(JWT)──────▶ Hub GET /ping, /po/:ebeln ──▶ 
 | 1 | Deploy handlers on sapdev, curl round-trip verified | Pending (SAP GUI) |
 | 2 | OpenAPI spec, Node SDK (`@zzapi-mes/sdk`), CLI (`@zzapi-mes/cli`) | Done |
 | 3 | Node hub (`apps/hub`) with bearer tokens, SAP auth abstracted | Done |
+| 4 | Operability & security: persistent API keys, metrics, rate limiting, spec codegen, e2e tests | Proposed (`docs/phase-4-plan.md`) |
 
 ## Repo Layout
 

@@ -4,10 +4,25 @@ After=network.target
 
 [Service]
 Type=simple
+User=zzapi-mes
+Group=zzapi-mes
 EnvironmentFile=/etc/zzapi-mes-hub.env
 ExecStart=/usr/bin/node /opt/zzapi-mes-hub/dist/index.js
 Restart=on-failure
 RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 [Install]
 WantedBy=multi-user.target
