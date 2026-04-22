@@ -32,7 +32,7 @@ MES client ──(JWT)──────▶ Hub GET /ping, /po/:ebeln ──▶ 
 | 2 | OpenAPI spec, Node SDK (`@zzapi-mes/sdk`), CLI (`@zzapi-mes/cli`) | Done |
 | 3 | Node hub (`apps/hub`) with bearer tokens, SAP auth abstracted | Done |
 | 4 | Persistent API keys (SQLite+argon2id), admin CLI, request ID, structured logs, /metrics, rate limiting, spec codegen, e2e tests | Done |
-| 5 | MES business endpoints: PO items, material master, production orders, goods receipt, confirmations | Proposed (`docs/phase-5-plan.md`) |
+| 5 | MES business endpoints: PO items, material, stock, routing, work centers, production confirmations, goods receipt, goods issue | Done |
 
 ## Repo Layout
 
@@ -110,6 +110,22 @@ npx zzapi-mes ping
 |---|---|---|---|
 | `ZCL_ZZAPI_MES_PING` | `/sap/bc/zzapi_mes_ping` | GET | Health check |
 | `ZCL_ZZAPI_MES_HANDLER` | `/sap/bc/zzapi_mes` | GET | PO info by ebeln |
+| `ZCL_ZZAPI_MES_PROD_ORDER` | `/sap/bc/zzapi_mes_prod_order` | GET | Production order detail |
+| `ZCL_ZZAPI_MES_MATERIAL` | `/sap/bc/zzapi_mes_material` | GET | Material master |
+| `ZCL_ZZAPI_MES_STOCK` | `/sap/bc/zzapi_mes_stock` | GET | Stock / availability |
+| `ZCL_ZZAPI_MES_PO_ITEMS` | `/sap/bc/zzapi_mes_po_items` | GET | PO line items |
+| `ZCL_ZZAPI_MES_ROUTING` | `/sap/bc/zzapi_mes_routing` | GET | Routing / recipe |
+| `ZCL_ZZAPI_MES_WC` | `/sap/bc/zzapi_mes_wc` | GET | Work center |
+
+### Hub Write-Back Endpoints (Phase 5B)
+
+| Path | Method | Scope | Description |
+|---|---|---|---|
+| `/confirmation` | POST | `conf` | Production order confirmation |
+| `/goods-receipt` | POST | `gr` | Goods receipt for PO |
+| `/goods-issue` | POST | `gi` | Goods issue for production order |
+
+All write-back endpoints require an `Idempotency-Key` header for deduplication.
 
 ## Hub Quick Start
 

@@ -63,4 +63,4 @@ For multi-endpoint routing under one SICF node, dispatch on `server->request->ge
 | 2 (done) | OpenAPI spec in `spec/`, Node SDK `@zzapi-mes/sdk`, CLI `@zzapi-mes/cli` |
 | 3 (done) | `apps/hub` Hono service with JWT auth, `packages/core` extraction, CLI `--mode hub` |
 | 4 (done) | SQLite-backed API keys (argon2id) + admin CLI, request IDs, structured JSON logs, `/metrics`, per-key rate limiting, spec-driven zod codegen, e2e integration tests |
-| 5 (proposed) | MES business endpoints — PO line items, material master, production orders, goods receipt, production confirmations, stock overview, work centers. See `docs/phase-5-plan.md`. |
+| 5 (done) | MES business endpoints — Phase 5A read-only (production orders, material, stock, PO items, routing, work centers) + Phase 5B write-back (production confirmations, goods receipt, goods issue) with idempotency guard and audit logging. See `docs/phase-5-plan.md`. |
