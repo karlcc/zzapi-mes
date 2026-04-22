@@ -1,6 +1,6 @@
 # Phase 4 — Operability & Security Hardening
 
-> Status: **proposed**, 2026-04-22. Authored from a review pass over the Phase-3 codebase.
+> Status: **shipped**, 2026-04-22. Commit `b96b542`.
 
 ## TL;DR
 
