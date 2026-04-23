@@ -26,6 +26,16 @@ health.get("/healthz", async (c) => {
     return c.json({ ok: false, error: "database unreachable" }, 503);
   }
 
+  // Verify DB is writable — a read-only filesystem or full disk would pass
+  // the SELECT check above but cause silent failures on write-back routes.
+  try {
+    db.prepare("CREATE TABLE IF NOT EXISTS _healthz_write_check (id INTEGER PRIMARY KEY)").run();
+    db.prepare("INSERT INTO _healthz_write_check (id) VALUES (1)").run();
+    db.prepare("DELETE FROM _healthz_write_check WHERE id = 1").run();
+  } catch {
+    return c.json({ ok: false, error: "database not writable" }, 503);
+  }
+
   // Optional SAP reachability check via ?check=sap
   const check = c.req.query("check");
   if (check === "sap") {
@@ -45,15 +55,18 @@ health.get("/healthz", async (c) => {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), SAP_PING_TIMEOUT_MS);
-      await Promise.race([
-        sap.ping(),
-        new Promise((_, reject) =>
-          controller.signal.addEventListener("abort", () => reject(new Error("timeout"))),
-        ),
-      ]);
-      clearTimeout(timer);
-      sapCache = { ok: true, checkedAt: now };
-      return c.json({ ok: true, sap: "reachable" });
+      try {
+        await Promise.race([
+          sap.ping(),
+          new Promise((_, reject) =>
+            controller.signal.addEventListener("abort", () => reject(new Error("timeout"))),
+          ),
+        ]);
+        sapCache = { ok: true, checkedAt: now };
+        return c.json({ ok: true, sap: "reachable" });
+      } finally {
+        clearTimeout(timer);
+      }
     } catch {
       sapCache = { ok: false, checkedAt: now, error: "SAP unreachable" };
       return c.json({ ok: false, error: "SAP unreachable" }, 503);

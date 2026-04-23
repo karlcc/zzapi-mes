@@ -8,7 +8,7 @@ import Database from "better-sqlite3";
 import argon2 from "argon2";
 import { runMigrations, insertKey } from "../db/index.js";
 
-const JWT_SECRET = "integration-test-secret";
+const JWT_SECRET = "integration-test-16ch";
 
 process.env.HUB_JWT_SECRET = JWT_SECRET;
 process.env.HUB_JWT_TTL_SECONDS = "900";

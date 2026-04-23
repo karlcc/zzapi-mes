@@ -20,11 +20,17 @@ export async function withSapCall<T>(
     return c.json(result);
   } catch (err) {
     if (err instanceof ZzapiMesHttpError) {
-      const status = err.status === 408 ? 504 : err.status;
+      // Map SAP timeout (408) to gateway timeout (504) per OpenAPI spec.
+      // Sanitize 5xx errors to avoid leaking SAP internals (short dumps,
+      // table names, ABAP stack traces) to external clients — matches the
+      // write-back route behavior.
+      const isClientError = err.status >= 400 && err.status < 500;
+      const status = err.status === 408 ? 504 : isClientError ? err.status : 502;
+      const message = isClientError ? err.message : "SAP upstream error";
       c.set("sapStatus", err.status);
       return c.json(
-        { error: err.message },
-        status as 400 | 404 | 405 | 500 | 502 | 504,
+        { error: message },
+        status as 400 | 404 | 405 | 502 | 504,
       );
     }
     return c.json({ error: "Internal proxy error" }, 502);

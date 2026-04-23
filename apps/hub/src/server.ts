@@ -37,6 +37,15 @@ function requireEnv(name: string): string {
   return val;
 }
 
+function requireEnvMin(name: string, minLen: number): string {
+  const val = requireEnv(name);
+  if (val.length < minLen) {
+    console.error(`Env var ${name} must be at least ${minLen} characters (got ${val.length})`);
+    process.exit(1);
+  }
+  return val;
+}
+
 // ---------------------------------------------------------------------------
 // Auth route
 // ---------------------------------------------------------------------------
@@ -53,16 +62,25 @@ export interface AppDeps {
 
 /** Build the Hono app. Callers provide a SapClient (or one is created from env). */
 export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variables: HubVariables }>; db: Database.Database } {
-  const jwtSecret = requireEnv("HUB_JWT_SECRET");
+  const jwtSecret = requireEnvMin("HUB_JWT_SECRET", 16);
   const jwtTtl = Number(process.env.HUB_JWT_TTL_SECONDS) || 900;
 
-  const client = sap ?? new SapClient({
-    host: requireEnv("SAP_HOST"),
-    client: Number(requireEnv("SAP_CLIENT")),
-    user: requireEnv("SAP_USER"),
-    password: requireEnv("SAP_PASS"),
-    timeout: Number(process.env.SAP_TIMEOUT) || undefined,
-  });
+  // Only validate SAP env vars when creating SapClient from env (not when
+  // caller provides one, e.g. in tests)
+  const client = sap ?? (() => {
+    const sapClientNum = Number(requireEnv("SAP_CLIENT"));
+    if (!Number.isInteger(sapClientNum) || sapClientNum <= 0) {
+      console.error("SAP_CLIENT must be a positive integer");
+      process.exit(1);
+    }
+    return new SapClient({
+      host: requireEnv("SAP_HOST"),
+      client: sapClientNum,
+      user: requireEnv("SAP_USER"),
+      password: requireEnv("SAP_PASS"),
+      timeout: Number(process.env.SAP_TIMEOUT) || undefined,
+    });
+  })();
 
   // Open DB if not provided (production path)
   const db = deps?.db ?? (() => {

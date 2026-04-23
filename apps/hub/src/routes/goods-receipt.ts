@@ -54,21 +54,30 @@ export function createGoodsReceiptRouter(sap: SapClient) {
     // Audit log + idempotency status update in one atomic transaction
     const db = c.get("db") as Database.Database | undefined;
     if (db) {
-      const finalizeWrite = db.transaction(() => {
-        writeAudit(db, {
-          req_id: reqId,
-          key_id: keyId,
-          method: "POST",
-          path: "/goods-receipt",
-          body: JSON.stringify(parsed.data),
-          sap_status: sapStatus,
-          sap_duration_ms: Math.round(durationMs),
+      try {
+        const finalizeWrite = db.transaction(() => {
+          writeAudit(db, {
+            req_id: reqId,
+            key_id: keyId,
+            method: "POST",
+            path: "/goods-receipt",
+            body: JSON.stringify(parsed.data),
+            sap_status: sapStatus,
+            sap_duration_ms: Math.round(durationMs),
+          });
+          if (idempotencyKey) {
+            updateIdempotencyStatus(db, idempotencyKey, clientStatus);
+          }
         });
-        if (idempotencyKey) {
-          updateIdempotencyStatus(db, idempotencyKey, clientStatus);
-        }
-      });
-      finalizeWrite();
+        finalizeWrite();
+      } catch (dbErr) {
+        console.error(JSON.stringify({
+          type: "audit_write_error",
+          path: "/goods-receipt",
+          req_id: reqId,
+          error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+        }));
+      }
     }
 
     sapDuration.labels({ route: "/goods-receipt" }).observe(durationMs / 1000);

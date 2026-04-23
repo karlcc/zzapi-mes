@@ -10,7 +10,7 @@ import { runMigrations, insertKey, writeAudit, revokeKey, checkIdempotency, evic
 import { _resetBucketsForTest } from "../middleware/rate-limit.js";
 import { _resetSapHealthCacheForTest } from "../routes/health.js";
 
-const JWT_SECRET = "test-secret";
+const JWT_SECRET = "test-secret-16ch";
 
 // Set env vars before creating app
 process.env.HUB_JWT_SECRET = JWT_SECRET;
@@ -1800,13 +1800,15 @@ describe("GET route SAP error handling", () => {
     assert.equal(res.status, 504);
   });
 
-  it("passes SAP 500 through on /ping", async () => {
+  it("maps SAP 500 to 502 with sanitized message on /ping", async () => {
     mockPingError = new ZzapiMesHttpError(500, "SAP internal error");
     const token = await validToken(["ping"]);
     const res = await fetchApi("/ping", {
       headers: { authorization: `Bearer ${token}` },
     });
-    assert.equal(res.status, 500);
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
   });
 
   it("returns 502 on non-ZzapiMesHttpError from SAP", async () => {

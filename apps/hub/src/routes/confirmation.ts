@@ -59,21 +59,32 @@ export function createConfirmationRouter(sap: SapClient) {
     // retry rather than blocking with no audit trail.
     const db = c.get("db") as Database.Database | undefined;
     if (db) {
-      const finalizeWrite = db.transaction(() => {
-        writeAudit(db, {
-          req_id: reqId,
-          key_id: keyId,
-          method: "POST",
-          path: "/confirmation",
-          body: JSON.stringify(parsed.data),
-          sap_status: sapStatus,
-          sap_duration_ms: Math.round(durationMs),
+      try {
+        const finalizeWrite = db.transaction(() => {
+          writeAudit(db, {
+            req_id: reqId,
+            key_id: keyId,
+            method: "POST",
+            path: "/confirmation",
+            body: JSON.stringify(parsed.data),
+            sap_status: sapStatus,
+            sap_duration_ms: Math.round(durationMs),
+          });
+          if (idempotencyKey) {
+            updateIdempotencyStatus(db, idempotencyKey, clientStatus);
+          }
         });
-        if (idempotencyKey) {
-          updateIdempotencyStatus(db, idempotencyKey, clientStatus);
-        }
-      });
-      finalizeWrite();
+        finalizeWrite();
+      } catch (dbErr) {
+        // SAP already committed — do not return error to client (would cause
+        // duplicate retry). Log and continue with the successful SAP response.
+        console.error(JSON.stringify({
+          type: "audit_write_error",
+          path: "/confirmation",
+          req_id: reqId,
+          error: dbErr instanceof Error ? dbErr.message : String(dbErr),
+        }));
+      }
     }
 
     sapDuration.labels({ route: "/confirmation" }).observe(durationMs / 1000);

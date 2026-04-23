@@ -31,7 +31,12 @@ export async function verifyApiKey(
   if (!record) return null;
   if (record.revoked_at !== null) return null;
 
-  const match = await argon2.verify(record.hash, presented);
+  let match: boolean;
+  try {
+    match = await argon2.verify(record.hash, presented);
+  } catch {
+    return null;
+  }
   if (!match) return null;
 
   return {
