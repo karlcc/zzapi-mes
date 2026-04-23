@@ -157,6 +157,12 @@ describe("Hub startup validation", () => {
     assert.ok(stderr.includes("SAP_TIMEOUT"), `stderr should mention SAP_TIMEOUT: ${stderr}`);
   });
 
+  it("rejects SAP_TIMEOUT=0 with exit 1", async () => {
+    const { stderr, code } = await run({ SAP_TIMEOUT: "0" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("SAP_TIMEOUT"), `stderr should mention SAP_TIMEOUT: ${stderr}`);
+  });
+
   it("rejects missing HUB_JWT_SECRET with exit 1", async () => {
     const { stderr, code } = await run({ HUB_JWT_SECRET: "" });
     assert.notEqual(code, 0);
