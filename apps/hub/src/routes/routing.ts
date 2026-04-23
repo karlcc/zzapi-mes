@@ -3,18 +3,21 @@ import type { SapClient } from "@zzapi-mes/core";
 import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
+import { validateParam } from "./validate.js";
 
 export function createRoutingRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();
 
   router.get("/routing/:matnr", async (c) => {
     const matnr = c.req.param("matnr");
-    if (matnr.length > 18) return c.json({ error: "Parameter 'matnr' exceeds maximum length of 18" }, 400);
+    const bad = validateParam(c, "matnr", matnr, 18);
+    if (bad) return bad;
     const werks = c.req.query("werks");
     if (!werks) {
       return c.json({ error: "Missing required query parameter: werks" }, 400);
     }
-    if (werks.length > 4) return c.json({ error: "Query parameter 'werks' exceeds maximum length of 4" }, 400);
+    const badW = validateParam(c, "werks", werks, 4, "query");
+    if (badW) return badW;
     try {
       const start = performance.now();
       const result = await sap.getRouting(matnr, werks);

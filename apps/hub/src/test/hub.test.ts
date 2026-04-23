@@ -8,6 +8,7 @@ import Database from "better-sqlite3";
 import argon2 from "argon2";
 import { runMigrations, insertKey } from "../db/index.js";
 import { _resetBucketsForTest } from "../middleware/rate-limit.js";
+import { _resetSapHealthCacheForTest } from "../routes/health.js";
 
 const JWT_SECRET = "test-secret";
 
@@ -156,6 +157,7 @@ beforeEach(async () => {
   db = new Database(":memory:");
   runMigrations(db);
   _resetBucketsForTest();
+  _resetSapHealthCacheForTest();
   testKeyPlaintext = await seedTestKey();
 });
 
@@ -331,6 +333,23 @@ describe("GET /healthz", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.ok, false);
     assert.equal(body.error, "database unreachable");
+  });
+
+  it("returns ok with sap=reachable when ?check=sap and SAP responds", async () => {
+    const res = await fetchApi("/healthz?check=sap");
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.ok, true);
+    assert.equal(body.sap, "reachable");
+  });
+
+  it("returns 503 when ?check=sap and SAP is unreachable", async () => {
+    mockPingError = new ZzapiMesHttpError(502, "Network error");
+    const res = await fetchApi("/healthz?check=sap");
+    assert.equal(res.status, 503);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "SAP unreachable");
   });
 });
 
@@ -1190,12 +1209,32 @@ describe("Path parameter validation", () => {
     assert.ok(String(body.error).includes("ebeln"));
   });
 
+  it("GET /po/:ebeln rejects ebeln with special characters", async () => {
+    const token = await validToken();
+    const res = await fetchApi(`/po/123%3B456`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("invalid characters"));
+  });
+
   it("GET /prod-order/:aufnr rejects aufnr longer than 12 chars", async () => {
     const token = await validToken();
     const res = await fetchApi(`/prod-order/${"A".repeat(13)}`, {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 400);
+  });
+
+  it("GET /prod-order/:aufnr rejects aufnr with special characters", async () => {
+    const token = await validToken();
+    const res = await fetchApi(`/prod-order/123%3Cscript%3E`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("invalid characters"));
   });
 
   it("GET /material/:matnr allows matnr up to 18 chars", async () => {
@@ -1207,9 +1246,25 @@ describe("Path parameter validation", () => {
     assert.notEqual(res.status, 400);
   });
 
+  it("GET /material/:matnr rejects matnr with special characters", async () => {
+    const token = await validToken();
+    const res = await fetchApi(`/material/123%27OR%201%3D1`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+  });
+
   it("GET /work-center/:arbpl rejects arbpl longer than 8 chars", async () => {
     const token = await validToken();
     const res = await fetchApi(`/work-center/${"A".repeat(9)}?werks=1000`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("GET /work-center/:arbpl rejects arbpl with special characters", async () => {
+    const token = await validToken();
+    const res = await fetchApi(`/work-center/AB%20CD?werks=1000`, {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 400);
@@ -1328,6 +1383,14 @@ describe("Query parameter validation", () => {
     const token = await validToken();
     const res = await fetchApi("/material/10000001?werks=ABCDE", { headers: { authorization: `Bearer ${token}` } });
     assert.equal(res.status, 400);
+  });
+
+  it("rejects werks with special characters on /stock", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/stock/10000001?werks=1%3B00&lgort=0001", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("invalid characters"));
   });
 });
 

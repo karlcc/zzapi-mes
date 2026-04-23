@@ -3,18 +3,21 @@ import type { SapClient } from "@zzapi-mes/core";
 import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
+import { validateParam } from "./validate.js";
 
 export function createWorkCenterRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();
 
   router.get("/work-center/:arbpl", async (c) => {
     const arbpl = c.req.param("arbpl");
-    if (arbpl.length > 8) return c.json({ error: "Parameter 'arbpl' exceeds maximum length of 8" }, 400);
+    const bad = validateParam(c, "arbpl", arbpl, 8);
+    if (bad) return bad;
     const werks = c.req.query("werks");
     if (!werks) {
       return c.json({ error: "Missing required query parameter: werks" }, 400);
     }
-    if (werks.length > 4) return c.json({ error: "Query parameter 'werks' exceeds maximum length of 4" }, 400);
+    const badW = validateParam(c, "werks", werks, 4, "query");
+    if (badW) return badW;
     try {
       const start = performance.now();
       const result = await sap.getWorkCenter(arbpl, werks);

@@ -3,13 +3,15 @@ import type { SapClient } from "@zzapi-mes/core";
 import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
+import { validateParam } from "./validate.js";
 
 export function createPoItemsRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();
 
   router.get("/po/:ebeln/items", async (c) => {
     const ebeln = c.req.param("ebeln");
-    if (ebeln.length > 10) return c.json({ error: "Parameter 'ebeln' exceeds maximum length of 10" }, 400);
+    const bad = validateParam(c, "ebeln", ebeln, 10);
+    if (bad) return bad;
     try {
       const start = performance.now();
       const result = await sap.getPoItems(ebeln);

@@ -3,13 +3,15 @@ import type { SapClient } from "@zzapi-mes/core";
 import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
+import { validateParam } from "./validate.js";
 
 export function createProdOrderRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();
 
   router.get("/prod-order/:aufnr", async (c) => {
     const aufnr = c.req.param("aufnr");
-    if (aufnr.length > 12) return c.json({ error: "Parameter 'aufnr' exceeds maximum length of 12" }, 400);
+    const bad = validateParam(c, "aufnr", aufnr, 12);
+    if (bad) return bad;
     try {
       const start = performance.now();
       const result = await sap.getProdOrder(aufnr);
