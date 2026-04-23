@@ -7,3 +7,6 @@ dist/
 ~/.zzapirc
 logs/
 .claude/scheduled_tasks.lock
+*.db
+*.db-wal
+*.db-shm

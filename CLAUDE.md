@@ -24,7 +24,7 @@ The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go throug
 
 - `pnpm build` — compile core, SDK, CLI, and hub TypeScript packages.
 - `pnpm test` — run unit tests across core + hub + CLI (Node built-in test runner, mocked fetch + in-memory SQLite for hub).
-- `pnpm spec:gen` — regenerate Zod schemas from `spec/openapi.yaml` via `scripts/spec-gen.sh` (runs openapi-zod-client then strips zodios code and adds `*Schema` re-exportss). CI drift gate checks this.
+- `pnpm spec:gen` — regenerate Zod schemas from `spec/openapi.yaml` via `scripts/spec-gen.sh` (runs openapi-zod-client then strips zodios code and adds `*Schema` re-exports). CI drift gate checks this.
 - `pnpm smoke` — run the curl smoke suite against sapdev. Requires handlers to already be deployed. Override creds/host via env:
   ```
   SAP_USER="${SAP_USER:?required}" SAP_PASS="${SAP_PASS:?required}" SAP_HOST=sapdev.fastcell.hk:8000 pnpm smoke
@@ -61,7 +61,8 @@ For multi-endpoint routing under one SICF node, dispatch on `server->request->ge
 ### Middleware Chain (write-back routes)
 
 Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
-1. **JWT verification** (`middleware/jwt.ts`) — validates Bearer token, extracts scopes
+1. **Method guard** (`middleware/method-guard.ts`) — rejects wrong HTTP methods with 405 before JWT/scope/idempotency checks run
+2. **JWT verification** (`middleware/jwt.ts`) — validates Bearer token, extracts scopes
 2. **Scope enforcement** (`middleware/jwt.ts`) — checks required scope (conf/gr/gi)
 3. **Idempotency guard** (`middleware/idempotency.ts`) — requires `Idempotency-Key` header, stores SHA-256 body hash in SQLite. Returns:
    - `409` if same key + same body (true duplicate)
@@ -91,18 +92,25 @@ The hub uses `hono/cors` middleware. Set `HUB_CORS_ORIGIN` to a comma-separated 
 | 403 | Insufficient scope |
 | 409 | Duplicate idempotency key (same body), or SAP backflush conflict (goods-issue) |
 | 422 | Idempotency key reused with different body, or SAP business rule rejection |
-| 429 | Rate limit exceeded |
+| 429 | Rate limit exceeded (includes `Retry-After` header) |
 | 502 | SAP upstream error (non-422/409) |
 
 ### Path Parameter Validation
 
 All GET route handlers use `validateParam()` from `routes/validate.ts` to enforce: non-empty, alphanumeric-only (`[A-Za-z0-9]+`), and maxLength per parameter. This prevents injection and invalid requests from reaching SAP. Write-back routes validate via Zod schemas instead.
 
+### SAP Call Helper (GET routes)
+
+All 8 read-only hub routes delegate to `withSapCall()` in `routes/sap-call.ts`, which wraps:
+- Timing (`sap_duration_ms` metric)
+- Error mapping (any thrown `ZzapiMesHttpError` → appropriate HTTP status; non-ZzapiMesHttpError → 502)
+- `Retry-After` header capture on 429 responses
+
 ## Phase Roadmap
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Deploy `ZCL_ZZAPI_MES_PING` + `ZCL_ZZAPI_MES_HANDLER`, curl round-trip verified | Pending (SAP GUI) |
+| 1 | Deploy `ZCL_ZZAPI_MES_PING` + `ZCL_ZZAPI_MES_HANDLER`, curl round-trip verified | In progress (ping live ✅, 10 remaining) |
 | 2 | OpenAPI spec, Node SDK, CLI | Done |
 | 3 | Hub with JWT auth, SAP auth abstracted | Done |
 | 4 | Persistent API keys, admin CLI, request IDs, logs, metrics, rate limiting, spec codegen, e2e tests | Done |

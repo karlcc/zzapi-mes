@@ -29,7 +29,7 @@ MES client ──(JWT)──────▶ Hub POST /confirmation, /goods-recei
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Repo init, ABAP source mirrors, demo walkthrough | Done |
-| 1 | Deploy handlers on sapdev, curl round-trip verified | Pending (SAP GUI) |
+| 1 | Deploy handlers on sapdev, curl round-trip verified | In progress (ping live ✅, 10 remaining) |
 | 2 | OpenAPI spec, Node SDK (`@zzapi-mes/sdk`), CLI (`@zzapi-mes/cli`) | Done |
 | 3 | Node hub (`apps/hub`) with bearer tokens, SAP auth abstracted | Done |
 | 4 | Persistent API keys (SQLite+argon2id), admin CLI, request ID, structured logs, /metrics, rate limiting, spec codegen, e2e tests | Done |
@@ -102,8 +102,9 @@ npx zzapi-mes ping
 | Command | Description |
 |---|---|
 | `pnpm build` | Compile all TypeScript packages |
-| `pnpm test` | Run unit tests (mocked fetch) |
+| `pnpm test` | Run unit tests (333 passing: 90 core + 217 hub + 26 CLI) |
 | `pnpm smoke` | Curl round-trip tests against sapdev |
+| `pnpm spec:gen` | Regenerate `packages/core/src/generated/schemas.ts` from OpenAPI spec |
 
 ## Endpoints
 
@@ -142,7 +143,7 @@ npx zzapi-mes ping
 | `/goods-receipt` | POST | `gr` | Goods receipt for PO |
 | `/goods-issue` | POST | `gi` | Goods issue for production order |
 
-All write-back endpoints require an `Idempotency-Key` header for deduplication.
+All write-back endpoints require an `Idempotency-Key` header for deduplication. 429 responses include a `Retry-After` header.
 
 ## Hub Quick Start
 
@@ -214,6 +215,18 @@ zzapi-mes-hub-admin keys list
 zzapi-mes-hub-admin keys revoke <key_id>
 ```
 
+### Audit & Retention
+
+```bash
+# Prune audit log entries older than N days
+zzapi-mes-hub-admin audit prune --days 90
+
+# Evict stale idempotency keys older than N seconds
+zzapi-mes-hub-admin idempotency evict --max-age-seconds 86400
+```
+
+The hub runs both operations automatically on startup (configurable via `HUB_AUDIT_RETENTION_DAYS`).
+
 ### Rotating HUB_JWT_SECRET
 
 Changing `HUB_JWT_SECRET` invalidates all outstanding JWTs. Clients will get 401 and must re-authenticate with their API key. Steps:
@@ -223,7 +236,7 @@ Changing `HUB_JWT_SECRET` invalidates all outstanding JWTs. Clients will get 401
 
 ### Metrics
 
-Scrape `GET /metrics` from Prometheus (localhost-only by default). Key counters:
+Scrape `GET /metrics` from Prometheus (localhost-only by default). Key counters and histograms:
 
 - `zzapi_hub_requests_total{route,status,key_id}`
 - `zzapi_hub_request_duration_seconds{route}`

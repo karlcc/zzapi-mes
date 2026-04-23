@@ -61,7 +61,7 @@ npm config set msvs_version 2022
 ### 3. Clone and build the repo
 
 ```powershell
-cd C:\Users\karl\code          # or preferred location
+cd C:\Users\karlchow\code          # or preferred location
 git clone <repo-url> zzapi-mes
 cd zzapi-mes
 pnpm install
@@ -143,8 +143,8 @@ nssm install zzapi-mes-hub
 
 # In the nssm GUI that pops up, set:
 #   Path:   C:\Program Files\nodejs\node.exe
-#   Args:   C:\Users\karl\code\zzapi-mes\apps\hub\dist\index.js
-#   Start directory: C:\Users\karl\code\zzapi-mes\apps\hub
+#   Args:   C:\Users\karlchow\code\zzapi-mes\apps\hub\dist\index.js
+#   Start directory: C:\Users\karlchow\code\zzapi-mes\apps\hub
 #
 #   I/O tab → Output: C:\var\zzapi-mes-hub\stdout.log
 #   I/O tab → Error:  C:\var\zzapi-mes-hub\stderr.log
@@ -162,8 +162,8 @@ nssm install zzapi-mes-hub
 Or via CLI (no GUI):
 
 ```powershell
-nssm install zzapi-mes-hub "C:\Program Files\nodejs\node.exe" "C:\Users\karl\code\zzapi-mes\apps\hub\dist\index.js"
-nssm set zzapi-mes-hub AppDirectory "C:\Users\karl\code\zzapi-mes\apps\hub"
+nssm install zzapi-mes-hub "C:\Program Files\nodejs\node.exe" "C:\Users\karlchow\code\zzapi-mes\apps\hub\dist\index.js"
+nssm set zzapi-mes-hub AppDirectory "C:\Users\karlchow\code\zzapi-mes\apps\hub"
 nssm set zzapi-mes-hub AppStdout "C:\var\zzapi-mes-hub\stdout.log"
 nssm set zzapi-mes-hub AppStderr "C:\var\zzapi-mes-hub\stderr.log"
 nssm set zzapi-mes-hub AppEnvironmentExtra "HUB_PORT=8080" "HUB_JWT_SECRET=<secret>" "HUB_DB_PATH=C:\var\zzapi-mes-hub\hub.db" "SAP_HOST=sapdev.fastcell.hk:8000" "SAP_CLIENT=200" "SAP_USER=<actual-user>" "SAP_PASS=<pass>"
