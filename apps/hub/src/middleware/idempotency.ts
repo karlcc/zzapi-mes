@@ -71,6 +71,16 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
         422,
       );
     }
+    // If status is still 0 (pending), the previous request crashed before
+    // completing. Return 409 without original_status to signal the client
+    // should retry with a new idempotency key rather than treating 0 as
+    // a valid response code.
+    if (existing.status === 0) {
+      return c.json(
+        { error: "Duplicate request; previous attempt did not complete. Retry with a new Idempotency-Key" },
+        409,
+      );
+    }
     return c.json(
       { error: "Duplicate request", original_status: existing.status },
       409,

@@ -81,3 +81,21 @@ describe("checkIdempotency race condition (UNIQUE constraint retry)", () => {
     assert.ok(result, "should return existing record regardless of key_id");
   });
 });
+
+describe("idempotency guard pending-status handling", () => {
+  let pendDb: Database.Database;
+  beforeEach(() => {
+    pendDb = new Database(":memory:");
+    runMigrations(pendDb);
+  });
+  afterEach(() => { pendDb.close(); });
+
+  it("checkIdempotency returns status=0 for newly inserted key (pending)", () => {
+    const result = checkIdempotency(pendDb, "pending-key", "k1", "/confirmation", 0, "hash1");
+    assert.equal(result, null, "first insert returns null");
+    // Look up again — should get the record with status=0
+    const existing = checkIdempotency(pendDb, "pending-key", "k1", "/confirmation", 0, "hash1");
+    assert.ok(existing, "duplicate should return existing record");
+    assert.equal(existing!.status, 0, "pending status should be 0");
+  });
+});
