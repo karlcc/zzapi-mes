@@ -3,7 +3,9 @@ import { z } from "zod";
 const PingResponse = z
   .object({ ok: z.boolean(), sap_time: z.string().regex(/^[0-9]{14}$/) })
   .passthrough();
-const ErrorResponse = z.object({ error: z.string() }).passthrough();
+const ErrorResponse = z
+  .object({ error: z.string(), original_status: z.number().int().optional() })
+  .passthrough();
 const PoResponse = z
   .object({
     ebeln: z.string().max(10),

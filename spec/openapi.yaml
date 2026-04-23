@@ -1642,6 +1642,10 @@ components:
         error:
           type: string
           example: "PO not found"
+        original_status:
+          type: integer
+          description: Original HTTP status from a prior idempotency-checked request (present on 409 duplicate responses only)
+          example: 201
 
     TokenResponse:
       type: object

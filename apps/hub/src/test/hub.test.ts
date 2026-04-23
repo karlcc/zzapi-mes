@@ -2334,6 +2334,81 @@ describe("Chunked body + idempotency body-hash", () => {
   });
 });
 
+describe("Write-back DB transaction failure after SAP success", () => {
+  it("returns 201 even when audit+idempotency write fails", async () => {
+    // Close the in-memory DB to force writeAudit to throw
+    db.close();
+    // Create a new closed DB so the app gets a handle that will fail on write
+    const brokenDb = new Database(":memory:");
+    runMigrations(brokenDb);
+    // Seed a key in the broken DB so auth works, then corrupt the audit table
+    const keyId = "wbdbtest";
+    const secret = "wbdbtestsecret123456789abcdef012";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(brokenDb, {
+      id: keyId,
+      hash,
+      label: "wb db fail test",
+      scopes: ALL_SCOPES.join(","),
+      rate_limit_per_min: null,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+    // Drop audit_log table to force writeAudit to throw
+    brokenDb.exec("DROP TABLE audit_log");
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db: brokenDb }).app;
+    const token = await sign(
+      { key_id: keyId, scopes: [...ALL_SCOPES], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900, rate_limit_per_min: 600 },
+      JWT_SECRET,
+    );
+
+    // Capture console.error to verify audit_write_error is logged
+    const errors: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: unknown[]) => { if (typeof args[0] === "string") errors.push(args[0]); };
+
+    try {
+      const req = new Request("http://localhost/confirmation", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": "wb-db-fail-001",
+        },
+        body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+      });
+      const res = await testApp.fetch(req);
+      assert.equal(res.status, 201, "should return 201 even when DB write fails");
+      const body = await res.json() as Record<string, unknown>;
+      assert.equal(body.status, "confirmed");
+      assert.ok(errors.some(e => e.includes("audit_write_error")), "should log audit_write_error");
+    } finally {
+      console.error = origErr;
+      brokenDb.close();
+    }
+  });
+});
+
+describe("SAP 429 on write-back route", () => {
+  it("maps SAP 429 to 502 (not forwarded, unlike GET routes)", async () => {
+    mockConfError = new ZzapiMesHttpError(429, "Too Many Requests");
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `sap429-wb-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    // mapSapError treats 429 as non-409/422, so it maps to 502
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+  });
+});
+
 describe("Audit log retention", () => {
   it("pruneAuditLog removes rows older than N days and keeps recent ones", () => {
     const now = Math.floor(Date.now() / 1000);
