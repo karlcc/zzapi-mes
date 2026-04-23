@@ -41,7 +41,9 @@ export function createConfirmationRouter(sap: SapClient) {
       if (e instanceof ZzapiMesHttpError) {
         sapStatus = e.status;
         clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : e.status === 408 ? 504 : 502;
-        errorMsg = e.message;
+        // Only echo upstream message for business-rule errors; otherwise return generic text
+        // to avoid leaking internal SAP details (short dumps, table names) to clients.
+        errorMsg = (e.status === 409 || e.status === 422) ? e.message : "SAP upstream error";
       } else {
         sapStatus = 502;
         clientStatus = 502;

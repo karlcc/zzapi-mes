@@ -16,6 +16,8 @@ const DB_PATH = () => process.env.HUB_DB_PATH ?? "/var/lib/zzapi-mes-hub/hub.db"
 export function openDb(path?: string): Database.Database {
   const db = new Database(path ?? DB_PATH());
   db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
+  db.pragma("busy_timeout = 5000");
   return db;
 }
 
@@ -214,6 +216,11 @@ const AUDIT_INSERT = `
   INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
+// Cap audit body size to keep the SQLite DB from bloating with full MES payloads.
+// Write-back requests can approach the 1 MB request limit; truncate to a fixed
+// prefix so we retain enough context for forensics without unbounded growth.
+const AUDIT_BODY_MAX = 4096;
+
 export function writeAudit(
   db: Database.Database,
   record: {
@@ -226,12 +233,16 @@ export function writeAudit(
     sap_duration_ms?: number;
   },
 ): void {
+  let body = record.body ?? null;
+  if (body && body.length > AUDIT_BODY_MAX) {
+    body = body.slice(0, AUDIT_BODY_MAX) + `...[truncated ${body.length - AUDIT_BODY_MAX}]`;
+  }
   db.prepare(AUDIT_INSERT).run(
     record.req_id,
     record.key_id,
     record.method,
     record.path,
-    record.body ?? null,
+    body,
     record.sap_status ?? null,
     record.sap_duration_ms ?? null,
     Math.floor(Date.now() / 1000),
