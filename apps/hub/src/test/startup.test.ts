@@ -32,8 +32,6 @@ describe("index.ts startup validation", () => {
 
   it("rejects HUB_AUDIT_RETENTION_DAYS=0", async () => {
     const tmpDir = await import("node:fs/promises").then((fs) => fs.mkdtemp("/tmp/zzapi-startup-"));
-    // Omit HUB_PORT so it defaults to 8080 — server will try to bind briefly,
-    // then setImmediate audit check triggers exit(1). Use 10s timeout.
     const { code, stderr } = await runWithEnv({
       HUB_JWT_SECRET: "at-least-16-chars-long",
       HUB_JWT_TTL_SECONDS: "900",
