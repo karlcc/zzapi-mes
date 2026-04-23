@@ -1,8 +1,8 @@
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { createServer, type Server } from "node:http";
 
 const CLI = join(__dirname, "..", "dist", "cli.js");
 
@@ -20,6 +20,33 @@ function run(args: string[], env?: Record<string, string>): Promise<{ stdout: st
     });
     proc.on("error", () => {});
   });
+}
+
+// Mini mock hub server for integration tests
+let mockServer: Server;
+let mockPort: number;
+
+function startMockHub(handler: (url: string, method: string, body: string) => { status: number; body: object; headers?: Record<string, string> }): Promise<void> {
+  return new Promise((resolve) => {
+    mockServer = createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", () => {
+        const result = handler(req.url ?? "/", req.method ?? "GET", body);
+        const headers = { "content-type": "application/json", ...(result.headers ?? {}) };
+        res.writeHead(result.status, headers);
+        res.end(JSON.stringify(result.body));
+      });
+    });
+    mockServer.listen(0, () => {
+      mockPort = (mockServer.address() as { port: number }).port;
+      resolve();
+    });
+  });
+}
+
+function stopMockHub(): Promise<void> {
+  return new Promise((resolve) => { mockServer.close(() => resolve()); });
 }
 
 describe("CLI", () => {
@@ -250,6 +277,91 @@ describe("CLI", () => {
       });
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("--werks"));
+    });
+  });
+
+  describe("hub mode write-back integration", () => {
+    afterEach(async () => { if (mockServer) await stopMockHub(); });
+
+    it("confirm command prints result on success", async () => {
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        return { status: 201, body: { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed", message: "ok" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "confirm", "1000000", "--yield", "50"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.status, "confirmed");
+    });
+
+    it("confirm command prints error on 422", async () => {
+      await startMockHub((url) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        return { status: 422, body: { error: "Order already confirmed" } };
+      });
+      const { stderr, code } = await run(
+        ["--mode", "hub", "confirm", "1000000", "--yield", "50"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("422") || stderr.includes("already confirmed"));
+    });
+
+    it("goods-receipt command prints result on success", async () => {
+      await startMockHub((url) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        return { status: 201, body: { ebeln: "4500000001", ebelp: "00010", menge: 100, materialDocument: "5000000001", documentYear: "2026", status: "posted", message: "ok" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "goods-receipt", "4500000001", "--menge", "100", "--werks", "1000", "--lgort", "0001"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.status, "posted");
+    });
+
+    it("goods-issue command prints result on success", async () => {
+      await startMockHub((url) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        return { status: 201, body: { orderid: "1000000", matnr: "20000001", menge: 50, materialDocument: "5000000002", documentYear: "2026", status: "posted", message: "ok" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "goods-issue", "1000000", "--matnr", "20000001", "--menge", "50", "--werks", "1000", "--lgort", "0001"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.status, "posted");
+    });
+
+    it("prints HTTP error on 502 upstream failure", async () => {
+      await startMockHub((url) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        return { status: 502, body: { error: "SAP upstream error" } };
+      });
+      const { stderr, code } = await run(
+        ["--mode", "hub", "confirm", "1000000", "--yield", "50"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("502") || stderr.includes("upstream"));
+    });
+
+    it("prints HTTP error on 401 auth failure", async () => {
+      await startMockHub((url) => {
+        if (url === "/auth/token") return { status: 401, body: { error: "Invalid API key" } };
+        return { status: 200, body: {} };
+      });
+      const { stderr, code } = await run(
+        ["--mode", "hub", "ping"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "bad-key" },
+      );
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("401") || stderr.includes("Invalid"));
     });
   });
 });

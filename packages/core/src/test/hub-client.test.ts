@@ -180,6 +180,26 @@ describe("HubClient", () => {
     });
   });
 
+  it("extracts retryAfter from 429 response", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      }
+      return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "30" },
+      });
+    });
+
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (err: unknown) => {
+      assert(err instanceof ZzapiMesHttpError);
+      assert.equal(err.status, 429);
+      assert.equal(err.retryAfter, 30);
+      return true;
+    });
+  });
+
   it("throws on non-JSON response", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) {
@@ -374,6 +394,25 @@ describe("HubClient", () => {
         "err-gi-001",
       ),
       (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 409,
+    );
+  });
+
+  it("extracts originalStatus from 409 duplicate response", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(409, { error: "Duplicate request", original_status: 201 });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
+        { orderid: "1000000", operation: "0010", yield: 50 },
+        "dup-key-001",
+      ),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 409);
+        assert.equal(e.originalStatus, 201);
+        return true;
+      },
     );
   });
 

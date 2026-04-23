@@ -213,7 +213,8 @@ export class HubClient {
     }
     if ("error" in json) {
       const retryAfter = res.status === 429 ? Number(res.headers.get("retry-after")) || undefined : undefined;
-      throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
+      const originalStatus = res.status === 409 && typeof json.original_status === "number" ? json.original_status : undefined;
+      throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter, originalStatus);
     }
     return json as T;
   }

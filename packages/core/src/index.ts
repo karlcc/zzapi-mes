@@ -112,11 +112,14 @@ export type ZzapiMesConfig = SapClientConfig;
 export class ZzapiMesHttpError extends Error {
   readonly status: number;
   readonly retryAfter?: number;
-  constructor(status: number, message: string, retryAfter?: number) {
+  /** Original HTTP status from a prior idempotency-checked request (409 duplicate only). */
+  readonly originalStatus?: number;
+  constructor(status: number, message: string, retryAfter?: number, originalStatus?: number) {
     super(message);
     this.name = "ZzapiMesHttpError";
     this.status = status;
     this.retryAfter = retryAfter;
+    this.originalStatus = originalStatus;
   }
 }
 
