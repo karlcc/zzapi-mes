@@ -862,6 +862,22 @@ describe("HubClient getToken validation", () => {
     );
   });
 
+  it("handles 'errors' as plain string (non-array)", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { errors: "No authorization for transaction MB01" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.equal(e.message, "No authorization for transaction MB01");
+        return true;
+      },
+    );
+  });
+
   it("handles 429 from auth endpoint", async () => {
     globalThis.fetch = mockFetch(() => jsonResponse(429, { error: "Too many requests" }));
     await assert.rejects(
