@@ -1940,6 +1940,62 @@ describe("Security headers", () => {
     }
   });
 
+  it("rejects HUB_JWT_SECRET shorter than 16 characters", async () => {
+    process.env.HUB_JWT_SECRET = "short";
+    const origExit = process.exit;
+    let exitCode = 0;
+    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
+    try {
+      createApp(new MockSapClient() as unknown as SapClient, { db });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.equal(exitCode, 1);
+    } finally {
+      process.exit = origExit;
+      process.env.HUB_JWT_SECRET = JWT_SECRET;
+    }
+  });
+
+  it("rejects missing SAP_* env vars when no SapClient provided", async () => {
+    delete process.env.SAP_HOST;
+    delete process.env.SAP_USER;
+    delete process.env.SAP_PASS;
+    delete process.env.SAP_CLIENT;
+    const origExit = process.exit;
+    let exitCode = 0;
+    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
+    try {
+      createApp(undefined, { db });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.equal(exitCode, 1);
+    } finally {
+      process.exit = origExit;
+    }
+  });
+
+  it("rejects SAP_CLIENT <= 0 when no SapClient provided", async () => {
+    process.env.SAP_HOST = "sapdev.test";
+    process.env.SAP_USER = "testuser";
+    process.env.SAP_PASS = "testpass";
+    process.env.SAP_CLIENT = "0";
+    const origExit = process.exit;
+    let exitCode = 0;
+    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
+    try {
+      createApp(undefined, { db });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.equal(exitCode, 1);
+    } finally {
+      process.exit = origExit;
+      delete process.env.SAP_HOST;
+      delete process.env.SAP_USER;
+      delete process.env.SAP_PASS;
+      delete process.env.SAP_CLIENT;
+    }
+  });
+
   it("no CORS headers when HUB_CORS_ORIGIN is unset", async () => {
     delete process.env.HUB_CORS_ORIGIN;
     const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;

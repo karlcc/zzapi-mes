@@ -3,6 +3,10 @@ import { createApp } from "./server.js";
 import { pruneAuditLog, evictIdempotencyKeys } from "./db/index.js";
 
 const port = Number(process.env.HUB_PORT) || 8080;
+if (port <= 0) {
+  console.error(`HUB_PORT must be a positive integer (got ${port})`);
+  process.exit(1);
+}
 const { app, db } = createApp();
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
@@ -16,6 +20,10 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
 setImmediate(() => {
   try {
     const auditRetentionDays = Number(process.env.HUB_AUDIT_RETENTION_DAYS) || 90;
+    if (auditRetentionDays <= 0) {
+      console.error(`HUB_AUDIT_RETENTION_DAYS must be positive (got ${auditRetentionDays}). Would prune all audit rows.`);
+      process.exit(1);
+    }
     const auditPruned = pruneAuditLog(db, auditRetentionDays);
     const idemEvicted = evictIdempotencyKeys(db, 300);
     console.log(`Startup maintenance: pruned ${auditPruned} audit rows (>${auditRetentionDays}d), evicted ${idemEvicted} idempotency keys (>300s)`);
