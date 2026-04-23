@@ -60,6 +60,16 @@ describe("verifyApiKey", () => {
     assert.equal(result, null);
   });
 
+  it("returns null for key with future revoked_at timestamp", async () => {
+    // verifyApiKey checks revoked_at !== null, not the timestamp value.
+    // A future timestamp (e.g. scheduled revocation) still blocks the key.
+    const plaintext = await seedKey("future revoked");
+    const futureTs = Math.floor(Date.now() / 1000) + 86400; // 24h in the future
+    db.prepare("UPDATE api_keys SET revoked_at = ? WHERE id = ?").run(futureTs, "future revoked");
+    const result = await verifyApiKey(db, plaintext);
+    assert.equal(result, null, "future revoked_at should still block the key");
+  });
+
   it("returns null for wrong secret", async () => {
     await seedKey("goodkey");
     const result = await verifyApiKey(db, "goodkey.wrongsecret00000000000000");
