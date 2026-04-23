@@ -151,61 +151,61 @@ export class SapClient {
 
   /** Health check — no DB hit, safe for monitoring probes. */
   async ping(): Promise<PingResponse> {
-    return this.request<PingResponse>({ path: "/sap/bc/zzapi_mes_ping" });
+    return this.request<PingResponse>({ path: "/sap/bc/zzapi/mes/ping" });
   }
 
   /** Look up a purchase order by ebeln. */
   async getPo(ebeln: string): Promise<PoResponse> {
-    return this.request<PoResponse>({ path: "/sap/bc/zzapi_mes", params: { ebeln } });
+    return this.request<PoResponse>({ path: "/sap/bc/zzapi/mes/handler", params: { ebeln } });
   }
 
   /** Look up a production order by aufnr. */
   async getProdOrder(aufnr: string): Promise<ProdOrderResponse> {
-    return this.request<ProdOrderResponse>({ path: "/sap/bc/zzapi_mes_prod_order", params: { aufnr } });
+    return this.request<ProdOrderResponse>({ path: "/sap/bc/zzapi/mes/prod_order", params: { aufnr } });
   }
 
   /** Look up material master by matnr, optionally filtered by plant. */
   async getMaterial(matnr: string, werks?: string): Promise<MaterialResponse> {
     const params: Record<string, string> = { matnr };
     if (werks) params.werks = werks;
-    return this.request<MaterialResponse>({ path: "/sap/bc/zzapi_mes_material", params });
+    return this.request<MaterialResponse>({ path: "/sap/bc/zzapi/mes/material", params });
   }
 
   /** Look up stock/availability for a material at a plant. */
   async getStock(matnr: string, werks: string, lgort?: string): Promise<StockResponse> {
     const params: Record<string, string> = { matnr, werks };
     if (lgort) params.lgort = lgort;
-    return this.request<StockResponse>({ path: "/sap/bc/zzapi_mes_stock", params });
+    return this.request<StockResponse>({ path: "/sap/bc/zzapi/mes/stock", params });
   }
 
   /** Look up PO line items by ebeln. */
   async getPoItems(ebeln: string): Promise<PoItemsResponse> {
-    return this.request<PoItemsResponse>({ path: "/sap/bc/zzapi_mes_po_items", params: { ebeln } });
+    return this.request<PoItemsResponse>({ path: "/sap/bc/zzapi/mes/po_items", params: { ebeln } });
   }
 
   /** Look up routing/recipe for a material at a plant. */
   async getRouting(matnr: string, werks: string): Promise<RoutingResponse> {
-    return this.request<RoutingResponse>({ path: "/sap/bc/zzapi_mes_routing", params: { matnr, werks } });
+    return this.request<RoutingResponse>({ path: "/sap/bc/zzapi/mes/routing", params: { matnr, werks } });
   }
 
   /** Look up work center details. */
   async getWorkCenter(arbpl: string, werks: string): Promise<WorkCenterResponse> {
-    return this.request<WorkCenterResponse>({ path: "/sap/bc/zzapi_mes_wc", params: { arbpl, werks } });
+    return this.request<WorkCenterResponse>({ path: "/sap/bc/zzapi/mes/wc", params: { arbpl, werks } });
   }
 
   /** Post a production order confirmation. */
   async postConfirmation(data: ConfirmationRequest): Promise<ConfirmationResponse> {
-    return this.postRequest<ConfirmationResponse>("/sap/bc/zzapi_mes_conf", data);
+    return this.postRequest<ConfirmationResponse>("/sap/bc/zzapi/mes/conf", data);
   }
 
   /** Post a goods receipt against a purchase order. */
   async postGoodsReceipt(data: GoodsReceiptRequest): Promise<GoodsReceiptResponse> {
-    return this.postRequest<GoodsReceiptResponse>("/sap/bc/zzapi_mes_gr", data);
+    return this.postRequest<GoodsReceiptResponse>("/sap/bc/zzapi/mes/gr", data);
   }
 
   /** Post a goods issue for a production order. */
   async postGoodsIssue(data: GoodsIssueRequest): Promise<GoodsIssueResponse> {
-    return this.postRequest<GoodsIssueResponse>("/sap/bc/zzapi_mes_gi", data);
+    return this.postRequest<GoodsIssueResponse>("/sap/bc/zzapi/mes/gi", data);
   }
 
   private async request<T>(opts: { path: string; params?: Record<string, string> }): Promise<T> {

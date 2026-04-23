@@ -21,7 +21,7 @@ function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: n
       res.setHeader("content-type", "application/json");
 
       // --- POST write-back endpoints ---
-      if (req.method === "POST" && req.url?.includes("zzapi_mes_conf")) {
+      if (req.method === "POST" && req.url?.includes("zzapi/mes/conf")) {
         let body = "";
         req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         req.on("end", () => {
@@ -49,7 +49,7 @@ function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: n
         });
         return;
       }
-      if (req.method === "POST" && req.url?.includes("zzapi_mes_gr")) {
+      if (req.method === "POST" && req.url?.includes("zzapi/mes/gr")) {
         let body = "";
         req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         req.on("end", () => {
@@ -76,7 +76,7 @@ function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: n
         });
         return;
       }
-      if (req.method === "POST" && req.url?.includes("zzapi_mes_gi")) {
+      if (req.method === "POST" && req.url?.includes("zzapi/mes/gi")) {
         let body = "";
         req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         req.on("end", () => {
@@ -110,9 +110,9 @@ function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: n
       }
 
       // --- GET read endpoints ---
-      if (req.url?.includes("zzapi_mes_ping")) {
+      if (req.url?.includes("zzapi/mes/ping")) {
         res.end(JSON.stringify({ ok: true, sap_time: "20260422163000" }));
-      } else if (req.url?.includes("zzapi_mes_prod_order")) {
+      } else if (req.url?.includes("zzapi/mes/prod_order")) {
         const match = req.url.match(/aufnr=([0-9]+)/);
         const aufnr = match?.[1] ?? "0";
         res.end(JSON.stringify({
@@ -126,7 +126,7 @@ function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: n
           operations: [{ vornr: "0010", ltxa1: "Turning", arbpl: "TURN1", vgwrt: 2.5 }],
           components: [{ matnr: "20000001", bdmenge: 500, meins: "EA", werks: "1000" }],
         }));
-      } else if (req.url?.includes("zzapi_mes_material")) {
+      } else if (req.url?.includes("zzapi/mes/material")) {
         const match = req.url.match(/matnr=([^&]+)/);
         const matnr = match?.[1] ?? "0";
         res.end(JSON.stringify({
@@ -135,7 +135,7 @@ function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: n
           meins: "EA",
           maktx: "Test material",
         }));
-      } else if (req.url?.includes("zzapi_mes_routing")) {
+      } else if (req.url?.includes("zzapi/mes/routing")) {
         const match = req.url.match(/matnr=([^&]+)/);
         const matnr = match?.[1] ?? "0";
         res.end(JSON.stringify({
@@ -144,7 +144,7 @@ function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: n
           plnnr: "50000123",
           operations: [{ vornr: "0010", ltxa1: "Turning", arbpl: "TURN1", vgwrt: 2.5 }],
         }));
-      } else if (req.url?.includes("zzapi_mes_wc")) {
+      } else if (req.url?.includes("zzapi/mes/wc")) {
         const match = req.url.match(/arbpl=([^&]+)/);
         const arbpl = match?.[1] ?? "0";
         res.end(JSON.stringify({
@@ -153,7 +153,7 @@ function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: n
           ktext: "CNC Turning Center",
           steus: "PP01",
         }));
-      } else if (req.url?.includes("zzapi_mes_stock")) {
+      } else if (req.url?.includes("zzapi/mes/stock")) {
         const match = req.url.match(/matnr=([^&]+)/);
         const matnr = match?.[1] ?? "0";
         res.end(JSON.stringify({
@@ -161,14 +161,14 @@ function startMockSap(errorMode: string = ""): Promise<{ server: Server; port: n
           werks: "1000",
           items: [{ lgort: "0001", clabs: 250, avail_qty: 200 }],
         }));
-      } else if (req.url?.includes("zzapi_mes_po_items")) {
+      } else if (req.url?.includes("zzapi/mes/po_items")) {
         const match = req.url.match(/ebeln=([0-9]+)/);
         const ebeln = match?.[1] ?? "0";
         res.end(JSON.stringify({
           ebeln,
           items: [{ ebelp: "00010", matnr: "10000001", menge: 100, meins: "EA" }],
         }));
-      } else if (req.url?.includes("zzapi_mes") && req.url?.includes("ebeln=")) {
+      } else if (req.url?.includes("zzapi/mes/handler") && req.url?.includes("ebeln=")) {
         const match = req.url.match(/ebeln=([0-9]+)/);
         const ebeln = match?.[1] ?? "0";
         res.end(JSON.stringify({

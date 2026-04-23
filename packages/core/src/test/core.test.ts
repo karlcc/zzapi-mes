@@ -24,7 +24,7 @@ describe("SapClient", () => {
   it("ping builds correct URL with sap-client", async () => {
     globalThis.fetch = mockFetch(200, '{"ok":true,"sap_time":"20260422163000"}');
     await new SapClient(CFG).ping();
-    assert.match(capturedUrl!, /zzapi_mes_ping.*sap-client=200/);
+    assert.match(capturedUrl!, /zzapi\/mes\/ping.*sap-client=200/);
   });
 
   it("getPo builds correct URL with ebeln and sap-client", async () => {
@@ -82,7 +82,7 @@ describe("SapClient", () => {
     }).ping();
     assert.equal(hookCalls.length, 1);
     assert.equal(hookCalls[0]!.method, "GET");
-    assert.match(hookCalls[0]!.url, /zzapi_mes_ping/);
+    assert.match(hookCalls[0]!.url, /zzapi\/mes\/ping/);
   });
 
   it("calls onResponse hook after each response", async () => {
@@ -102,19 +102,19 @@ describe("SapClient", () => {
   it("getProdOrder builds correct URL", async () => {
     globalThis.fetch = mockFetch(200, '{"aufnr":"1000000","auart":"PP01","werks":"1000","matnr":"10000001","gamng":1000,"gstrp":"20260401","gltrp":"20260415"}');
     await new SapClient(CFG).getProdOrder("1000000");
-    assert.match(capturedUrl!, /zzapi_mes_prod_order.*aufnr=1000000/);
+    assert.match(capturedUrl!, /zzapi\/mes\/prod_order.*aufnr=1000000/);
   });
 
   it("getMaterial builds correct URL with optional werks", async () => {
     globalThis.fetch = mockFetch(200, '{"matnr":"10000001","mtart":"FERT","meins":"EA"}');
     await new SapClient(CFG).getMaterial("10000001", "1000");
-    assert.match(capturedUrl!, /zzapi_mes_material.*matnr=10000001.*werks=1000/);
+    assert.match(capturedUrl!, /zzapi\/mes\/material.*matnr=10000001.*werks=1000/);
   });
 
   it("getStock builds correct URL with required werks", async () => {
     globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[{"lgort":"0001","clabs":250}]}');
     await new SapClient(CFG).getStock("10000001", "1000");
-    assert.match(capturedUrl!, /zzapi_mes_stock.*matnr=10000001.*werks=1000/);
+    assert.match(capturedUrl!, /zzapi\/mes\/stock.*matnr=10000001.*werks=1000/);
   });
 
   it("getStock includes optional lgort", async () => {
@@ -126,45 +126,45 @@ describe("SapClient", () => {
   it("getPoItems builds correct URL", async () => {
     globalThis.fetch = mockFetch(200, '{"ebeln":"4500000001","items":[{"ebelp":"00010","matnr":"10000001","menge":100,"meins":"EA"}]}');
     await new SapClient(CFG).getPoItems("4500000001");
-    assert.match(capturedUrl!, /zzapi_mes_po_items.*ebeln=4500000001/);
+    assert.match(capturedUrl!, /zzapi\/mes\/po_items.*ebeln=4500000001/);
   });
 
   it("getRouting builds correct URL", async () => {
     globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","plnnr":"50000123","operations":[{"vornr":"0010","ltxa1":"Turning"}]}');
     await new SapClient(CFG).getRouting("10000001", "1000");
-    assert.match(capturedUrl!, /zzapi_mes_routing.*matnr=10000001.*werks=1000/);
+    assert.match(capturedUrl!, /zzapi\/mes\/routing.*matnr=10000001.*werks=1000/);
   });
 
   it("getWorkCenter builds correct URL", async () => {
     globalThis.fetch = mockFetch(200, '{"arbpl":"TURN1","werks":"1000","ktext":"CNC Turning Center","steus":"PP01"}');
     await new SapClient(CFG).getWorkCenter("TURN1", "1000");
-    assert.match(capturedUrl!, /zzapi_mes_wc.*arbpl=TURN1.*werks=1000/);
+    assert.match(capturedUrl!, /zzapi\/mes\/wc.*arbpl=TURN1.*werks=1000/);
   });
 
-  it("postConfirmation sends POST with JSON body to zzapi_mes_conf", async () => {
+  it("postConfirmation sends POST with JSON body to zzapi/mes/conf", async () => {
     globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}');
     const res = await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
     assert.equal(capturedOpts?.method, "POST");
-    assert.match(capturedUrl!, /zzapi_mes_conf/);
+    assert.match(capturedUrl!, /zzapi\/mes\/conf/);
     assert.match(capturedUrl!, /sap-client=200/);
     assert.equal(res.status, "confirmed");
     const body = JSON.parse(capturedOpts?.body as string);
     assert.equal(body.orderid, "1000000");
   });
 
-  it("postGoodsReceipt sends POST with JSON body to zzapi_mes_gr", async () => {
+  it("postGoodsReceipt sends POST with JSON body to zzapi/mes/gr", async () => {
     globalThis.fetch = mockFetch(201, '{"ebeln":"4500000001","ebelp":"00010","menge":100,"materialDocument":"5000000001","documentYear":"2026","status":"posted"}');
     const res = await new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
     assert.equal(capturedOpts?.method, "POST");
-    assert.match(capturedUrl!, /zzapi_mes_gr/);
+    assert.match(capturedUrl!, /zzapi\/mes\/gr/);
     assert.equal(res.status, "posted");
   });
 
-  it("postGoodsIssue sends POST with JSON body to zzapi_mes_gi", async () => {
+  it("postGoodsIssue sends POST with JSON body to zzapi/mes/gi", async () => {
     globalThis.fetch = mockFetch(201, '{"orderid":"1000000","matnr":"20000001","menge":50,"materialDocument":"5000000002","documentYear":"2026","status":"posted"}');
     const res = await new SapClient(CFG).postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" });
     assert.equal(capturedOpts?.method, "POST");
-    assert.match(capturedUrl!, /zzapi_mes_gi/);
+    assert.match(capturedUrl!, /zzapi\/mes\/gi/);
     assert.equal(res.status, "posted");
   });
 

@@ -141,8 +141,8 @@ if [[ "$HUB_MODE" == "1" ]]; then
   # Hub mode: no sap-client param needed
   ADD_SAP_CLIENT=0
 else
-  PING_PATH="/sap/bc/zzapi_mes_ping"
-  PO_PATH_PREFIX="/sap/bc/zzapi_mes"
+  PING_PATH="/sap/bc/zzapi/mes/ping"
+  PO_PATH_PREFIX="/sap/bc/zzapi/mes/handler"
   ADD_SAP_CLIENT=1
 fi
 
@@ -192,37 +192,37 @@ if [[ "$HUB_MODE" != "1" ]]; then
   echo "-- Phase 5A: prod-order, material, stock, po-items, routing, work-center (direct) --"
 
   check "prod-order returns aufnr" \
-    "${BASE_URL}/sap/bc/zzapi_mes_prod_order?aufnr=1000000" \
+    "${BASE_URL}/sap/bc/zzapi/mes/prod_order?aufnr=1000000" \
     "200" GET \
     ".aufnr" "1000000"
 
   check "prod-order missing aufnr returns 400" \
-    "${BASE_URL}/sap/bc/zzapi_mes_prod_order" \
+    "${BASE_URL}/sap/bc/zzapi/mes/prod_order" \
     "400" GET
 
   check "material returns matnr" \
-    "${BASE_URL}/sap/bc/zzapi_mes_material?matnr=10000001" \
+    "${BASE_URL}/sap/bc/zzapi/mes/material?matnr=10000001" \
     "200" GET
 
   check "stock with werks returns data" \
-    "${BASE_URL}/sap/bc/zzapi_mes_stock?matnr=10000001&werks=1000" \
+    "${BASE_URL}/sap/bc/zzapi/mes/stock?matnr=10000001&werks=1000" \
     "200" GET
 
   check "stock without werks returns 400" \
-    "${BASE_URL}/sap/bc/zzapi_mes_stock?matnr=10000001" \
+    "${BASE_URL}/sap/bc/zzapi/mes/stock?matnr=10000001" \
     "400" GET
 
   check "po-items returns ebeln" \
-    "${BASE_URL}/sap/bc/zzapi_mes_po_items?ebeln=4500000001" \
+    "${BASE_URL}/sap/bc/zzapi/mes/po_items?ebeln=4500000001" \
     "200" GET \
     ".ebeln" "4500000001"
 
   check "routing with werks returns data" \
-    "${BASE_URL}/sap/bc/zzapi_mes_routing?matnr=10000001&werks=1000" \
+    "${BASE_URL}/sap/bc/zzapi/mes/routing?matnr=10000001&werks=1000" \
     "200" GET
 
   check "work-center with werks returns arbpl" \
-    "${BASE_URL}/sap/bc/zzapi_mes_wc?arbpl=TURN1&werks=1000" \
+    "${BASE_URL}/sap/bc/zzapi/mes/wc?arbpl=TURN1&werks=1000" \
     "200" GET
 
   # Phase 5B direct SAP write-back endpoints
@@ -230,37 +230,37 @@ if [[ "$HUB_MODE" != "1" ]]; then
   echo "-- Phase 5B: confirmation, goods-receipt, goods-issue (direct) --"
 
   check "direct confirmation POST returns 201" \
-    "${BASE_URL}/sap/bc/zzapi_mes_conf" \
+    "${BASE_URL}/sap/bc/zzapi/mes/conf" \
     "201" POST \
     -H "content-type: application/json" \
     -d '{"orderid":"1000000","operation":"0010","yield":50}'
 
   check "direct goods-receipt POST returns 201" \
-    "${BASE_URL}/sap/bc/zzapi_mes_gr" \
+    "${BASE_URL}/sap/bc/zzapi/mes/gr" \
     "201" POST \
     -H "content-type: application/json" \
     -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
 
   check "direct goods-issue POST returns 201" \
-    "${BASE_URL}/sap/bc/zzapi_mes_gi" \
+    "${BASE_URL}/sap/bc/zzapi/mes/gi" \
     "201" POST \
     -H "content-type: application/json" \
     -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}'
 
   check "direct confirmation invalid body returns 400" \
-    "${BASE_URL}/sap/bc/zzapi_mes_conf" \
+    "${BASE_URL}/sap/bc/zzapi/mes/conf" \
     "400" POST \
     -H "content-type: application/json" \
     -d '{"orderid":"","operation":"0010","yield":0}'
 
   check "direct goods-receipt invalid body returns 400" \
-    "${BASE_URL}/sap/bc/zzapi_mes_gr" \
+    "${BASE_URL}/sap/bc/zzapi/mes/gr" \
     "400" POST \
     -H "content-type: application/json" \
     -d '{"ebeln":"","ebelp":"00010","menge":0,"werks":"1000","lgort":"0001"}'
 
   check "direct goods-issue invalid body returns 400" \
-    "${BASE_URL}/sap/bc/zzapi_mes_gi" \
+    "${BASE_URL}/sap/bc/zzapi/mes/gi" \
     "400" POST \
     -H "content-type: application/json" \
     -d '{"orderid":"","matnr":"20000001","menge":0,"werks":"1000","lgort":"0001"}'

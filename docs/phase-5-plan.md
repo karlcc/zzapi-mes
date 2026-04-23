@@ -16,8 +16,8 @@ with idempotency and audit safeguards.
 
 | SICF Path | Hub Path | Operation | ABAP Class |
 |---|---|---|---|
-| `/sap/bc/zzapi_mes_ping` | `/ping` | Health check | `ZCL_ZZAPI_MES_PING` |
-| `/sap/bc/zzapi_mes` | `/po/:ebeln` | PO header lookup | `ZCL_ZZAPI_MES_HANDLER` |
+| `/sap/bc/zzapi/mes/ping` | `/ping` | Health check | `ZCL_ZZAPI_MES_PING` |
+| `/sap/bc/zzapi/mes/handler` | `/po/:ebeln` | PO header lookup | `ZCL_ZZAPI_MES_HANDLER` |
 
 ## Implemented Endpoints
 
@@ -25,20 +25,20 @@ with idempotency and audit safeguards.
 
 | # | Endpoint | SICF Path | Hub Path | SAP Tables | BAPI | Key Fields | Description |
 |---|---|---|---|---|---|---|---|
-| 1 | Production order | `/sap/bc/zzapi_mes_prod_order` | `/prod-order/:aufnr` | AUFK, AFKO, AFPO, AFVC, AFVV, RESB | `BAPI_PRODORD_GET_DETAIL` | aufnr, auart, werks, matnr, gamng/gsmng, gstrp/gltrp, vornr | Order header + operations + component reservations. MES cannot operate without this. |
-| 2 | Material master | `/sap/bc/zzapi_mes_material` | `/material/:matnr` | MARA, MARC, MAKT | `BAPI_MATERIAL_GET_ALL` | matnr, mtart, meins, werks, maktx | Material info for scan validation, UoM, descriptions |
-| 3 | Stock / availability | `/sap/bc/zzapi_mes_stock` | `/stock/:matnr` | MARD, MCHB | `BAPI_MATERIAL_AVAILABILITY` | matnr, werks, lgort, charg, clabs, avail_qty | ATP check — required before starting operations |
-| 4 | Routing / recipe | `/sap/bc/zzapi_mes_routing` | `/routing/:matnr` | PLKO, PLPO, PLMZ, MAPL | `BAPI_ROUTING_GETDETAIL` | plnnr, plnal, vornr, arbpl, ltxa1, vgwrt | Operation sequence + standard times for dispatching |
-| 5 | Work center | `/sap/bc/zzapi_mes_wc` | `/work-center/:arbpl` | CRHD, CRCA, CRCO | Direct table read (no standard BAPI) | arbpl, werks, kapid, kostl, steus | Capacity + cost center for scheduling |
-| 6 | PO line items | `/sap/bc/zzapi_mes_po_items` | `/po/:ebeln/items` | EKPO, EKET | — | ebelp, matnr, menge, meins, eindt | Extends existing PO header with item detail |
+| 1 | Production order | `/sap/bc/zzapi/mes/prod_order` | `/prod-order/:aufnr` | AUFK, AFKO, AFPO, AFVC, AFVV, RESB | `BAPI_PRODORD_GET_DETAIL` | aufnr, auart, werks, matnr, gamng/gsmng, gstrp/gltrp, vornr | Order header + operations + component reservations. MES cannot operate without this. |
+| 2 | Material master | `/sap/bc/zzapi/mes/material` | `/material/:matnr` | MARA, MARC, MAKT | `BAPI_MATERIAL_GET_ALL` | matnr, mtart, meins, werks, maktx | Material info for scan validation, UoM, descriptions |
+| 3 | Stock / availability | `/sap/bc/zzapi/mes/stock` | `/stock/:matnr` | MARD, MCHB | `BAPI_MATERIAL_AVAILABILITY` | matnr, werks, lgort, charg, clabs, avail_qty | ATP check — required before starting operations |
+| 4 | Routing / recipe | `/sap/bc/zzapi/mes/routing` | `/routing/:matnr` | PLKO, PLPO, PLMZ, MAPL | `BAPI_ROUTING_GETDETAIL` | plnnr, plnal, vornr, arbpl, ltxa1, vgwrt | Operation sequence + standard times for dispatching |
+| 5 | Work center | `/sap/bc/zzapi/mes/wc` | `/work-center/:arbpl` | CRHD, CRCA, CRCO | Direct table read (no standard BAPI) | arbpl, werks, kapid, kostl, steus | Capacity + cost center for scheduling |
+| 6 | PO line items | `/sap/bc/zzapi/mes/po_items` | `/po/:ebeln/items` | EKPO, EKET | — | ebelp, matnr, menge, meins, eindt | Extends existing PO header with item detail |
 
 ### Phase 5B — Write-Back (MES → SAP, transactional) — SHIPPED
 
 | # | Endpoint | SICF Path | Hub Path | SAP BAPI | Movement | Key Input | Description |
 |---|---|---|---|---|---|---|---|
-| 7 | Production confirmation | `/sap/bc/zzapi_mes_conf` | `/confirmation` (POST) | `BAPI_PRODORDCONF_CREATE_TT` | — | orderid, operation, yield, scrap, work_actual, postg_date | Report yield/scrap/labor. Triggers backflush GI. |
-| 8 | Goods receipt (prod order) | `/sap/bc/zzapi_mes_gr` | `/goods-receipt` (POST) | `BAPI_GOODSMVT_CREATE` | 101 | material, plant, stge_loc, batch, entry_qnt, orderid, mvt_ind='F' | Receive finished good into inventory |
-| 9 | Goods issue (consumption) | `/sap/bc/zzapi_mes_gi` | `/goods-issue` (POST) | `BAPI_GOODSMVT_CREATE` | 261 | material, plant, stge_loc, batch, entry_qnt, orderid, mvt_ind='E' | Consume components — check backflush indicator first (AFVC-MGVRG) |
+| 7 | Production confirmation | `/sap/bc/zzapi/mes/conf` | `/confirmation` (POST) | `BAPI_PRODORDCONF_CREATE_TT` | — | orderid, operation, yield, scrap, work_actual, postg_date | Report yield/scrap/labor. Triggers backflush GI. |
+| 8 | Goods receipt (prod order) | `/sap/bc/zzapi/mes/gr` | `/goods-receipt` (POST) | `BAPI_GOODSMVT_CREATE` | 101 | material, plant, stge_loc, batch, entry_qnt, orderid, mvt_ind='F' | Receive finished good into inventory |
+| 9 | Goods issue (consumption) | `/sap/bc/zzapi/mes/gi` | `/goods-issue` (POST) | `BAPI_GOODSMVT_CREATE` | 261 | material, plant, stge_loc, batch, entry_qnt, orderid, mvt_ind='E' | Consume components — check backflush indicator first (AFVC-MGVRG) |
 
 **Note on GR + confirmation**: `BAPI_PRODORDCONF_CREATE_TT` can auto-generate goods movements (backflush). Only post separate GR/GI for non-backflushed operations. Check `AFVC-MGVRG` before posting a separate GI.
 
@@ -63,7 +63,7 @@ Each endpoint follows the same recipe established in Phases 0–4:
 
 ```
 1. Write ABAP class (ZCL_ZZAPI_MES_*) implementing IF_HTTP_EXTENSION
-2. Add SICF node under /sap/bc/zzapi_mes_* (Phase 1 deployment step)
+2. Add SICF node under /sap/bc/zzapi/mes/* (Phase 1 deployment step)
 3. Update spec/openapi.yaml with new path + schemas
 4. Run pnpm spec:gen to regenerate zod schemas
 5. Add hub route (apps/hub/src/routes/*.ts) with scope guard
@@ -115,7 +115,7 @@ Key constraints (from CLAUDE.md):
 - Reuse existing SAP artifacts (structures, serializers like `ZZ_CL_JSON`).
 - Keep JSON output byte-identical to existing BSP pages where applicable.
 - Use `CASE lv_method` dispatch; unmatched verbs return 405 with JSON error.
-- Naming: `ZCL_ZZAPI_MES_*`, SICF at `/sap/bc/zzapi_mes_*`.
+- Naming: `ZCL_ZZAPI_MES_*`, SICF at `/sap/bc/zzapi/mes/*`.
 - All BAPIs listed are available on SAP_BASIS 700 (ECC 6.0).
 
 ## Write-Back Safety (Phase 5B)

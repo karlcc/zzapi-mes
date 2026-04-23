@@ -41,7 +41,7 @@ Editing a file in `abap/` **does not deploy it**. The round-trip is manual:
 3. Mirror the activated source back into `abap/<CLASS>.abap` in the repo and diff to catch SAP-side edits.
 4. Run `pnpm smoke` to verify.
 
-When adding a new handler class: follow the naming pattern `ZCL_ZZAPI_MES_*`, place the SICF node at `/sap/bc/zzapi_mes_*`, and add a `check` line to `scripts/smoke.sh`.
+When adding a new handler class: follow the naming pattern `ZCL_ZZAPI_MES_*`, place the SICF node at `/sap/bc/zzapi/mes/*`, and add a `check` line to `scripts/smoke.sh`.
 
 ## ABAP Handler Conventions
 
@@ -52,7 +52,7 @@ Each handler is a single class implementing `IF_HTTP_EXTENSION` with one method 
 - `CASE lv_method` dispatches verbs; unmatched verbs must return `405` with a JSON error body.
 - Set status + `content-type: application/json` + `set_cdata()` for every code path (including 404/405).
 - Reuse existing SAP artifacts: structure `ZMES001`, serializer `ZZ_CL_JSON` (camelCase mode). Do not reinvent JSON handling.
-- Keep the PO JSON for `/sap/bc/zzapi_mes` byte-identical to what the legacy BSP page emits — the smoke test and downstream MES consumers depend on this.
+- Keep the PO JSON for `/sap/bc/zzapi/mes/handler` byte-identical to what the legacy BSP page emits — the smoke test and downstream MES consumers depend on this.
 
 For multi-endpoint routing under one SICF node, dispatch on `server->request->get_header_field( '~path_info' )` inside `handle_request` rather than registering many SICF nodes.
 

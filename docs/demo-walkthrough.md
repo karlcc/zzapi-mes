@@ -31,18 +31,18 @@ Deploy all 11 ABAP ICF handlers on SAP via SE24 + SICF, verify with curl. No SE8
 
 1. Transaction **SICF**
 2. Navigate tree: `/default_host/sap/bc/`
-3. Right-click `bc` → **Create Sub-Element**
-4. Name: `zzapi_mes_ping`
+3. Right-click `zzapi` → **Create Sub-Element** (or `bc` if `zzapi` doesn't exist yet)
+4. Name: `ping` (under `/default_host/sap/bc/zzapi/mes/`)
 5. Switch to **Handler List** tab
 6. Enter: `ZCL_ZZAPI_MES_PING`
 7. **Save** (Ctrl+S)
-8. Right-click the `zzapi_mes_ping` node → **Activate Service**
+8. Right-click the `ping` node → **Activate Service**
 
 ### Step 3 — Test with curl
 
 ```bash
 curl -u "$SAP_USER:$SAP_PASS" \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_ping?sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/ping?sap-client=200"
 ```
 
 **Expected response:**
@@ -54,7 +54,7 @@ curl -u "$SAP_USER:$SAP_PASS" \
 ```bash
 # POST should be rejected — expect 405
 curl -u "$SAP_USER:$SAP_PASS" -X POST \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_ping?sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/ping?sap-client=200"
 ```
 
 **Expected:**
@@ -85,20 +85,20 @@ If you see both responses, ICF handler registration is working. Move to Handler 
 ### Step 2 — Register in SICF
 
 1. Transaction **SICF**
-2. Navigate tree: `/default_host/sap/bc/`
-3. Right-click `bc` → **Create Sub-Element**
-4. Name: `zzapi_mes`
+2. Navigate tree: `/default_host/sap/bc/zzapi/mes/`
+3. Right-click `mes` → **Create Sub-Element**
+4. Name: `handler`
 5. Switch to **Handler List** tab
 6. Enter: `ZCL_ZZAPI_MES_HANDLER`
 7. **Save** (Ctrl+S)
-8. Right-click the `zzapi_mes` node → **Activate Service**
+8. Right-click the `handler` node → **Activate Service**
 
 ### Step 3 — Test with curl
 
 ```bash
 # PO that exists in the system
 curl -u "$SAP_USER:$SAP_PASS" \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes?ebeln=3010000608&sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/handler?ebeln=3010000608&sap-client=200"
 ```
 
 **Expected response (must match BSP output):**
@@ -110,7 +110,7 @@ curl -u "$SAP_USER:$SAP_PASS" \
 ```bash
 # PO that does NOT exist — expect 404
 curl -u "$SAP_USER:$SAP_PASS" \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes?ebeln=9999999999&sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/handler?ebeln=9999999999&sap-client=200"
 ```
 
 **Expected:**
@@ -122,7 +122,7 @@ curl -u "$SAP_USER:$SAP_PASS" \
 ```bash
 # POST should be rejected — expect 405
 curl -u "$SAP_USER:$SAP_PASS" -X POST \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes?ebeln=3010000608&sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/handler?ebeln=3010000608&sap-client=200"
 ```
 
 **Expected:**
@@ -139,43 +139,43 @@ Each handler follows the **same two-step pattern** as above. The table below lis
 
 | # | Class | SICF Node | Source File | Endpoint | Key Params |
 |---|-------|-----------|-------------|----------|------------|
-| 3 | `ZCL_ZZAPI_MES_PROD_ORDER` | `zzapi_mes_prod_order` | `abap/ZCL_ZZAPI_MES_PROD_ORDER.abap` | `/sap/bc/zzapi_mes_prod_order` | `aufnr` |
-| 4 | `ZCL_ZZAPI_MES_MATERIAL` | `zzapi_mes_material` | `abap/ZCL_ZZAPI_MES_MATERIAL.abap` | `/sap/bc/zzapi_mes_material` | `matnr`, `werks` |
-| 5 | `ZCL_ZZAPI_MES_STOCK` | `zzapi_mes_stock` | `abap/ZCL_ZZAPI_MES_STOCK.abap` | `/sap/bc/zzapi_mes_stock` | `matnr`, `werks`, `lgort` |
-| 6 | `ZCL_ZZAPI_MES_PO_ITEMS` | `zzapi_mes_po_items` | `abap/ZCL_ZZAPI_MES_PO_ITEMS.abap` | `/sap/bc/zzapi_mes_po_items` | `ebeln` |
-| 7 | `ZCL_ZZAPI_MES_ROUTING` | `zzapi_mes_routing` | `abap/ZCL_ZZAPI_MES_ROUTING.abap` | `/sap/bc/zzapi_mes_routing` | `matnr`, `werks` |
-| 8 | `ZCL_ZZAPI_MES_WC` | `zzapi_mes_wc` | `abap/ZCL_ZZAPI_MES_WC.abap` | `/sap/bc/zzapi_mes_wc` | `arbpl`, `werks` |
+| 3 | `ZCL_ZZAPI_MES_PROD_ORDER` | `prod_order` | `abap/ZCL_ZZAPI_MES_PROD_ORDER.abap` | `/sap/bc/zzapi/mes/prod_order` | `aufnr` |
+| 4 | `ZCL_ZZAPI_MES_MATERIAL` | `material` | `abap/ZCL_ZZAPI_MES_MATERIAL.abap` | `/sap/bc/zzapi/mes/material` | `matnr`, `werks` |
+| 5 | `ZCL_ZZAPI_MES_STOCK` | `stock` | `abap/ZCL_ZZAPI_MES_STOCK.abap` | `/sap/bc/zzapi/mes/stock` | `matnr`, `werks`, `lgort` |
+| 6 | `ZCL_ZZAPI_MES_PO_ITEMS` | `po_items` | `abap/ZCL_ZZAPI_MES_PO_ITEMS.abap` | `/sap/bc/zzapi/mes/po_items` | `ebeln` |
+| 7 | `ZCL_ZZAPI_MES_ROUTING` | `routing` | `abap/ZCL_ZZAPI_MES_ROUTING.abap` | `/sap/bc/zzapi/mes/routing` | `matnr`, `werks` |
+| 8 | `ZCL_ZZAPI_MES_WC` | `wc` | `abap/ZCL_ZZAPI_MES_WC.abap` | `/sap/bc/zzapi/mes/wc` | `arbpl`, `werks` |
 
 ### Deployment steps (repeat for each):
 
 1. **SE24**: Create class → add `IF_HTTP_EXTENSION` → paste code from `abap/` file → Activate
-2. **SICF**: Navigate to `/default_host/sap/bc/` → Create Sub-Element with node name from table → Handler List tab → enter class name → Save → Activate Service
+2. **SICF**: Navigate to `/default_host/sap/bc/zzapi/mes/` → Create Sub-Element with node name from table → Handler List tab → enter class name → Save → Activate Service
 3. **curl**: Test with Basic Auth, e.g.:
 
 ```bash
 # Production order
 curl -u "$SAP_USER:$SAP_PASS" \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_prod_order?aufnr=1000000&sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/prod_order?aufnr=1000000&sap-client=200"
 
 # Material
 curl -u "$SAP_USER:$SAP_PASS" \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_material?matnr=100000&werks=1000&sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/material?matnr=100000&werks=1000&sap-client=200"
 
 # Stock
 curl -u "$SAP_USER:$SAP_PASS" \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_stock?matnr=100000&werks=1000&sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/stock?matnr=100000&werks=1000&sap-client=200"
 
 # PO items
 curl -u "$SAP_USER:$SAP_PASS" \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_po_items?ebeln=3010000608&sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/po_items?ebeln=3010000608&sap-client=200"
 
 # Routing
 curl -u "$SAP_USER:$SAP_PASS" \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_routing?matnr=100000&werks=1000&sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/routing?matnr=100000&werks=1000&sap-client=200"
 
 # Work center
 curl -u "$SAP_USER:$SAP_PASS" \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_wc?arbpl=1000&werks=1000&sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/wc?arbpl=1000&werks=1000&sap-client=200"
 ```
 
 > **Note**: Use actual values from your SAP system. The example values above may not exist in your DEV client.
@@ -200,14 +200,14 @@ This ABAP include contains shared form routines used by the write-back handlers.
 
 | # | Class | SICF Node | Source File | Endpoint | BAPI Called |
 |---|-------|-----------|-------------|----------|-------------|
-| 9 | `ZCL_ZZAPI_MES_CONF` | `zzapi_mes_conf` | `abap/ZCL_ZZAPI_MES_CONF.abap` | `/sap/bc/zzapi_mes_conf` | `BAPI_PRODORDCONF_CREATE_TT` |
-| 10 | `ZCL_ZZAPI_MES_GR` | `zzapi_mes_gr` | `abap/ZCL_ZZAPI_MES_GR.abap` | `/sap/bc/zzapi_mes_gr` | `BAPI_GOODSMVT_CREATE` (mvt 101) |
-| 11 | `ZCL_ZZAPI_MES_GI` | `zzapi_mes_gi` | `abap/ZIZZAPI_MES_GI.abap` | `/sap/bc/zzapi_mes_gi` | `BAPI_GOODSMVT_CREATE` (mvt 261) |
+| 9 | `ZCL_ZZAPI_MES_CONF` | `conf` | `abap/ZCL_ZZAPI_MES_CONF.abap` | `/sap/bc/zzapi/mes/conf` | `BAPI_PRODORDCONF_CREATE_TT` |
+| 10 | `ZCL_ZZAPI_MES_GR` | `gr` | `abap/ZCL_ZZAPI_MES_GR.abap` | `/sap/bc/zzapi/mes/gr` | `BAPI_GOODSMVT_CREATE` (mvt 101) |
+| 11 | `ZCL_ZZAPI_MES_GI` | `gi` | `abap/ZIZZAPI_MES_GI.abap` | `/sap/bc/zzapi/mes/gi` | `BAPI_GOODSMVT_CREATE` (mvt 261) |
 
 ### Deployment steps (repeat for each):
 
 1. **SE24**: Create class → add `IF_HTTP_EXTENSION` → paste code → Activate
-2. **SICF**: Create Sub-Element → Handler List → enter class name → Save → Activate
+2. **SICF**: Navigate to `/default_host/sap/bc/zzapi/mes/` → Create Sub-Element → Handler List → enter class name → Save → Activate
 3. **curl**: Test with POST + JSON body, e.g.:
 
 ```bash
@@ -215,19 +215,19 @@ This ABAP include contains shared form routines used by the write-back handlers.
 curl -u "$SAP_USER:$SAP_PASS" -X POST \
   -H "Content-Type: application/json" \
   -d '{"aufnr":"1000000","conf_type":"","plant":"1000","work_center":"","fin_conf":"","postg":"","yield":10,"scrap":0,"rework":0,"emp_id":"","cost_center":"","ov_conf":""}' \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_conf?sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/conf?sap-client=200"
 
 # Goods receipt
 curl -u "$SAP_USER:$SAP_PASS" -X POST \
   -H "Content-Type: application/json" \
   -d '{"aufnr":"1000000","material":"100000","plant":"1000","qty":10,"uom":"EA"}' \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_gr?sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/gr?sap-client=200"
 
 # Goods issue
 curl -u "$SAP_USER:$SAP_PASS" -X POST \
   -H "Content-Type: application/json" \
   -d '{"aufnr":"1000000","material":"100000","plant":"1000","qty":10,"uom":"EA"}' \
-  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi_mes_gi?sap-client=200"
+  "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/gi?sap-client=200"
 ```
 
 > **Note**: Write-back handlers require appropriate SAP authorizations for the BAPIs. Coordinate with Basis team if you get authorization errors.
@@ -244,7 +244,7 @@ curl -u "$SAP_USER:$SAP_PASS" -X POST \
 | 500 internal error | ABAP dump in handler | Check ST22 for runtime errors; verify dependencies (ZMES001, ZZ_CL_JSON) |
 | Empty response | Handler class not assigned in SICF | Handler List tab must list the class name exactly |
 | `sy-subrc` always 4 | Wrong client — forgot `sap-client=200` | Add `&sap-client=200` to URL |
-| BSP-style URL encoding blob | You're hitting the old BSP path | Use `/sap/bc/zzapi_mes_*` not `/sap/bc/bsp/sap/...` |
+| BSP-style URL encoding blob | You're hitting the old BSP path | Use `/sap/bc/zzapi/mes/*` not `/sap/bc/bsp/sap/...` |
 | BAPI authorization error | User lacks BAPI roles | Coordinate with Basis for `BAPI_PRODORDCONF_CREATE_TT` / `BAPI_GOODSMVT_CREATE` roles |
 
 ---
@@ -253,18 +253,18 @@ curl -u "$SAP_USER:$SAP_PASS" -X POST \
 
 | # | Class / Include | SICF Node | Deployed? |
 |---|-----------------|-----------|-----------|
-| 1 | `ZCL_ZZAPI_MES_PING` | `zzapi_mes_ping` | ☐ |
-| 2 | `ZCL_ZZAPI_MES_HANDLER` | `zzapi_mes` | ☐ |
-| 3 | `ZCL_ZZAPI_MES_PROD_ORDER` | `zzapi_mes_prod_order` | ☐ |
-| 4 | `ZCL_ZZAPI_MES_MATERIAL` | `zzapi_mes_material` | ☐ |
-| 5 | `ZCL_ZZAPI_MES_STOCK` | `zzapi_mes_stock` | ☐ |
-| 6 | `ZCL_ZZAPI_MES_PO_ITEMS` | `zzapi_mes_po_items` | ☐ |
-| 7 | `ZCL_ZZAPI_MES_ROUTING` | `zzapi_mes_routing` | ☐ |
-| 8 | `ZCL_ZZAPI_MES_WC` | `zzapi_mes_wc` | ☐ |
+| 1 | `ZCL_ZZAPI_MES_PING` | `ping` | ☐ |
+| 2 | `ZCL_ZZAPI_MES_HANDLER` | `handler` | ☐ |
+| 3 | `ZCL_ZZAPI_MES_PROD_ORDER` | `prod_order` | ☐ |
+| 4 | `ZCL_ZZAPI_MES_MATERIAL` | `material` | ☐ |
+| 5 | `ZCL_ZZAPI_MES_STOCK` | `stock` | ☐ |
+| 6 | `ZCL_ZZAPI_MES_PO_ITEMS` | `po_items` | ☐ |
+| 7 | `ZCL_ZZAPI_MES_ROUTING` | `routing` | ☐ |
+| 8 | `ZCL_ZZAPI_MES_WC` | `wc` | ☐ |
 | 9 | `ZIZZAPI_MES_EXTRACT_FORMS` | (include, no SICF) | ☐ |
-| 10 | `ZCL_ZZAPI_MES_CONF` | `zzapi_mes_conf` | ☐ |
-| 11 | `ZCL_ZZAPI_MES_GR` | `zzapi_mes_gr` | ☐ |
-| 12 | `ZCL_ZZAPI_MES_GI` | `zzapi_mes_gi` | ☐ |
+| 10 | `ZCL_ZZAPI_MES_CONF` | `conf` | ☐ |
+| 11 | `ZCL_ZZAPI_MES_GR` | `gr` | ☐ |
+| 12 | `ZCL_ZZAPI_MES_GI` | `gi` | ☐ |
 
 ---
 

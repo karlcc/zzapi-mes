@@ -58,8 +58,8 @@ SAP_USER=<your_user> SAP_PASS='<your_password>' pnpm smoke
 ```
 
 3. Verify two endpoints respond:
-   - `GET /sap/bc/zzapi_mes_ping` → `{"ok":true,"sap_time":"..."}`
-   - `GET /sap/bc/zzapi_mes?ebeln=3010000608` → PO JSON matching BSP output
+   - `GET /sap/bc/zzapi/mes/ping` → `{"ok":true,"sap_time":"..."}`
+   - `GET /sap/bc/zzapi/mes/handler?ebeln=3010000608` → PO JSON matching BSP output
 
 ## SDK Usage
 
@@ -109,17 +109,17 @@ npx zzapi-mes ping
 
 | Handler | SICF Path | Method | Description |
 |---|---|---|---|
-| `ZCL_ZZAPI_MES_PING` | `/sap/bc/zzapi_mes_ping` | GET | Health check |
-| `ZCL_ZZAPI_MES_HANDLER` | `/sap/bc/zzapi_mes` | GET | PO info by ebeln |
-| `ZCL_ZZAPI_MES_PROD_ORDER` | `/sap/bc/zzapi_mes_prod_order` | GET | Production order detail |
-| `ZCL_ZZAPI_MES_MATERIAL` | `/sap/bc/zzapi_mes_material` | GET | Material master |
-| `ZCL_ZZAPI_MES_STOCK` | `/sap/bc/zzapi_mes_stock` | GET | Stock / availability |
-| `ZCL_ZZAPI_MES_PO_ITEMS` | `/sap/bc/zzapi_mes_po_items` | GET | PO line items |
-| `ZCL_ZZAPI_MES_ROUTING` | `/sap/bc/zzapi_mes_routing` | GET | Routing / recipe |
-| `ZCL_ZZAPI_MES_WC` | `/sap/bc/zzapi_mes_wc` | GET | Work center |
-| `ZCL_ZZAPI_MES_CONF` | `/sap/bc/zzapi_mes_conf` | POST | Production confirmation |
-| `ZCL_ZZAPI_MES_GR` | `/sap/bc/zzapi_mes_gr` | POST | Goods receipt for PO |
-| `ZCL_ZZAPI_MES_GI` | `/sap/bc/zzapi_mes_gi` | POST | Goods issue for prod order |
+| `ZCL_ZZAPI_MES_PING` | `/sap/bc/zzapi/mes/ping` | GET | Health check |
+| `ZCL_ZZAPI_MES_HANDLER` | `/sap/bc/zzapi/mes/handler` | GET | PO info by ebeln |
+| `ZCL_ZZAPI_MES_PROD_ORDER` | `/sap/bc/zzapi/mes/prod_order` | GET | Production order detail |
+| `ZCL_ZZAPI_MES_MATERIAL` | `/sap/bc/zzapi/mes/material` | GET | Material master |
+| `ZCL_ZZAPI_MES_STOCK` | `/sap/bc/zzapi/mes/stock` | GET | Stock / availability |
+| `ZCL_ZZAPI_MES_PO_ITEMS` | `/sap/bc/zzapi/mes/po_items` | GET | PO line items |
+| `ZCL_ZZAPI_MES_ROUTING` | `/sap/bc/zzapi/mes/routing` | GET | Routing / recipe |
+| `ZCL_ZZAPI_MES_WC` | `/sap/bc/zzapi/mes/wc` | GET | Work center |
+| `ZCL_ZZAPI_MES_CONF` | `/sap/bc/zzapi/mes/conf` | POST | Production confirmation |
+| `ZCL_ZZAPI_MES_GR` | `/sap/bc/zzapi/mes/gr` | POST | Goods receipt for PO |
+| `ZCL_ZZAPI_MES_GI` | `/sap/bc/zzapi/mes/gi` | POST | Goods issue for prod order |
 
 ### Hub Read Endpoints (Phase 5A)
 
