@@ -811,4 +811,77 @@ describe("HubClient getToken validation", () => {
     assert.equal(headers?.["idempotency-key"], "idem-key-1");
     assert.equal(headers?.["content-type"], "application/json");
   });
+
+  it("double-401 retry throws ZzapiMesHttpError(401)", async () => {
+    let callCount = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      callCount++;
+      return jsonResponse(401, { error: "Unauthorized" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 401);
+        assert.equal(callCount, 2, "should retry once then fail");
+        return true;
+      },
+    );
+  });
+
+  it("handles 'errors' as non-array scalar (number)", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { errors: 42 });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.equal(e.message, "42");
+        return true;
+      },
+    );
+  });
+
+  it("handles 'errors' as null", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { errors: null });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.equal(e.message, "null");
+        return true;
+      },
+    );
+  });
+
+  it("handles 429 from auth endpoint", async () => {
+    globalThis.fetch = mockFetch(() => jsonResponse(429, { error: "Too many requests" }));
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 429);
+        return true;
+      },
+    );
+  });
+
+  it("getMaterial without optional werks omits query param", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { matnr: "10000001", maktx: "Test Material" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await client.getMaterial("10000001");
+    assert.ok(capturedUrl!.includes("/material/10000001"));
+    assert.ok(!capturedUrl!.includes("werks"), "werks should not be in URL when omitted");
+  });
 });
