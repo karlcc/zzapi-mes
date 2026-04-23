@@ -1,0 +1,30 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { join } from "node:path";
+
+const INSTALL_SH = join(__dirname, "..", "..", "deploy", "install.sh");
+
+function runInstall(env: Record<string, string>): Promise<{ stdout: string; stderr: string; code: number }> {
+  return new Promise((resolve) => {
+    const proc = execFile("bash", [INSTALL_SH], {
+      env: { ...process.env, ...env },
+      timeout: 5000,
+    }, (err, stdout, stderr) => {
+      resolve({
+        stdout: stdout?.trim() ?? "",
+        stderr: stderr?.trim() ?? "",
+        code: typeof err?.code === "number" ? err.code : (err ? 1 : 0),
+      });
+    });
+    proc.on("error", () => {});
+  });
+}
+
+describe("install.sh Node version guard", () => {
+  it("exits with error when node is not in PATH", async () => {
+    // Use PATH with bash, sed, etc. but no node
+    const { code } = await runInstall({ PATH: "/bin:/usr/bin" });
+    assert.notEqual(code, 0, "should fail when node not found");
+  });
+});
