@@ -51,7 +51,18 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
     return;
   }
 
-  const existing = checkIdempotency(db, idempotencyKey, keyId, c.req.path, 0, bodyHash);
+  let existing: IdempotencyRecord | null;
+  try {
+    existing = checkIdempotency(db, idempotencyKey, keyId, c.req.path, 0, bodyHash);
+  } catch {
+    // DB write failure (disk full, I/O error, lock). Proceed without
+    // idempotency protection rather than returning an opaque 500 —
+    // matches the audit-write failure pattern in sap-call.ts.
+    c.set("idempotencyKey", idempotencyKey);
+    c.set("idempotencyBodyHash", bodyHash);
+    await next();
+    return;
+  }
   if (existing) {
     // Body hash mismatch: client reused idempotency key with different body
     if (existing.body_hash !== bodyHash) {

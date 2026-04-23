@@ -74,9 +74,14 @@ export async function withSapCall<T>(
         }
       }
 
+      // Forward Retry-After from SAP 429 so hub clients know how long to wait
+      if (err.retryAfter && status === 429) {
+        c.header("retry-after", String(err.retryAfter));
+      }
+
       return c.json(
         { error: message },
-        status as 400 | 404 | 405 | 502 | 504,
+        status as 400 | 404 | 405 | 429 | 502 | 504,
       );
     }
     return c.json({ error: "Internal proxy error" }, 502);

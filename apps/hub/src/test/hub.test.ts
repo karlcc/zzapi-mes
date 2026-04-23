@@ -1348,6 +1348,24 @@ describe("Request body size limit", () => {
     assert.ok(String(body.error).includes("too large"));
   });
 
+  it("accepts request body at exactly 1 MB", async () => {
+    const token = await validToken();
+    // Exactly 1 MB (1,048,576 bytes) — should pass the > check
+    const boundaryBody = "x".repeat(1_048_576);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "content-length": String(boundaryBody.length),
+        "idempotency-key": "boundary-1mb-001",
+      },
+      body: boundaryBody,
+    });
+    // Won't be 201 because the body isn't valid JSON, but should NOT be 413
+    assert.notEqual(res.status, 413, "exact-1MB body should not be rejected as too large");
+  });
+
   it("rejects chunked body larger than 1 MB with 413", async () => {
     const token = await validToken();
     // No content-length header → triggers chunked body limit path
@@ -1405,6 +1423,17 @@ describe("JWT edge cases", () => {
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${noScopes}` } });
     // Token verifies but scope is empty → 403
     assert.equal(res.status, 403);
+  });
+
+  it("rejects JWT with empty-string key_id", async () => {
+    const emptyKey = await sign(
+      { key_id: "", scopes: ["ping"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${emptyKey}` } });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("key_id"));
   });
 });
 
@@ -1904,6 +1933,16 @@ describe("GET route SAP error handling", () => {
     });
     assert.equal(res.status, 502);
     MockSapClient.prototype.ping = origPing;
+  });
+
+  it("forwards Retry-After header from SAP 429 on GET routes", async () => {
+    mockPingError = new ZzapiMesHttpError(429, "Too many requests", 30);
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "30");
   });
 
   it("maps SAP timeout 408 to 504 on /material/:matnr", async () => {

@@ -24,6 +24,12 @@ export const requireJwt = createMiddleware<{ Variables: HubVariables }>(async (c
   try {
     const { verify } = await import("hono/jwt");
     const payload = await verify(token, JWT_SECRET(), "HS256");
+    // Reject tokens with empty/missing key_id — these would pollute audit logs
+    // with untraceable entries. Tokens issued by /auth/token always have a
+    // non-empty key_id, so this only catches manually crafted or misused JWTs.
+    if (!payload.key_id || typeof payload.key_id !== "string" || payload.key_id.trim() === "") {
+      return c.json({ error: "Invalid token: missing key_id" }, 401);
+    }
     c.set("jwtPayload", payload);
     await next();
   } catch {
