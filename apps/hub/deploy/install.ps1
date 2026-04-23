@@ -46,15 +46,24 @@ node (Join-Path $distDir "scripts\migrate.js")
 
 # --- 4. Install nssm if missing ---
 $nssmPath = "C:\Windows\nssm.exe"
+# SHA-1 hash from https://nssm.cc/download (2014-08-31 release)
+$nssmHash = "be7b3577c6e3a280e5106a9e9db5b3775931cefc"
 if (-not (Test-Path $nssmPath)) {
     Write-Host "Installing nssm..."
     $zipPath = Join-Path $env:TEMP "nssm.zip"
     $extractDir = Join-Path $env:TEMP "nssm"
     Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile $zipPath
+    # Verify download integrity before extracting
+    $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA1).Hash.ToLower()
+    if ($actualHash -ne $nssmHash) {
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        Write-Error "nssm download integrity check failed: expected $nssmHash, got $actualHash. Possible tampering or corrupted download."
+        exit 1
+    }
     Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
     Copy-Item (Join-Path $extractDir "nssm-2.24\win64\nssm.exe") $nssmPath -Force
     Remove-Item $zipPath, $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "nssm installed."
+    Write-Host "nssm installed (integrity verified)."
 }
 
 # --- 5. Env file ---
