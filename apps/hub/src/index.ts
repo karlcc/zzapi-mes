@@ -2,7 +2,9 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./server.js";
 import { pruneAuditLog, evictIdempotencyKeys } from "./db/index.js";
 
-const port = Number(process.env.HUB_PORT) || 8080;
+const port = process.env.HUB_PORT !== undefined && process.env.HUB_PORT !== ""
+  ? Number(process.env.HUB_PORT)
+  : 8080;
 if (port <= 0) {
   console.error(`HUB_PORT must be a positive integer (got ${port})`);
   process.exit(1);

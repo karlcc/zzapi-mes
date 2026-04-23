@@ -426,6 +426,28 @@ describe("HubClient", () => {
     );
   });
 
+  it("does not leak originalStatus=0 from 409 crash-retry response", async () => {
+    // Regression guard: crash-retry scenarios previously leaked
+    // meaningless originalStatus=0 to clients (commit 82a3ad9).
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(409, { error: "Duplicate request", original_status: 0 });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
+        { orderid: "1000000", operation: "0010", yield: 50 },
+        "crash-retry-key",
+      ),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 409);
+        // original_status=0 is not a meaningful status code — must be cleaned up
+        assert.equal(e.originalStatus, undefined);
+        return true;
+      },
+    );
+  });
+
   it("goodsIssue throws ZzapiMesHttpError on 422", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
