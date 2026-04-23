@@ -2455,6 +2455,19 @@ describe("Security headers", () => {
     assert.equal(res2.headers.get("access-control-allow-origin"), "http://localhost:3000");
     delete process.env.HUB_CORS_ORIGIN;
   });
+
+  it("CORS env value with trailing slash never matches browser Origin", async () => {
+    // Browsers never send trailing slash in Origin header.
+    // If HUB_CORS_ORIGIN ends with /, it never matches.
+    process.env.HUB_CORS_ORIGIN = "http://localhost:3000/";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    const res = await testApp.fetch(new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://localhost:3000" },
+    }));
+    const acao = res.headers.get("access-control-allow-origin");
+    assert.equal(acao, null, "trailing slash in env value should not match browser Origin without slash");
+    delete process.env.HUB_CORS_ORIGIN;
+  });
 });
 
 describe("Auth failure logging", () => {
