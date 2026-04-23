@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { SapClient } from "@zzapi-mes/core";
 import { accessLog } from "./middleware/log.js";
 import { requestId } from "./middleware/request-id.js";
@@ -99,6 +100,22 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
     await next();
   });
 
+  // CORS — allow service-to-service and CLI clients. Origin is restricted
+  // to HUB_CORS_ORIGIN (comma-separated) or "*" by default. Credentials
+  // enabled so Bearer tokens survive preflight. If no browser clients are
+  // expected, set HUB_CORS_ORIGIN to empty string to disable entirely.
+  const corsOrigins = process.env.HUB_CORS_ORIGIN ?? "*";
+  if (corsOrigins) {
+    app.use("*", cors({
+      origin: corsOrigins === "*" ? "*" : corsOrigins.split(",").map(o => o.trim()),
+      allowMethods: ["GET", "POST"],
+      allowHeaders: ["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
+      exposeHeaders: ["X-Request-ID", "Retry-After"],
+      maxAge: 600,
+      credentials: true,
+    }));
+  }
+
   // Security headers on all routes
   app.use("*", securityHeaders);
 
@@ -179,6 +196,21 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
 
     const verified = await verifyApiKey(db, api_key);
     if (!verified) {
+      // Auth-failure log for forensics. Only the key_id prefix (before the dot)
+      // is logged — never the secret component. Clients that don't use the
+      // `keyId.secret` format get a hashed prefix to avoid log injection.
+      const dotIdx = api_key.indexOf(".");
+      const prefix = dotIdx > 0 && dotIdx <= 32
+        ? api_key.slice(0, dotIdx).replace(/[^A-Za-z0-9]/g, "")
+        : "malformed";
+      const ip = c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+      console.log(JSON.stringify({
+        type: "auth_failure",
+        ip,
+        key_id_prefix: prefix,
+        req_id: c.get("reqId") ?? "-",
+        t: Math.floor(Date.now() / 1000),
+      }));
       return c.json({ error: "Invalid API key" }, 401);
     }
 

@@ -27,7 +27,7 @@ The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go throug
 - `pnpm spec:gen` — regenerate Zod schemas from `spec/openapi.yaml` via `scripts/spec-gen.sh` (runs openapi-zod-client then strips zodios code and adds `*Schema` re-exportss). CI drift gate checks this.
 - `pnpm smoke` — run the curl smoke suite against sapdev. Requires handlers to already be deployed. Override creds/host via env:
   ```
-  SAP_USER=api_user2 SAP_PASS='Pt@2026' SAP_HOST=sapdev.fastcell.hk:8000 pnpm smoke
+  SAP_USER="${SAP_USER:?required}" SAP_PASS="${SAP_PASS:?required}" SAP_HOST=sapdev.fastcell.hk:8000 pnpm smoke
   ```
   Defaults: `sapdev.fastcell.hk:8000`, client `200`. Exits with the number of failed checks.
   Set `VERBOSE=1` to print response bodies on failure.

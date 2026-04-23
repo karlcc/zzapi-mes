@@ -204,10 +204,33 @@ describe("POST /auth/token", () => {
   it("rejects invalid API key with 401", async () => {
     const res = await fetchApi("/auth/token", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-real-ip": "10.0.0.1" },
       body: JSON.stringify({ api_key: "wrong.key" }),
     });
     assert.equal(res.status, 401);
+  });
+
+  it("logs auth_failure on invalid API key", async () => {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => { if (typeof args[0] === "string") logs.push(args[0]); };
+    try {
+      await fetchApi("/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-real-ip": "10.0.0.1" },
+        body: JSON.stringify({ api_key: "wrong.key" }),
+      });
+      const entry = logs.find(l => l.includes("auth_failure"));
+      assert.ok(entry, "auth_failure log entry should exist");
+      const parsed = JSON.parse(entry!);
+      assert.equal(parsed.type, "auth_failure");
+      assert.equal(parsed.ip, "10.0.0.1");
+      assert.equal(parsed.key_id_prefix, "wrong");
+      assert.ok(parsed.req_id);
+      assert.ok(parsed.t);
+    } finally {
+      console.log = origLog;
+    }
   });
 
   it("rejects revoked key with 401", async () => {
@@ -1658,6 +1681,80 @@ describe("Security headers", () => {
   it("sets Referrer-Policy no-referrer", async () => {
     const res = await fetchApi("/healthz");
     assert.equal(res.headers.get("referrer-policy"), "no-referrer");
+  });
+
+  it("sets CORS Access-Control-Allow-Origin header", async () => {
+    const req = new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://localhost" },
+    });
+    const res = await app().fetch(req);
+    const acao = res.headers.get("access-control-allow-origin");
+    assert.ok(acao, "should have CORS origin header");
+  });
+
+  it("CORS preflight returns allowed methods", async () => {
+    const req = new Request("http://localhost/ping", {
+      method: "OPTIONS",
+      headers: {
+        "Origin": "http://localhost",
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "Authorization",
+      },
+    });
+    const res = await app().fetch(req);
+    assert.equal(res.status, 204);
+    const methods = res.headers.get("access-control-allow-methods");
+    assert.ok(methods, "should have allow-methods header");
+  });
+});
+
+describe("Auth failure logging", () => {
+  it("logs JSON entry on invalid API key attempt", async () => {
+    _resetBucketsForTest();
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
+      if (typeof chunk === "string") chunks.push(chunk);
+      return true;
+    };
+    try {
+      await fetchApi("/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: "badkey.badsecret" }),
+      });
+    } finally {
+      process.stdout.write = origWrite;
+    }
+    const logLine = chunks.find((c) => c.includes("auth_failure"));
+    assert.ok(logLine, "auth_failure log entry should appear");
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.type, "auth_failure");
+    assert.equal(entry.key_id_prefix, "badkey");
+    assert.ok(typeof entry.ip === "string");
+  });
+
+  it("logs malformed key prefix for non-key.format input", async () => {
+    _resetBucketsForTest();
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
+      if (typeof chunk === "string") chunks.push(chunk);
+      return true;
+    };
+    try {
+      await fetchApi("/auth/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key: "no-dot-at-all" }),
+      });
+    } finally {
+      process.stdout.write = origWrite;
+    }
+    const logLine = chunks.find((c) => c.includes("auth_failure"));
+    assert.ok(logLine);
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.key_id_prefix, "malformed");
   });
 });
 
