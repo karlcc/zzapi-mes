@@ -1,9 +1,8 @@
 import { Hono } from "hono";
 import type { SapClient } from "@zzapi-mes/core";
-import { ZzapiMesHttpError } from "@zzapi-mes/core";
-import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import { validateParam } from "./validate.js";
+import { withSapCall } from "./sap-call.js";
 
 export function createStockRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();
@@ -23,22 +22,7 @@ export function createStockRouter(sap: SapClient) {
       const badL = validateParam(c, "lgort", lgort, 4, "query");
       if (badL) return badL;
     }
-    try {
-      const start = performance.now();
-      const result = await sap.getStock(matnr, werks, lgort);
-      const sapDurationMs = performance.now() - start;
-      c.set("sapStatus", 200);
-      c.set("sapDurationMs", Math.round(sapDurationMs));
-      sapDuration.labels({ route: "/stock/:matnr" }).observe(sapDurationMs / 1000);
-      return c.json(result);
-    } catch (err) {
-      if (err instanceof ZzapiMesHttpError) {
-        const status = err.status === 408 ? 504 : err.status;
-        c.set("sapStatus", err.status);
-        return c.json({ error: err.message }, status as 400 | 404 | 405 | 500 | 504);
-      }
-      return c.json({ error: "Internal proxy error" }, 502);
-    }
+    return withSapCall(c, "/stock/:matnr", () => sap.getStock(matnr, werks, lgort));
   });
 
   return router;

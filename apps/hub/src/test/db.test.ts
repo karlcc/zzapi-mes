@@ -202,12 +202,14 @@ describe("DB layer — migrations", () => {
     assert.equal(after.cnt, before.cnt);
   });
 
-  it("v1 creates expected indexes", () => {
+  it("v1 creates expected indexes (v6 drops the redundant created_at one)", () => {
     const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'").all() as { name: string }[];
     const names = indexes.map(i => i.name);
     assert.ok(names.includes("idx_idempotency_created_at"));
     assert.ok(names.includes("idx_audit_log_key_id"));
-    assert.ok(names.includes("idx_audit_log_created_at"));
+    // idx_audit_log_created_at was created by v1 but dropped by v6 (redundant
+    // with v5's idx_audit_log_created_at_retention which serves the same column)
+    assert.ok(!names.includes("idx_audit_log_created_at"), "v6 should have dropped this redundant index");
   });
 
   it("v4 creates composite and idempotency indexes", () => {
@@ -216,5 +218,12 @@ describe("DB layer — migrations", () => {
     assert.ok(names.includes("idx_audit_log_key_created"), "composite index on audit_log(key_id, created_at)");
     assert.ok(names.includes("idx_idempotency_key_id"), "index on idempotency_keys(key_id)");
     assert.ok(names.includes("idx_audit_log_path"), "v3 path index");
+  });
+
+  it("v5 creates retention index, v6 drops redundant created_at index", () => {
+    const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'").all() as { name: string }[];
+    const names = indexes.map(i => i.name);
+    assert.ok(names.includes("idx_audit_log_created_at_retention"), "v5 retention index");
+    assert.ok(!names.includes("idx_audit_log_created_at"), "v6 dropped redundant index");
   });
 });

@@ -130,20 +130,12 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
 
   // --- Public routes ---
 
-  // 405 helper (must be defined before first use)
-  const notAllowed = (c: any) => c.json({ error: "Method not allowed" }, 405);
-
   // GET /metrics (no auth, but localhost-only — enforced inside the route)
+  app.use("/metrics", methodGuard("GET"));
   app.route("/", metricsRoute);
 
-  // 405 for public routes
-  for (const m of ["post", "put", "patch", "delete"] as const) {
-    app[m]("/metrics", notAllowed);
-  }
-  app.get("/auth/token", notAllowed);
-  app.put("/auth/token", notAllowed);
-  app.patch("/auth/token", notAllowed);
-  app.delete("/auth/token", notAllowed);
+  // POST /auth/token only; methodGuard rejects GET/PUT/PATCH/DELETE with 405
+  app.use("/auth/token", methodGuard("POST"));
 
   // Rate limit /auth/token (per-IP token bucket) to prevent brute-force
   // In-memory — state is lost on process restart, allowing a brief burst.
@@ -228,14 +220,9 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
     return c.json({ token, expires_in: jwtTtl });
   });
 
-  // GET /healthz
+  // GET /healthz only; methodGuard rejects POST/PUT/PATCH/DELETE with 405
+  app.use("/healthz", methodGuard("GET"));
   app.route("/", health);
-
-  // 405 for /healthz
-  app.post("/healthz", notAllowed);
-  app.put("/healthz", notAllowed);
-  app.patch("/healthz", notAllowed);
-  app.delete("/healthz", notAllowed);
 
   // --- Protected routes (JWT + scope + rate limit) ---
   // GET-only routes: methodGuard rejects non-GET before JWT check

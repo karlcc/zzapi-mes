@@ -103,6 +103,14 @@ export function runMigrations(db: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_audit_log_created_at_retention ON audit_log(created_at);
     `);
   }
+
+  // v6: drop redundant idx_audit_log_created_at — v1 and v5 both index the
+  // same column; the v5 retention index is the canonical one.
+  if (v < 6) {
+    migrate(6, `
+      DROP INDEX IF EXISTS idx_audit_log_created_at;
+    `);
+  }
 }
 
 const FIND_BY_ID = `

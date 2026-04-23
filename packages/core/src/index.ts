@@ -111,10 +111,12 @@ export type ZzapiMesConfig = SapClientConfig;
 
 export class ZzapiMesHttpError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  readonly retryAfter?: number;
+  constructor(status: number, message: string, retryAfter?: number) {
     super(message);
     this.name = "ZzapiMesHttpError";
     this.status = status;
+    this.retryAfter = retryAfter;
   }
 }
 

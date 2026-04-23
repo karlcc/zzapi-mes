@@ -1,9 +1,8 @@
 import { Hono } from "hono";
 import type { SapClient } from "@zzapi-mes/core";
-import { ZzapiMesHttpError } from "@zzapi-mes/core";
-import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import { validateParam } from "./validate.js";
+import { withSapCall } from "./sap-call.js";
 
 export function createMaterialRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();
@@ -17,22 +16,7 @@ export function createMaterialRouter(sap: SapClient) {
       const badW = validateParam(c, "werks", werks, 4, "query");
       if (badW) return badW;
     }
-    try {
-      const start = performance.now();
-      const result = await sap.getMaterial(matnr, werks);
-      const sapDurationMs = performance.now() - start;
-      c.set("sapStatus", 200);
-      c.set("sapDurationMs", Math.round(sapDurationMs));
-      sapDuration.labels({ route: "/material/:matnr" }).observe(sapDurationMs / 1000);
-      return c.json(result);
-    } catch (err) {
-      if (err instanceof ZzapiMesHttpError) {
-        const status = err.status === 408 ? 504 : err.status;
-        c.set("sapStatus", err.status);
-        return c.json({ error: err.message }, status as 400 | 404 | 405 | 500 | 504);
-      }
-      return c.json({ error: "Internal proxy error" }, 502);
-    }
+    return withSapCall(c, "/material/:matnr", () => sap.getMaterial(matnr, werks));
   });
 
   return router;

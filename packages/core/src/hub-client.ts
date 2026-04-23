@@ -204,7 +204,8 @@ export class HubClient {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
     if ("error" in json) {
-      throw new ZzapiMesHttpError(res.status, json.error as string);
+      const retryAfter = res.status === 429 ? Number(res.headers.get("retry-after")) || undefined : undefined;
+      throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
     }
     return json as T;
   }
