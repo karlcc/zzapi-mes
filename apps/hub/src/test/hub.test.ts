@@ -1391,6 +1391,135 @@ describe("Failed write-back audit logging", () => {
   });
 });
 
+describe("BAPI 422 authorization-error passthrough", () => {
+  // Per zzapi-mes-bapi-authorization-checklist.md §Failure Modes: when SAP
+  // rejects a write-back due to missing PFCG role authorization, it returns
+  // 422 with a BAPI return-table message. The hub must forward status AND
+  // message unchanged (not swallow or rewrite) so operators can diagnose the
+  // exact missing auth object (S_TCODE, M_MSEG_BWA, M_MSEG_WWA, M_MSEG_LGO).
+
+  async function captureLog<T>(fn: () => Promise<T>): Promise<{ result: T; chunks: string[] }> {
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
+      if (typeof chunk === "string") chunks.push(chunk);
+      return true;
+    };
+    try {
+      const result = await fn();
+      return { result, chunks };
+    } finally {
+      process.stdout.write = origWrite;
+    }
+  }
+
+  it("POST /goods-receipt forwards 422 when SAP rejects missing S_TCODE auth", async () => {
+    const bapiMsg = "No authorization for transaction MB01";
+    mockGrError = new ZzapiMesHttpError(422, bapiMsg);
+    const token = await validToken();
+    const reqId = "auth-err-tcode-001";
+    const { result: res, chunks } = await captureLog(() =>
+      fetchApi("/goods-receipt", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": "bapi-auth-tcode",
+          "x-request-id": reqId,
+        },
+        body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+      }),
+    );
+    assert.equal(res.status, 422);
+    const body = await res.json() as { error: string; ebeln: string };
+    assert.equal(body.error, bapiMsg, "BAPI return-table message must be forwarded unchanged");
+    const logLine = chunks.find((c) => c.includes(reqId));
+    assert.ok(logLine, "access log entry should be emitted");
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.sap_status, 422);
+    assert.equal(typeof entry.sap_duration_ms, "number");
+  });
+
+  it("POST /goods-receipt forwards 422 when SAP rejects missing BWART auth", async () => {
+    const bapiMsg = "BWART 101 not allowed";
+    mockGrError = new ZzapiMesHttpError(422, bapiMsg);
+    const token = await validToken();
+    const reqId = "auth-err-bwart-001";
+    const { result: res, chunks } = await captureLog(() =>
+      fetchApi("/goods-receipt", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": "bapi-auth-bwart",
+          "x-request-id": reqId,
+        },
+        body: JSON.stringify({ ebeln: "4500000002", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+      }),
+    );
+    assert.equal(res.status, 422);
+    const body = await res.json() as { error: string };
+    assert.equal(body.error, bapiMsg);
+    const logLine = chunks.find((c) => c.includes(reqId));
+    assert.ok(logLine);
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.sap_status, 422);
+  });
+
+  it("POST /confirmation forwards 422 when SAP rejects missing plant (WERKS) auth", async () => {
+    const bapiMsg = "Plant 1000 not allowed";
+    mockConfError = new ZzapiMesHttpError(422, bapiMsg);
+    const token = await validToken();
+    const reqId = "auth-err-werks-001";
+    const { result: res, chunks } = await captureLog(() =>
+      fetchApi("/confirmation", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": "bapi-auth-werks",
+          "x-request-id": reqId,
+        },
+        body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 10 }),
+      }),
+    );
+    assert.equal(res.status, 422);
+    const body = await res.json() as { error: string; orderid: string };
+    assert.equal(body.error, bapiMsg);
+    assert.equal(body.orderid, "1000000");
+    const logLine = chunks.find((c) => c.includes(reqId));
+    assert.ok(logLine);
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.sap_status, 422);
+  });
+
+  it("POST /goods-issue forwards 422 when SAP rejects missing storage-location (LGORT) auth", async () => {
+    const bapiMsg = "Storage location 0001 not allowed";
+    mockGiError = new ZzapiMesHttpError(422, bapiMsg);
+    const token = await validToken();
+    const reqId = "auth-err-lgort-001";
+    const { result: res, chunks } = await captureLog(() =>
+      fetchApi("/goods-issue", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": "bapi-auth-lgort",
+          "x-request-id": reqId,
+        },
+        body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+      }),
+    );
+    assert.equal(res.status, 422);
+    const body = await res.json() as { error: string };
+    assert.equal(body.error, bapiMsg);
+    const logLine = chunks.find((c) => c.includes(reqId));
+    assert.ok(logLine);
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.sap_status, 422);
+  });
+});
+
 describe("Path parameter validation", () => {
   it("GET /po/:ebeln rejects ebeln longer than 10 chars", async () => {
     const token = await validToken();
