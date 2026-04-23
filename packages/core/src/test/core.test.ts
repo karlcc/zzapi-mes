@@ -692,6 +692,34 @@ describe("SapClient constructor validation", () => {
     // btoa("user:pass") — whitespace stripped before encoding
     assert.equal(capturedAuth, `Basic ${btoa("user:pass")}`);
   });
+
+  it("rejects config.client = 0", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 0, user: "u", password: "p" }),
+      /client.*positive/,
+    );
+  });
+
+  it("rejects config.client = -1", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: -1, user: "u", password: "p" }),
+      /client.*positive/,
+    );
+  });
+
+  it("rejects config.client = NaN", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: NaN, user: "u", password: "p" }),
+      /client.*positive/,
+    );
+  });
+
+  it("rejects config.client = 1.5 (non-integer)", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 1.5, user: "u", password: "p" }),
+      /client.*positive/,
+    );
+  });
 });
 
 describe("SapClient HTTP 200 with error/errors key", () => {

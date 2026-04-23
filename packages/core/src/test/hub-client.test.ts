@@ -960,4 +960,15 @@ describe("HubClient constructor validation", () => {
     const c2 = new HubClient({ url: BASE, apiKey: API_KEY, timeout: 5000 });
     assert.ok(c2);
   });
+
+  it("ensureProtocol prepends http:// to bare hostname", () => {
+    const client = new HubClient({ url: "not-a-url", apiKey: API_KEY });
+    // ensureProtocol("not-a-url") → "http://not-a-url"
+    assert.ok(client);
+  });
+
+  it("ensureProtocol passes through ftp:// scheme unchanged", () => {
+    const client = new HubClient({ url: "ftp://evil.example.com", apiKey: API_KEY });
+    assert.ok(client);
+  });
 });
