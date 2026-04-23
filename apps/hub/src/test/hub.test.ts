@@ -2357,6 +2357,38 @@ describe("Security headers", () => {
     const acao = res.headers.get("access-control-allow-origin");
     assert.equal(acao, null, "should NOT have CORS origin header when CORS disabled");
   });
+
+  it("CORS comma-separated multiple origins allows each origin", async () => {
+    process.env.HUB_CORS_ORIGIN = "http://app.example.com,http://mes.example.com";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    // First origin
+    const res1 = await testApp.fetch(new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://app.example.com" },
+    }));
+    assert.equal(res1.headers.get("access-control-allow-origin"), "http://app.example.com");
+    // Second origin
+    const res2 = await testApp.fetch(new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://mes.example.com" },
+    }));
+    assert.equal(res2.headers.get("access-control-allow-origin"), "http://mes.example.com");
+    delete process.env.HUB_CORS_ORIGIN;
+  });
+
+  it("CORS exposes X-Request-ID and Retry-After headers", async () => {
+    process.env.HUB_CORS_ORIGIN = "http://localhost";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    const res = await testApp.fetch(new Request("http://localhost/ping", {
+      method: "OPTIONS",
+      headers: {
+        "Origin": "http://localhost",
+        "Access-Control-Request-Method": "GET",
+      },
+    }));
+    const expose = res.headers.get("access-control-expose-headers");
+    assert.ok(expose?.includes("X-Request-ID"), "should expose X-Request-ID");
+    assert.ok(expose?.includes("Retry-After"), "should expose Retry-After");
+    delete process.env.HUB_CORS_ORIGIN;
+  });
 });
 
 describe("Auth failure logging", () => {
@@ -3017,6 +3049,77 @@ describe("GET route audit write failure", () => {
     assert.equal(res.status, 404, "should return 404 even when audit write fails");
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.error, "PO not found");
+  });
+});
+
+describe("Write-back SAP error + DB failure", () => {
+  it("returns SAP error (502) even when DB audit write also fails", async () => {
+    const orig = MockSapClient.prototype.postConfirmation;
+    MockSapClient.prototype.postConfirmation = async () => { throw new Error("Network failure"); };
+    const brokenDb = new Database(":memory:");
+    runMigrations(brokenDb);
+    const keyId = "wberrdbtest";
+    const secret = "wberrdbsecret123456789abcdef0123";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(brokenDb, {
+      id: keyId,
+      hash,
+      label: "wb err+db test",
+      scopes: ALL_SCOPES.join(","),
+      rate_limit_per_min: null,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+    brokenDb.exec("DROP TABLE audit_log");
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db: brokenDb }).app;
+    const token = await sign(
+      { key_id: keyId, scopes: [...ALL_SCOPES], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900, rate_limit_per_min: 600 },
+      JWT_SECRET,
+    );
+
+    const errors: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: unknown[]) => { if (typeof args[0] === "string") errors.push(args[0]); };
+
+    try {
+      const req = new Request("http://localhost/confirmation", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": "wb-sap-err-db-001",
+        },
+        body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+      });
+      const res = await testApp.fetch(req);
+      assert.equal(res.status, 502, "should return SAP error even when DB also fails");
+      const body = await res.json() as Record<string, unknown>;
+      assert.equal(body.error, "SAP upstream error");
+      assert.ok(errors.some(e => e.includes("audit_write_error")), "should still log audit_write_error");
+    } finally {
+      console.error = origErr;
+      MockSapClient.prototype.postConfirmation = orig;
+      brokenDb.close();
+    }
+  });
+});
+
+describe("413 body-too-large on write-back route", () => {
+  it("returns 413 when Content-Length exceeds 1 MB", async () => {
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "413-test-1",
+        "content-length": "2000000",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 413);
+    const body = await res.json() as Record<string, unknown>;
+    assert.match(String(body.error), /too large/i);
   });
 });
 
