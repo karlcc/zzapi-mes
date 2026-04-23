@@ -17,6 +17,13 @@
 
 set -euo pipefail
 
+# --- Node version guard ---
+NODE_MAJOR=$(node --version 2>/dev/null | sed 's/^v\([0-9]*\).*/\1/')
+if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 20 ]; then
+  echo "Error: Node 20+ required (found $(node --version 2>/dev/null || 'none'))" >&2
+  exit 1
+fi
+
 INSTALL_DIR="/opt/zzapi-mes-hub"
 DATA_DIR="/var/lib/zzapi-mes-hub"
 ENV_FILE="/etc/zzapi-mes-hub.env"
