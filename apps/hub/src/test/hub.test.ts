@@ -1008,6 +1008,9 @@ describe("Phase 5B write-back routes", () => {
       body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
     });
     assert.equal(res.status, 422);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Material not found");
+    assert.equal(body.orderid, "1000000", "error response should include errorField (orderid)");
   });
 
   // --- Zod validation failures ---
@@ -1662,6 +1665,48 @@ describe("Request body size limit", () => {
     const data = await res.json() as Record<string, unknown>;
     assert.equal(data.status, "confirmed");
   });
+
+  it("rejects oversized body on /goods-receipt with 413", async () => {
+    const token = await validToken(["gr"]);
+    const bigBody = "x".repeat(1_048_577);
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "gr-oversized-001",
+      },
+      body: bigBody,
+    });
+    assert.equal(res.status, 413);
+  });
+
+  it("rejects oversized body on /goods-issue with 413", async () => {
+    const token = await validToken(["gi"]);
+    const bigBody = "x".repeat(1_048_577);
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "gi-oversized-001",
+      },
+      body: bigBody,
+    });
+    assert.equal(res.status, 413);
+  });
+
+  it("rejects oversized body on /auth/token with 413", async () => {
+    const bigBody = "x".repeat(1_048_577);
+    const res = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: bigBody,
+    });
+    assert.equal(res.status, 413);
+  });
 });
 
 describe("JWT edge cases", () => {
@@ -1957,6 +2002,62 @@ describe("Idempotency key reuse across routes", () => {
     });
     // Same idempotency key on different route → 422 (hash mismatch) or 409
     assert.ok(grRes.status === 409 || grRes.status === 422, `Expected 409 or 422, got ${grRes.status}`);
+  });
+});
+
+describe("Idempotency guard E2E", () => {
+  it("returns 409 with 'previous attempt did not complete' for status=0 pending record", async () => {
+    // Insert a pending idempotency record (status=0) directly into DB
+    // to simulate a crash-retry scenario
+    const key = "pending-crash-key";
+    const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
+    const bodyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+    // Insert with status=0 (pending) to simulate crash before finalize
+    checkIdempotency(db, key, "testkey1234", "/confirmation", 0, bodyHash);
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": key,
+      },
+      body,
+    });
+    assert.equal(res.status, 409);
+    const resBody = await res.json() as Record<string, unknown>;
+    assert.ok(String(resBody.error).includes("previous attempt did not complete"), `expected crash-retry message, got: ${resBody.error}`);
+  });
+
+  it("returns 409 with original_status for completed duplicate", async () => {
+    // First request succeeds → idempotency key gets status=201
+    const token = await validToken();
+    const res1 = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "dup-original-status",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res1.status, 201);
+
+    // Second request with same key + same body → 409 with original_status
+    const res2 = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "dup-original-status",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res2.status, 409);
+    const body2 = await res2.json() as Record<string, unknown>;
+    assert.equal(body2.original_status, 201, "should include original_status in 409 response");
   });
 });
 
@@ -2640,6 +2741,40 @@ describe("SAP 5xx error sanitization on write-back", () => {
     assert.equal(body.error, "SAP upstream error");
     MockSapClient.prototype.postConfirmation = orig;
   });
+
+  it("maps SAP 400 to 502 on write-back route", async () => {
+    mockConfError = new ZzapiMesHttpError(400, "Bad Request from SAP");
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `sap400-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+  });
+
+  it("maps SAP 404 to 502 on write-back route", async () => {
+    mockConfError = new ZzapiMesHttpError(404, "Not Found in SAP");
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `sap404-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+  });
 });
 
 describe("Admin CLI key revoke", () => {
@@ -2844,6 +2979,38 @@ describe("SAP 429 on write-back route", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.error, "Too Many Requests");
     assert.equal(res.headers.get("retry-after"), "30");
+  });
+
+  it("forwards SAP 429 with Retry-After on /goods-receipt", async () => {
+    mockGrError = new ZzapiMesHttpError(429, "Too Many Requests", 45);
+    const token = await validToken(["gr"]);
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `sap429-gr-${Date.now()}`,
+      },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "45");
+  });
+
+  it("forwards SAP 429 with Retry-After on /goods-issue", async () => {
+    mockGiError = new ZzapiMesHttpError(429, "Too Many Requests", 60);
+    const token = await validToken(["gi"]);
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `sap429-gi-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "60");
   });
 });
 
