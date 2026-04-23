@@ -72,7 +72,19 @@ Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
 
 ### CORS
 
-The hub uses `hono/cors` middleware. Set `HUB_CORS_ORIGIN` to a comma-separated list of allowed origins, or leave unset for `*` (any origin). Set to empty string to disable CORS entirely. Credentials (`Authorization` header) are enabled; allowed methods are GET and POST only.
+CORS is disabled by default. Set `HUB_CORS_ORIGIN` to a comma-separated list of explicit origins to enable it. `*` is rejected because wildcard origins with credentials is a CSRF vector and browsers reject it anyway. Service-to-service callers (CLI, other backends) don't need CORS. Allowed methods: GET and POST only; credentials enabled.
+
+### Client IP Resolution
+
+`getClientIp()` in `middleware/client-ip.ts` uses `@hono/node-server/conninfo` to get the unspoofable TCP peer address. Headers (`x-real-ip`, `x-forwarded-for`) are only honored when `HUB_TRUSTED_PROXY` is set to a comma-separated list of proxy IPs that match the peer. Without a trusted proxy config, header-based IP spoofing is impossible. The `isLoopbackPeer()` helper checks the real TCP peer for the `/metrics` localhost guard.
+
+### Security Headers
+
+All responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. HSTS (`Strict-Transport-Security`) is emitted only when `HUB_HSTS=1` (requires TLS — typically terminated at a reverse proxy). `/auth/token` adds `Cache-Control: no-store`.
+
+### Audit Logging
+
+All hub routes (both GET and POST) write to `audit_log` via `writeAudit()` (POST routes) or `withSapCall()` (GET routes). Entries record `req_id`, `key_id`, `method`, `path`, `sap_status`, `sap_duration_ms`, and (for POST routes) a truncated request body (max 4096 chars). Audit write failures on GET routes are silently caught; POST routes log `audit_write_error` but still return the SAP response to prevent duplicate retries.
 
 ### Scope Definitions
 
@@ -104,6 +116,7 @@ All GET route handlers use `validateParam()` from `routes/validate.ts` to enforc
 All 8 read-only hub routes delegate to `withSapCall()` in `routes/sap-call.ts`, which wraps:
 - Timing (`sap_duration_ms` metric)
 - Error mapping (any thrown `ZzapiMesHttpError` → appropriate HTTP status; non-ZzapiMesHttpError → 502)
+- Audit logging (records key_id, path, sap_status, sap_duration_ms)
 - `Retry-After` header capture on 429 responses
 
 ## Phase Roadmap
