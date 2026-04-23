@@ -1,6 +1,6 @@
 import { ensureProtocol } from "./index.js";
 import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse, ConfirmationRequest, ConfirmationResponse, GoodsReceiptRequest, GoodsReceiptResponse, GoodsIssueRequest, GoodsIssueResponse } from "./index.js";
-import { ZzapiMesHttpError } from "./index.js";
+import { ZzapiMesHttpError, parseRetryAfter } from "./index.js";
 
 export interface HubClientConfig {
   /** Hub base URL, e.g. http://localhost:8080 */
@@ -212,7 +212,7 @@ export class HubClient {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
     if ("error" in json) {
-      const retryAfter = res.status === 429 ? Number(res.headers.get("retry-after")) || undefined : undefined;
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       const originalStatus = res.status === 409 && typeof json.original_status === "number" ? json.original_status : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter, originalStatus);
     }

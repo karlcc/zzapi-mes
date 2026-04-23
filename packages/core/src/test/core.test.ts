@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
+import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
 
 const BASE = "http://sapdev.test:8000";
 const CFG = { host: BASE, client: 200, user: "u", password: "p", timeout: 5000 };
@@ -464,5 +464,90 @@ describe("ALL_SCOPES", () => {
 
   it("has no duplicates", () => {
     assert.equal(new Set(ALL_SCOPES).size, ALL_SCOPES.length);
+  });
+});
+
+describe("parseRetryAfter", () => {
+  it("parses a numeric string", () => {
+    assert.equal(parseRetryAfter("30"), 30);
+  });
+
+  it("parses a decimal string", () => {
+    assert.equal(parseRetryAfter("1.5"), 1.5);
+  });
+
+  it("returns undefined for null", () => {
+    assert.equal(parseRetryAfter(null), undefined);
+  });
+
+  it("returns undefined for undefined", () => {
+    assert.equal(parseRetryAfter(undefined), undefined);
+  });
+
+  it("returns undefined for empty string", () => {
+    assert.equal(parseRetryAfter(""), undefined);
+  });
+
+  it("returns undefined for non-numeric string", () => {
+    assert.equal(parseRetryAfter("abc"), undefined);
+  });
+
+  it("returns undefined for zero", () => {
+    assert.equal(parseRetryAfter("0"), undefined);
+  });
+
+  it("returns undefined for negative number", () => {
+    assert.equal(parseRetryAfter("-5"), undefined);
+  });
+
+  it("returns undefined for NaN string", () => {
+    assert.equal(parseRetryAfter("NaN"), undefined);
+  });
+});
+
+describe("SapClient Retry-After extraction from SAP 429", () => {
+  it("extracts Retry-After header on 429 GET response", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: "Too Many Requests" }),
+      { status: 429, headers: { "retry-after": "30" } },
+    );
+    try {
+      await new SapClient(CFG).ping();
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 429);
+      assert.equal(e.retryAfter, 30);
+    }
+  });
+
+  it("extracts Retry-After header on 429 POST response", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: "Too Many Requests" }),
+      { status: 429, headers: { "retry-after": "60" } },
+    );
+    try {
+      await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 429);
+      assert.equal(e.retryAfter, 60);
+    }
+  });
+
+  it("does not set retryAfter on non-429 error", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: "Not found" }),
+      { status: 404, headers: { "retry-after": "30" } },
+    );
+    try {
+      await new SapClient(CFG).ping();
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 404);
+      assert.equal(e.retryAfter, undefined);
+    }
   });
 });

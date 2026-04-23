@@ -133,6 +133,13 @@ export function ensureProtocol(host: string): string {
   return `http://${host}`;
 }
 
+/** Parse a Retry-After header value (seconds) into a number, or undefined. */
+export function parseRetryAfter(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // SAP client (direct ICF access with Basic Auth)
 // ---------------------------------------------------------------------------
@@ -253,7 +260,8 @@ export class SapClient {
     }
 
     if ("error" in json) {
-      throw new ZzapiMesHttpError(res.status, json.error as string);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
     }
 
     return json as T;
@@ -302,7 +310,8 @@ export class SapClient {
     }
 
     if ("error" in json) {
-      throw new ZzapiMesHttpError(res.status, json.error as string);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
     }
 
     return json as T;
