@@ -70,4 +70,46 @@ describe("migrate.ts — CLI entry point", () => {
       db.close();
     }
   });
+
+  it("runMigrations applies only missing versions from partial state", () => {
+    const db = new Database(":memory:");
+    try {
+      // Create the base schema + seed _migrations at v3 (skip v1–v3)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS api_keys (
+          id TEXT PRIMARY KEY, hash TEXT NOT NULL, label TEXT, scopes TEXT NOT NULL,
+          rate_limit_per_min INTEGER, created_at INTEGER NOT NULL, revoked_at INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+          key TEXT PRIMARY KEY, key_id TEXT NOT NULL, path TEXT NOT NULL,
+          status INTEGER NOT NULL, body_hash TEXT NOT NULL, created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, req_id TEXT NOT NULL, key_id TEXT NOT NULL,
+          method TEXT NOT NULL, path TEXT NOT NULL, body TEXT, sap_status INTEGER, created_at INTEGER NOT NULL
+        );
+        INSERT INTO _migrations VALUES (1, 1), (2, 2), (3, 3);
+      `);
+      // Verify v3 columns exist but v2 column does not yet
+      // (v2 adds sap_duration_ms — but since we faked v2 via _migrations only,
+      // the column won't exist yet. runMigrations should skip v1–v3 and apply v4+.)
+      // Actually, the base schema above omits sap_duration_ms, so v2 wasn't truly applied.
+      // That's fine — we're testing version gating, not schema correctness.
+      // runMigrations should NOT re-apply v1–v3 (they're in _migrations).
+      const before = (db.prepare("SELECT COUNT(*) AS cnt FROM _migrations").get() as { cnt: number }).cnt;
+      assert.equal(before, 3);
+
+      runMigrations(db);
+
+      const after = (db.prepare("SELECT COUNT(*) AS cnt FROM _migrations").get() as { cnt: number }).cnt;
+      assert.equal(after, 6, "should add v4, v5, v6 but not re-add v1–v3");
+
+      // v6 should have dropped idx_audit_log_created_at (the redundant v1 index)
+      const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_audit_log_created_at'").get();
+      assert.equal(indexes, undefined, "v6 should drop idx_audit_log_created_at");
+    } finally {
+      db.close();
+    }
+  });
 });

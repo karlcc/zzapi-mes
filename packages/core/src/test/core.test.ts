@@ -693,3 +693,28 @@ describe("SapClient HTTP 200 with error/errors key", () => {
     assert.ok(result);
   });
 });
+
+describe("SapClient POST 409 GI backflush — message loss via safety net", () => {
+  it("GI backflush 409 with {status:'rejected', message:'...'} loses message to safety net", async () => {
+    // ABAP goods-issue backflush returns HTTP 409 with body:
+    //   { status: "rejected", message: "Backflush is active for this order" }
+    // Since there is no "error" or "errors" key, the safety net throws
+    //   ZzapiMesHttpError(409, "SAP error (HTTP 409)")
+    // The actual message is lost — this test documents the known limitation.
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ status: "rejected", message: "Backflux is active for this order" }),
+      { status: 409, headers: { "content-type": "application/json" } },
+    );
+    try {
+      await new SapClient(CFG).postGoodsIssue({ orderid: "4500000001", matnr: "10000001", menge: 1, werks: "1000", lgort: "0001" });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 409);
+      // Message is generic — the ABAP "Backflush is active..." is NOT preserved
+      assert.match(e.message, /SAP error \(HTTP 409\)/);
+      // This documents that the actual business message is currently lost.
+      // Fix would require SapClient to check for a "message" key on 409 responses.
+    }
+  });
+});

@@ -2389,6 +2389,24 @@ describe("Security headers", () => {
     assert.ok(expose?.includes("Retry-After"), "should expose Retry-After");
     delete process.env.HUB_CORS_ORIGIN;
   });
+
+  it("CORS trailing-slash mismatch silently denies origin", async () => {
+    process.env.HUB_CORS_ORIGIN = "http://localhost:3000";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    // Origin with trailing slash does NOT match
+    const res = await testApp.fetch(new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://localhost:3000/" },
+    }));
+    const acao = res.headers.get("access-control-allow-origin");
+    // Hono's cors middleware does strict string matching — trailing slash is a mismatch
+    assert.equal(acao, null, "trailing slash in Origin should not match CORS config without slash");
+    // Without trailing slash should match
+    const res2 = await testApp.fetch(new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://localhost:3000" },
+    }));
+    assert.equal(res2.headers.get("access-control-allow-origin"), "http://localhost:3000");
+    delete process.env.HUB_CORS_ORIGIN;
+  });
 });
 
 describe("Auth failure logging", () => {
