@@ -8,12 +8,35 @@
 # Env overrides: HUB_DB, HUB_BACKUP_DIR, HUB_BACKUP_RETAIN_DAYS.
 $ErrorActionPreference = 'Stop'
 
+# --- Pre-flight checks ---
+if (-not (Get-Command sqlite3.exe -ErrorAction SilentlyContinue)) {
+    Write-Error "sqlite3.exe not found in PATH. Install via: winget install SQLite.SQLite"
+    exit 1
+}
+
 $Db = if ($env:HUB_DB) { $env:HUB_DB } else { 'C:\var\zzapi-mes-hub\hub.db' }
 $BackupDir = if ($env:HUB_BACKUP_DIR) { $env:HUB_BACKUP_DIR } else { 'C:\var\zzapi-mes-hub\backups' }
+
+if (-not (Test-Path $Db)) {
+    Write-Error "database file not found: $Db"
+    exit 1
+}
+
 $RetainDays = if ($env:HUB_BACKUP_RETAIN_DAYS) { [int]$env:HUB_BACKUP_RETAIN_DAYS } else { 30 }
+if ($RetainDays -le 0) {
+    Write-Error "HUB_BACKUP_RETAIN_DAYS must be a positive integer (got $RetainDays)"
+    exit 1
+}
 
 $Stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $Dest = Join-Path $BackupDir "hub-$Stamp.db"
+
+# Cleanup partial backup on failure
+trap {
+    if (Test-Path $Dest) { Remove-Item $Dest -Force -ErrorAction SilentlyContinue }
+    if (Test-Path "$Dest.zip") { Remove-Item "$Dest.zip" -Force -ErrorAction SilentlyContinue }
+    break
+}
 
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 

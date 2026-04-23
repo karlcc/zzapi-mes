@@ -24,6 +24,19 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# --- Node version guard ---
+$nodeVersion = $null
+try { $nodeVersion = & node --version 2>$null } catch {}
+if (-not $nodeVersion -or $nodeVersion -notmatch '^v(\d+)\.') {
+    Write-Error "Node 20+ required (node not found or version unrecognized)."
+    exit 1
+}
+$nodeMajor = [int]$Matches[1]
+if ($nodeMajor -lt 20) {
+    Write-Error "Node 20+ required (found $nodeVersion)."
+    exit 1
+}
+
 $repoRoot = $InstallDir
 $distDir  = Join-Path $repoRoot "apps\hub\dist"
 

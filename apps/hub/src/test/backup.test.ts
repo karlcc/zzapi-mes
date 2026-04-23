@@ -98,4 +98,21 @@ describe("backup.sh", () => {
     assert.notEqual(code, 0, "should fail on RETAIN_DAYS=0");
     assert.ok(stderr.includes("positive integer"), `should mention validation: ${stderr}`);
   });
+
+  it("exits with error when sqlite3 is not in PATH", async () => {
+    const db = new Database(dbPath);
+    db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY)");
+    db.close();
+
+    const backupDir = join(tmpDir, "backups");
+    // Minimal PATH: /bin has bash but not sqlite3 (which is in /usr/bin on macOS)
+    const { stderr, code } = await runBackup({
+      HUB_DB: dbPath,
+      HUB_BACKUP_DIR: backupDir,
+      HUB_BACKUP_RETAIN_DAYS: "30",
+      PATH: "/bin",
+    });
+    assert.notEqual(code, 0, "should fail when sqlite3 not found");
+    assert.ok(stderr.includes("not found"), `should mention not found: ${stderr}`);
+  });
 });
