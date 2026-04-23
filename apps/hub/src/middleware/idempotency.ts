@@ -1,22 +1,25 @@
 import { createMiddleware } from "hono/factory";
 import type { HubVariables } from "../types.js";
 import { checkIdempotency, evictIdempotencyKeys, type IdempotencyRecord } from "../db/index.js";
+import type Database from "better-sqlite3";
 
 /** Evict keys older than 5 minutes (300 seconds). */
-const IDEMPOTENCY_MAX_AGE_SECONDS = 300;
+export const IDEMPOTENCY_MAX_AGE_SECONDS = 300;
 
 /** Evict with ~1% probability per request to reduce write amplification. */
-const EVICTION_PROBABILITY = 0.01;
+export const EVICTION_PROBABILITY = 0.01;
+
+/** Run eviction if the random check passes. Exported for unit testing. */
+export function maybeEvict(db: Database.Database | undefined, random: number): void {
+  if (random < EVICTION_PROBABILITY && db) {
+    evictIdempotencyKeys(db, IDEMPOTENCY_MAX_AGE_SECONDS);
+  }
+}
 
 /** Reject duplicate write-back requests within a 5-minute window. */
 export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
   // Probabilistic eviction of stale keys (~1% of requests)
-  if (Math.random() < EVICTION_PROBABILITY) {
-    const dbForEviction = c.get("db");
-    if (dbForEviction) {
-      evictIdempotencyKeys(dbForEviction, IDEMPOTENCY_MAX_AGE_SECONDS);
-    }
-  }
+  maybeEvict(c.get("db"), Math.random());
   const idempotencyKey = c.req.header("idempotency-key");
   if (!idempotencyKey || idempotencyKey.trim() === "") {
     return c.json({ error: "Missing Idempotency-Key header" }, 400);
