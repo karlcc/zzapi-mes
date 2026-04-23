@@ -583,3 +583,64 @@ describe("SapClient GET safety-net: 4xx/5xx without error/errors field", () => {
     }
   });
 });
+
+describe("SapClient constructor validation", () => {
+  it("rejects empty host", () => {
+    assert.throws(
+      () => new SapClient({ host: "", client: 200, user: "u", password: "p" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects whitespace-only host", () => {
+    assert.throws(
+      () => new SapClient({ host: "   ", client: 200, user: "u", password: "p" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects empty user", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "", password: "p" }),
+      /non-empty strings/,
+    );
+  });
+
+  it("rejects empty password", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "" }),
+      /non-empty strings/,
+    );
+  });
+
+  it("rejects timeout=0", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: 0 }),
+      /positive number/,
+    );
+  });
+
+  it("rejects negative timeout", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: -1000 }),
+      /positive number/,
+    );
+  });
+
+  it("rejects NaN timeout", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: NaN }),
+      /positive number/,
+    );
+  });
+
+  it("accepts valid config with timeout", () => {
+    const client = new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: 5000 });
+    assert.ok(client);
+  });
+
+  it("accepts valid config without timeout (uses default)", () => {
+    const client = new SapClient({ host: BASE, client: 200, user: "u", password: "p" });
+    assert.ok(client);
+  });
+});

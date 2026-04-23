@@ -153,9 +153,18 @@ export class SapClient {
   private onResponse?: SapClientConfig["onResponse"];
 
   constructor(config: SapClientConfig) {
+    if (!config.host || !config.host.trim()) {
+      throw new Error("SapClient config.host must be a non-empty string");
+    }
+    if (!config.user || !config.password) {
+      throw new Error("SapClient config.user and config.password must be non-empty strings");
+    }
     this.host = ensureProtocol(config.host).replace(/\/+$/, "");
     this.client = config.client;
     this.auth = btoa(`${config.user}:${config.password}`);
+    if (config.timeout !== undefined && (!Number.isFinite(config.timeout) || config.timeout <= 0)) {
+      throw new Error(`SapClient config.timeout must be a positive number (got ${config.timeout})`);
+    }
     this.timeout = config.timeout ?? 30_000;
     this.onRequest = config.onRequest;
     this.onResponse = config.onResponse;
