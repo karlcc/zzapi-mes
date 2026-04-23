@@ -133,6 +133,13 @@ describe("SapClient", () => {
     assert.match(capturedUrl!, /zzapi\/mes\/material.*matnr=10000001.*werks=1000/);
   });
 
+  it("getMaterial omits werks query param when not provided", async () => {
+    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","mtart":"FERT","meins":"EA"}');
+    await new SapClient(CFG).getMaterial("10000001");
+    assert.match(capturedUrl!, /zzapi\/mes\/material.*matnr=10000001/);
+    assert.ok(!capturedUrl!.includes("werks"), "werks should be absent when not provided");
+  });
+
   it("getStock builds correct URL with required werks", async () => {
     globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[{"lgort":"0001","clabs":250}]}');
     await new SapClient(CFG).getStock("10000001", "1000");
@@ -719,6 +726,30 @@ describe("SapClient constructor validation", () => {
       () => new SapClient({ host: BASE, client: 1.5, user: "u", password: "p" }),
       /client.*positive/,
     );
+  });
+
+  it("accepts fractional timeout (0.5ms) — setTimeout clamps to 1ms minimum", () => {
+    // 0.5 passes Number.isFinite && > 0 validation but Node setTimeout
+    // treats sub-millisecond as 1ms. Constructor accepts it; runtime
+    // behavior is Node's domain.
+    const client = new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: 0.5 });
+    assert.ok(client);
+  });
+});
+
+describe("ZzapiMesHttpError toString format", () => {
+  it("default Error toString omits status and retryAfter", () => {
+    const err = new ZzapiMesHttpError(429, "Too many requests", 30);
+    // Default Error.prototype.toString only returns "Error: Too many requests"
+    const str = err.toString();
+    assert.ok(str.includes("Too many requests"), "should include message");
+    // Documents that status/retryAfter are NOT in toString output
+    assert.ok(!str.includes("429"), "status should NOT appear in default toString");
+  });
+
+  it("name property is ZzapiMesHttpError", () => {
+    const err = new ZzapiMesHttpError(409, "conflict");
+    assert.equal(err.name, "ZzapiMesHttpError");
   });
 });
 

@@ -450,6 +450,22 @@ describe("CLI", () => {
       assert.equal(req.operation, "0010");
     });
 
+    it("confirm --operation custom value forwarded to request body", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { orderid: "1000000", operation: "0099", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "confirm", "1000000", "--yield", "50", "--operation", "0099"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.operation, "0099");
+    });
+
     it("goods-receipt --ebelp defaults to 00010", async () => {
       let capturedBody = "";
       await startMockHub((url, method, body) => {
