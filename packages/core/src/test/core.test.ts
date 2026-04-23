@@ -568,6 +568,21 @@ describe("SapClient GET safety-net: 4xx/5xx without error/errors field", () => {
     }
   });
 
+  it("detects 'errors' array on GET request (ABAP-style)", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ errors: [{ type: "E", message: "No authorization" }] }),
+      { status: 422 },
+    );
+    try {
+      await new SapClient(CFG).getMaterial("10000001", "1000");
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 422);
+      assert.match(e.message, /No authorization/);
+    }
+  });
+
   it("throws on GET 500 with unrecognized body", async () => {
     globalThis.fetch = async () => new Response(
       JSON.stringify({ dump: "core.log" }),
