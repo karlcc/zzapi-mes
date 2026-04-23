@@ -162,6 +162,40 @@ describe("admin CLI", () => {
     assert.match(stderr, /--label/);
   });
 
+  it("keys create rejects --scopes as last arg with no value", async () => {
+    const { stderr, exitCode } = await runCli(["keys", "create", "--label", "no-scope-val", "--scopes"]);
+    assert.notEqual(exitCode, 0);
+    assert.match(stderr, /--scopes/);
+  });
+
+  it("keys create accepts very long label", async () => {
+    const longLabel = "A".repeat(200);
+    const { stdout, exitCode } = await runCli(["keys", "create", "--label", longLabel]);
+    assert.equal(exitCode, 0);
+    const db2 = openDb();
+    try {
+      const row = db2.prepare("SELECT label FROM api_keys ORDER BY rowid DESC LIMIT 1").get() as { label: string } | undefined;
+      assert.ok(row);
+      assert.equal(row!.label, longLabel);
+    } finally {
+      db2.close();
+    }
+  });
+
+  it("keys create with special characters in label", async () => {
+    const specialLabel = "key-test_2026/04#24";
+    const { stdout, exitCode } = await runCli(["keys", "create", "--label", specialLabel]);
+    assert.equal(exitCode, 0);
+    const db2 = openDb();
+    try {
+      const row = db2.prepare("SELECT label FROM api_keys ORDER BY rowid DESC LIMIT 1").get() as { label: string } | undefined;
+      assert.ok(row);
+      assert.equal(row!.label, specialLabel);
+    } finally {
+      db2.close();
+    }
+  });
+
   it("audit prune removes old rows via CLI", async () => {
     const db = openDb();
     try {
