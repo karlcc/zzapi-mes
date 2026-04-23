@@ -67,7 +67,11 @@ Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
    - `409` if same key + same body (true duplicate)
    - `422` if same key + different body (hash mismatch)
 4. **Rate limiting** (`middleware/rate-limit.ts`) — per-key token bucket. Rate-limit changes (e.g. updating `rate_limit_per_min` via admin CLI) only take effect on the next `/auth/token` exchange; in-flight buckets are not retroactively updated.
-5. **Audit logging** — writes to `audit_log` table via `writeAudit()`
+5. **Route handler** — calls SAP, then writes audit log + idempotency status update in a single `db.transaction()` (atomic: if process crashes between SAP call and DB write, the idempotency key stays at status=0, allowing safe retry).
+
+### CORS
+
+The hub uses `hono/cors` middleware. Set `HUB_CORS_ORIGIN` to a comma-separated list of allowed origins, or leave unset for `*` (any origin). Set to empty string to disable CORS entirely. Credentials (`Authorization` header) are enabled; allowed methods are GET and POST only.
 
 ### Scope Definitions
 

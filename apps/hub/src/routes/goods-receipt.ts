@@ -4,7 +4,7 @@ import { ZzapiMesHttpError, GoodsReceiptRequestSchema } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import type Database from "better-sqlite3";
-import { writeAudit } from "../db/index.js";
+import { writeAudit, updateIdempotencyStatus } from "../db/index.js";
 
 export function createGoodsReceiptRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();
@@ -26,6 +26,7 @@ export function createGoodsReceiptRouter(sap: SapClient) {
     const payload = c.get("jwtPayload") as Record<string, unknown> | undefined;
     const keyId = (payload?.key_id as string) ?? "unknown";
     const reqId = c.get("reqId") ?? "-";
+    const idempotencyKey = c.get("idempotencyKey") as string | undefined;
 
     // Call SAP via SapClient POST
     let result: Record<string, unknown> | null = null;
@@ -50,18 +51,24 @@ export function createGoodsReceiptRouter(sap: SapClient) {
     }
     const durationMs = performance.now() - start;
 
-    // Audit log (both success and failure)
+    // Audit log + idempotency status update in one atomic transaction
     const db = c.get("db") as Database.Database | undefined;
     if (db) {
-      writeAudit(db, {
-        req_id: reqId,
-        key_id: keyId,
-        method: "POST",
-        path: "/goods-receipt",
-        body: JSON.stringify(parsed.data),
-        sap_status: sapStatus,
-        sap_duration_ms: Math.round(durationMs),
+      const finalizeWrite = db.transaction(() => {
+        writeAudit(db, {
+          req_id: reqId,
+          key_id: keyId,
+          method: "POST",
+          path: "/goods-receipt",
+          body: JSON.stringify(parsed.data),
+          sap_status: sapStatus,
+          sap_duration_ms: Math.round(durationMs),
+        });
+        if (idempotencyKey) {
+          updateIdempotencyStatus(db, idempotencyKey, clientStatus);
+        }
       });
+      finalizeWrite();
     }
 
     sapDuration.labels({ route: "/goods-receipt" }).observe(durationMs / 1000);

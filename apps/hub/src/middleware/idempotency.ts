@@ -1,7 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import type { HubVariables } from "../types.js";
 import type Database from "better-sqlite3";
-import { checkIdempotency, updateIdempotencyStatus, evictIdempotencyKeys, type IdempotencyRecord } from "../db/index.js";
+import { checkIdempotency, evictIdempotencyKeys, type IdempotencyRecord } from "../db/index.js";
 
 /** Evict keys older than 5 minutes (300 seconds). */
 const IDEMPOTENCY_MAX_AGE_SECONDS = 300;
@@ -69,9 +69,4 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   c.set("idempotencyKey", idempotencyKey);
   c.set("idempotencyBodyHash", bodyHash);
   await next();
-
-  // Update stored status with actual response code
-  if (db && idempotencyKey) {
-    updateIdempotencyStatus(db, idempotencyKey, c.res.status);
-  }
 });
