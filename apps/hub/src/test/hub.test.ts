@@ -455,6 +455,57 @@ describe("Request ID middleware", () => {
     assert.ok(reqId);
     assert.match(reqId!, /^[0-9a-f]{8}-/);
   });
+
+  it("replaces 7-char x-request-id with UUID (just below min length)", async () => {
+    const res = await fetchApi("/healthz", { headers: { "x-request-id": "abcdefg" } });
+    const reqId = res.headers.get("x-request-id");
+    assert.match(reqId!, /^[0-9a-f]{8}-/);
+  });
+
+  it("accepts 8-char x-request-id (min length boundary)", async () => {
+    const res = await fetchApi("/healthz", { headers: { "x-request-id": "abcdefgh" } });
+    assert.equal(res.headers.get("x-request-id"), "abcdefgh");
+  });
+
+  it("accepts 64-char x-request-id (max length boundary)", async () => {
+    const sixtyFour = "a".repeat(64);
+    const res = await fetchApi("/healthz", { headers: { "x-request-id": sixtyFour } });
+    assert.equal(res.headers.get("x-request-id"), sixtyFour);
+  });
+
+  it("replaces 65-char x-request-id with UUID (just above max length)", async () => {
+    const sixtyFive = "a".repeat(65);
+    const res = await fetchApi("/healthz", { headers: { "x-request-id": sixtyFive } });
+    const reqId = res.headers.get("x-request-id");
+    assert.match(reqId!, /^[0-9a-f]{8}-/);
+    assert.notEqual(reqId, sixtyFive);
+  });
+
+  it("accepts x-request-id with underscores and hyphens", async () => {
+    const res = await fetchApi("/healthz", { headers: { "x-request-id": "abc_def-123_XYZ" } });
+    assert.equal(res.headers.get("x-request-id"), "abc_def-123_XYZ");
+  });
+});
+
+describe("requireScope with malformed JWT scopes", () => {
+  it("returns 403 when scopes claim is a string instead of array", async () => {
+    // Craft a JWT where `scopes` is a string — should be treated as no scopes
+    const token = await sign(
+      { key_id: "testkey1234", scopes: "ping", iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900, rate_limit_per_min: 600 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 403);
+  });
+
+  it("returns 403 when scopes claim is missing entirely", async () => {
+    const token = await sign(
+      { key_id: "testkey1234", iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900, rate_limit_per_min: 600 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 403);
+  });
 });
 
 describe("Rate limiting", () => {

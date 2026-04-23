@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
-import { getClientIp, isLoopbackPeer } from "../middleware/client-ip.js";
+import { getClientIp, isLoopbackPeer, resolveIpWithPeer, isLoopbackAddr } from "../middleware/client-ip.js";
 
 // Build a minimal Hono context for testing
 function makeContext(headers: Record<string, string> = {}): unknown {
@@ -92,4 +92,48 @@ describe("isLoopbackPeer", () => {
     const c = makeContext({ "x-real-ip": "  127.0.0.1  " });
     assert.equal(isLoopbackPeer(c as any), true);
   });
+});
+
+describe("resolveIpWithPeer (production branch unit tests)", () => {
+  it("returns peer when no trusted proxies configured", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.1", [], "1.2.3.4", undefined), "10.0.0.1");
+  });
+
+  it("returns peer when peer is not in trusted list", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.2"], "1.2.3.4", "5.6.7.8"), "10.0.0.1");
+  });
+
+  it("returns x-real-ip when peer is trusted proxy", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], "1.2.3.4", undefined), "1.2.3.4");
+  });
+
+  it("returns first x-forwarded-for entry when trusted proxy and no x-real-ip", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], undefined, "1.2.3.4, 5.6.7.8"), "1.2.3.4");
+  });
+
+  it("prefers x-real-ip over x-forwarded-for when both present", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], "1.2.3.4", "9.9.9.9"), "1.2.3.4");
+  });
+
+  it("returns peer when trusted but no headers", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], undefined, undefined), "10.0.0.1");
+  });
+
+  it("trims whitespace from x-real-ip", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], "  1.2.3.4  ", undefined), "1.2.3.4");
+  });
+
+  it("ignores empty peer even with trusted list", () => {
+    assert.equal(resolveIpWithPeer("", ["10.0.0.1"], "1.2.3.4", undefined), "");
+  });
+});
+
+describe("isLoopbackAddr", () => {
+  it("returns true for IPv4 loopback", () => { assert.equal(isLoopbackAddr("127.0.0.1"), true); });
+  it("returns true for IPv6 loopback", () => { assert.equal(isLoopbackAddr("::1"), true); });
+  it("returns true for IPv4-mapped IPv6 loopback", () => { assert.equal(isLoopbackAddr("::ffff:127.0.0.1"), true); });
+  it("returns false for non-loopback IPv4", () => { assert.equal(isLoopbackAddr("10.0.0.1"), false); });
+  it("returns false for non-loopback IPv6", () => { assert.equal(isLoopbackAddr("fe80::1"), false); });
+  it("returns false for empty string", () => { assert.equal(isLoopbackAddr(""), false); });
+  it("does not treat 127.0.0.2 as loopback", () => { assert.equal(isLoopbackAddr("127.0.0.2"), false); });
 });
