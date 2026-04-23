@@ -97,6 +97,28 @@ describe("SapClient", () => {
     assert.ok(hookCalls[0]!.durationMs >= 0);
   });
 
+  it("calls onRequest hook with POST method on write-back", async () => {
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed","message":"ok"}');
+    const hookCalls: Array<{ url: string; method: string }> = [];
+    await new SapClient({
+      ...CFG,
+      onRequest: (ctx) => { hookCalls.push(ctx); },
+    }).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    assert.equal(hookCalls.length, 1);
+    assert.equal(hookCalls[0]!.method, "POST");
+  });
+
+  it("calls onResponse hook with 201 status on write-back", async () => {
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed","message":"ok"}');
+    const hookCalls: Array<{ url: string; status: number; durationMs: number }> = [];
+    await new SapClient({
+      ...CFG,
+      onResponse: (ctx) => { hookCalls.push(ctx); },
+    }).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    assert.equal(hookCalls.length, 1);
+    assert.equal(hookCalls[0]!.status, 201);
+  });
+
   // Phase 5A methods
 
   it("getProdOrder builds correct URL", async () => {
