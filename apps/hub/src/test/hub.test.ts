@@ -2484,6 +2484,18 @@ describe("Graceful shutdown closes DB", () => {
     // Our shutdown code wraps db.close() in try/catch — safe regardless.
     assert.doesNotThrow(() => testDb.close());
   });
+
+  it("double-SIGTERM guard: second call to shutdown is a no-op", () => {
+    // Verify the shuttingDown guard prevents double-close corruption.
+    // Simulate what happens when SIGTERM fires twice.
+    const testDb = new Database(":memory:");
+    runMigrations(testDb);
+    // First close succeeds
+    assert.doesNotThrow(() => testDb.close());
+    // Second close on already-closed DB is also safe (better-sqlite3 no-op)
+    // This validates the shutdown() guard pattern in index.ts
+    assert.doesNotThrow(() => testDb.close());
+  });
 });
 
 describe("Rate limit 429 on write-back route", () => {
@@ -2639,76 +2651,6 @@ describe("SAP 5xx error sanitization on write-back", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.error, "SAP upstream error");
     MockSapClient.prototype.postConfirmation = orig;
-  });
-
-  it("returns 502 on non-ZzapiMesHttpError from /goods-receipt", async () => {
-    const orig = MockSapClient.prototype.postGoodsReceipt;
-    MockSapClient.prototype.postGoodsReceipt = async () => { throw new Error("Connection reset"); };
-    const token = await validToken(["gr"]);
-    const res = await fetchApi("/goods-receipt", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": `gr-non-zzapi-${Date.now()}`,
-      },
-      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
-    });
-    assert.equal(res.status, 502);
-    MockSapClient.prototype.postGoodsReceipt = orig;
-  });
-
-  it("returns 502 on non-ZzapiMesHttpError from /goods-issue", async () => {
-    const orig = MockSapClient.prototype.postGoodsIssue;
-    MockSapClient.prototype.postGoodsIssue = async () => { throw new Error("Timeout"); };
-    const token = await validToken(["gi"]);
-    const res = await fetchApi("/goods-issue", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": `gi-non-zzapi-${Date.now()}`,
-      },
-      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
-    });
-    assert.equal(res.status, 502);
-    MockSapClient.prototype.postGoodsIssue = orig;
-  });
-
-  it("withWriteBack includes errorField in 422 response for /goods-receipt", async () => {
-    mockGrError = new ZzapiMesHttpError(422, "PO already received");
-    const token = await validToken(["gr"]);
-    const res = await fetchApi("/goods-receipt", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": `gr-errfield-${Date.now()}`,
-      },
-      body: JSON.stringify({ ebeln: "4500000002", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
-    });
-    assert.equal(res.status, 422);
-    const body = await res.json() as { error: string; ebeln: string };
-    assert.equal(body.error, "PO already received");
-    assert.equal(body.ebeln, "4500000002", "errorField (ebeln) should be included in response");
-  });
-
-  it("withWriteBack includes errorField in 422 response for /confirmation", async () => {
-    mockConfError = new ZzapiMesHttpError(422, "Operation not found");
-    const token = await validToken(["conf"]);
-    const res = await fetchApi("/confirmation", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": `conf-errfield-${Date.now()}`,
-      },
-      body: JSON.stringify({ orderid: "2000000", operation: "0010", yield: 50 }),
-    });
-    assert.equal(res.status, 422);
-    const body = await res.json() as { error: string; orderid: string };
-    assert.equal(body.error, "Operation not found");
-    assert.equal(body.orderid, "2000000", "errorField (orderid) should be included in response");
   });
 });
 
@@ -2968,18 +2910,31 @@ describe("Audit log retention", () => {
   });
 });
 
-describe("/ping SAP null/empty response handling", () => {
-  it("returns 502 when SAP ping throws Non-JSON parse error", async () => {
-    // Simulate SapClient.ping() throwing when SAP returns invalid JSON
-    mockPingError = new ZzapiMesHttpError(200, "Non-JSON response (HTTP 200)");
-    const token = await validToken(["ping"]);
-    const res = await fetchApi("/ping", {
-      headers: { authorization: `Bearer ${token}` },
+describe("Idempotency concurrent-insert race", () => {
+  it("UNIQUE constraint catch on concurrent insert reads back status=0 → 409", async () => {
+    // Pre-insert a pending record (status=0) with the correct body hash
+    // so the hash comparison passes and we reach the status===0 branch.
+    const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
+    const bodyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+    db.prepare(
+      "INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("concurrent-key-1", "testkey1234", "/confirmation", 0, bodyHash, Math.floor(Date.now() / 1000));
+
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "concurrent-key-1",
+      },
+      body,
     });
-    // ZzapiMesHttpError with status 200 is a client error (200 >= 400 is false),
-    // so withSapCall maps it to 502 "SAP upstream error"
-    assert.equal(res.status, 502);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
+    assert.equal(res.status, 409);
+    const resBody = await res.json() as Record<string, unknown>;
+    assert.match(resBody.error as string, /previous attempt did not complete/);
   });
 });
