@@ -10,10 +10,11 @@ CLASS zcl_zzapi_mes_handler IMPLEMENTATION.
     " Reuses ZMES001 structure and ZZ_CL_JSON serializer to produce
     " identical JSON to the BSP page ZMES001.htm.
 
-    DATA: lv_method TYPE string,
-          lv_ebeln  TYPE ebeln,
-          wa_mes001 TYPE zmes001,
-          lv_json   TYPE string.
+    DATA: lv_method   TYPE string,
+          lv_ebeln    TYPE ebeln,
+          lv_ekko_rc  TYPE sy-subrc,
+          wa_mes001   TYPE zmes001,
+          lv_json     TYPE string.
 
     lv_method = server->request->get_header_field( '~request_method' ).
     lv_ebeln  = server->request->get_form_field( 'ebeln' ).
@@ -22,12 +23,14 @@ CLASS zcl_zzapi_mes_handler IMPLEMENTATION.
       WHEN 'GET'.
         SELECT SINGLE * INTO CORRESPONDING FIELDS OF wa_mes001
           FROM ekko WHERE ebeln = lv_ebeln.
+        lv_ekko_rc = sy-subrc.
         IF sy-subrc = 0.
           SELECT SINGLE eindt INTO wa_mes001-eindt
             FROM eket WHERE ebeln = lv_ebeln.
+          " EKET may have no delivery schedule — that is not an error.
         ENDIF.
 
-        IF sy-subrc = 0.
+        IF lv_ekko_rc = 0.
           lv_json = zz_cl_json=>serialize(
             data        = wa_mes001
             compress    = abap_true

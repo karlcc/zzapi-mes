@@ -341,6 +341,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProdOrderResponse"
+        "400":
+          description: Missing required query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Order not found
           content:
@@ -382,6 +388,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MaterialResponse"
+        "400":
+          description: Missing required query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Material not found
           content:
@@ -430,6 +442,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StockResponse"
+        "400":
+          description: Missing required query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: No stock data found
           content:
@@ -464,6 +482,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PoItemsResponse"
+        "400":
+          description: Missing required query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: PO not found or has no items
           content:
@@ -505,6 +529,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RoutingResponse"
+        "400":
+          description: Missing required query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Routing not found
           content:
@@ -546,6 +576,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkCenterResponse"
+        "400":
+          description: Missing required query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Work center not found
           content:
