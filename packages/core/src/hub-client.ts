@@ -216,6 +216,17 @@ export class HubClient {
       const originalStatus = res.status === 409 && typeof json.original_status === "number" ? json.original_status : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter, originalStatus);
     }
+    if ("errors" in json) {
+      const arr = json.errors;
+      const errorMsg = Array.isArray(arr)
+        ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
+        : String(arr);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
+    }
+    if (res.status >= 400) {
+      throw new ZzapiMesHttpError(res.status, `Hub error (HTTP ${res.status})`);
+    }
     return json as T;
   }
 }
