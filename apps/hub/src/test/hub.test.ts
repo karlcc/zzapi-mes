@@ -2770,6 +2770,33 @@ describe("Chunked body + idempotency body-hash", () => {
     const auditRow = db.prepare("SELECT sap_status FROM audit_log WHERE req_id != '-' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number } | undefined;
     assert.ok(auditRow, "audit row should exist");
   });
+
+  it("bodyHash mismatch (422) still works when first request had empty hash", async () => {
+    // Simulate a scenario where the first request stored bodyHash="" (e.g. body read failed)
+    // by inserting directly into DB, then sending a request with a real body.
+    // The guard should detect the hash mismatch and return 422.
+    const token = await validToken(["conf"]);
+    const keyId = (await validToken(["conf"])).split(".")[0] ?? "test";
+    // Directly insert an idempotency key with empty body_hash
+    const jwtPayload = JSON.parse(atob((await validToken(["conf"])).split(".")[1]!)) as { key_id: string };
+    db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("empty-hash-key", jwtPayload.key_id, "/confirmation", 201, "", Math.floor(Date.now() / 1000));
+
+    // Now send a request with the same idempotency key but a real body
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "empty-hash-key",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    // Real body hash !== "" so 422 mismatch should fire
+    assert.equal(res.status, 422);
+    const body = await res.json() as { error: string };
+    assert.match(body.error, /different request body/);
+  });
 });
 
 describe("Write-back DB transaction failure after SAP success", () => {
