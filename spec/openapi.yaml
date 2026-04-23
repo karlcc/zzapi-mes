@@ -163,8 +163,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [sap]
-          description: Optional SAP reachability check (pings SAP ICF handler, 5s timeout, result cached 30s)
+          description: "Optional SAP reachability check: pass `sap` to ping the SAP ICF handler (5s timeout, result cached 30s). Unknown values are silently ignored."
       responses:
         "200":
           description: Hub is running (and SAP reachable if check=sap)
@@ -1396,6 +1395,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - type: object
+                    required: [orderid]
                     properties:
                       orderid:
                         type: string
@@ -1408,6 +1408,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - type: object
+                    required: [orderid]
                     properties:
                       orderid:
                         type: string
@@ -1437,6 +1438,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - type: object
+                    required: [orderid]
                     properties:
                       orderid:
                         type: string
@@ -1514,6 +1516,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - type: object
+                    required: [ebeln]
                     properties:
                       ebeln:
                         type: string
@@ -1526,6 +1529,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - type: object
+                    required: [ebeln]
                     properties:
                       ebeln:
                         type: string
@@ -1555,6 +1559,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - type: object
+                    required: [ebeln]
                     properties:
                       ebeln:
                         type: string
@@ -1635,6 +1640,7 @@ paths:
                     allOf:
                       - $ref: "#/components/schemas/ErrorResponse"
                       - type: object
+                        required: [orderid]
                         properties:
                           orderid:
                             type: string
@@ -1647,6 +1653,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - type: object
+                    required: [orderid]
                     properties:
                       orderid:
                         type: string
@@ -1676,6 +1683,7 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - type: object
+                    required: [orderid]
                     properties:
                       orderid:
                         type: string

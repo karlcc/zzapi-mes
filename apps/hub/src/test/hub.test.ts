@@ -3216,4 +3216,15 @@ describe("Hono global error handler", () => {
       console.error = origError;
     }
   });
+
+  it("masks ZzapiMesHttpError status — unhandled 422 becomes generic 500", async () => {
+    const throwApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    throwApp.get("/throw-http-error", () => {
+      throw new ZzapiMesHttpError(422, "SAP business rule violation");
+    });
+    const res = await throwApp.fetch(new Request("http://localhost/throw-http-error"));
+    assert.equal(res.status, 500, "ZzapiMesHttpError should be masked as 500 by global handler");
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Internal Server Error", "original error message should be masked");
+  });
 });
