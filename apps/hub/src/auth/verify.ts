@@ -17,11 +17,17 @@ export async function verifyApiKey(
   db: Database.Database,
   presented: string,
 ): Promise<VerifiedKey | null> {
+  if (!presented) return null;
   const dotIdx = presented.indexOf(".");
   if (dotIdx < 1) return null;
 
   const keyId = presented.slice(0, dotIdx);
-  const record = findById(db, keyId);
+  let record: ApiKeyRecord | undefined;
+  try {
+    record = findById(db, keyId);
+  } catch {
+    return null;
+  }
   if (!record) return null;
   if (record.revoked_at !== null) return null;
 

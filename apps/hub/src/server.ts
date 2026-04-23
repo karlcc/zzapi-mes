@@ -78,10 +78,21 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   });
 
   // Reject oversized request bodies (1 MB limit)
+  // Content-Length check catches most cases; for chunked encoding we consume
+  // the raw body and check its length before downstream handlers read it.
   app.use("*", async (c, next) => {
     const contentLength = c.req.header("content-length");
     if (contentLength && Number(contentLength) > 1_048_576) {
       return c.json({ error: "Request body too large (max 1 MB)" }, 413);
+    }
+    // For chunked transfer (no Content-Length), read body and enforce limit
+    if (!contentLength && c.req.method !== "GET" && c.req.method !== "HEAD") {
+      const rawBody = await c.req.text();
+      if (rawBody.length > 1_048_576) {
+        return c.json({ error: "Request body too large (max 1 MB)" }, 413);
+      }
+      // Re-attach parsed body so downstream c.req.json() / c.req.text() works
+      c.req.raw = new Request(c.req.raw, { body: rawBody });
     }
     await next();
   });
@@ -100,8 +111,42 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
 
   // --- Public routes ---
 
+  // 405 helper (must be defined before first use)
+  const notAllowed = (c: any) => c.json({ error: "Method not allowed" }, 405);
+
   // GET /metrics (no auth, but localhost-only — enforced inside the route)
   app.route("/", metricsRoute);
+
+  // 405 for public routes
+  app.get("/metrics", notAllowed);   // metrics is GET-only
+  app.get("/auth/token", notAllowed);
+  app.put("/auth/token", notAllowed);
+  app.patch("/auth/token", notAllowed);
+  app.delete("/auth/token", notAllowed);
+
+  // Rate limit /auth/token (per-IP token bucket) to prevent brute-force
+  const authBuckets = new Map<string, { tokens: number; lastRefill: number }>();
+  const AUTH_RPM = 10; // 10 auth attempts per minute per IP
+  app.use("/auth/token", async (c, next) => {
+    const ip = c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const now = Date.now();
+    let bucket = authBuckets.get(ip);
+    if (!bucket) {
+      bucket = { tokens: AUTH_RPM, lastRefill: now };
+      authBuckets.set(ip, bucket);
+    }
+    const elapsed = now - bucket.lastRefill;
+    const refill = (elapsed / 60_000) * AUTH_RPM;
+    bucket.tokens = Math.min(AUTH_RPM, bucket.tokens + refill);
+    bucket.lastRefill = now;
+    if (bucket.tokens < 1) {
+      const retryAfter = Math.ceil(((1 - bucket.tokens) / AUTH_RPM) * 60_000 / 1000);
+      c.header("retry-after", String(retryAfter));
+      return c.json({ error: "Auth rate limit exceeded" }, 429);
+    }
+    bucket.tokens -= 1;
+    await next();
+  });
 
   // POST /auth/token
   app.post("/auth/token", async (c) => {
@@ -139,6 +184,12 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   // GET /healthz
   app.route("/", health);
 
+  // 405 for /healthz
+  app.post("/healthz", notAllowed);
+  app.put("/healthz", notAllowed);
+  app.patch("/healthz", notAllowed);
+  app.delete("/healthz", notAllowed);
+
   // --- Protected routes (JWT + scope + rate limit) ---
   app.use("/ping", requireJwt, requireScope("ping"), rateLimit);
   app.use("/po/*", requireJwt, requireScope("po"), rateLimit);
@@ -148,7 +199,6 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   app.use("/routing/*", requireJwt, requireScope("routing"), rateLimit);
   app.use("/work-center/*", requireJwt, requireScope("work_center"), rateLimit);
   // 405 Method Not Allowed — POST-only routes must reject GET before idempotency guard
-  const notAllowed = (c: any) => c.json({ error: "Method not allowed" }, 405);
   for (const m of ["get", "put", "patch", "delete"] as const) {
     app[m]("/confirmation", notAllowed);
     app[m]("/goods-receipt", notAllowed);

@@ -96,4 +96,18 @@ describe("verifyApiKey", () => {
     assert.ok(result);
     assert.equal(result.key_id, "multidot");
   });
+
+  it("returns null for empty string input", async () => {
+    const result = await verifyApiKey(db, "");
+    assert.equal(result, null);
+  });
+
+  it("returns null when DB throws during findById", async () => {
+    const plaintext = await seedKey("dberrkey");
+    const brokenDb = {
+      prepare: () => { throw new Error("disk I/O error"); },
+    } as unknown as Database.Database;
+    const result = await verifyApiKey(brokenDb, plaintext);
+    assert.equal(result, null);
+  });
 });

@@ -1214,6 +1214,22 @@ describe("Request body size limit", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.ok(String(body.error).includes("too large"));
   });
+
+  it("rejects chunked body larger than 1 MB with 413", async () => {
+    const token = await validToken();
+    // No content-length header → triggers chunked body limit path
+    const bigBody = "x".repeat(1_048_577);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "chunked-oversized-001",
+      },
+      body: bigBody,
+    });
+    assert.equal(res.status, 413);
+  });
 });
 
 describe("JWT edge cases", () => {
@@ -1278,6 +1294,33 @@ describe("Query parameter validation", () => {
   });
 });
 
+describe("Auth rate limiting", () => {
+  it("rate-limits /auth/token after 10 attempts from same IP", async () => {
+    // Create a single app instance so the in-memory bucket persists across requests
+    const testApp = app();
+    const headers = { "content-type": "application/json", "x-real-ip": "10.0.0.99" };
+    const body = JSON.stringify({ api_key: "wrong.key" });
+
+    async function fetchSameApp(path: string, opts?: RequestInit) {
+      const req = new Request(`http://localhost${path}`, opts);
+      return await testApp.fetch(req);
+    }
+
+    // First 10 should not be rate-limited (they'll return 401 for wrong key)
+    for (let i = 0; i < 10; i++) {
+      const res = await fetchSameApp("/auth/token", { method: "POST", headers, body });
+      assert.equal(res.status, 401, `attempt ${i + 1} should be 401, not rate-limited`);
+    }
+
+    // 11th should be rate-limited
+    const res = await fetchSameApp("/auth/token", { method: "POST", headers, body });
+    assert.equal(res.status, 429);
+    const data = await res.json() as Record<string, unknown>;
+    assert.ok(String(data.error).includes("Auth rate limit"));
+    assert.ok(res.headers.get("retry-after"));
+  });
+});
+
 describe("Rate limit per min = 0", () => {
   it("rejects request with rate_limit_per_min=0", async () => {
     const zeroRpmToken = await sign(
@@ -1318,6 +1361,22 @@ describe("Empty Idempotency-Key header", () => {
       body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
     });
     assert.equal(res.status, 400);
+  });
+
+  it("rejects idempotency-key exceeding maxLength 128", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "x".repeat(129),
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("128"));
   });
 });
 
@@ -1397,6 +1456,16 @@ describe("405 Method Not Allowed", () => {
     });
     assert.equal(res.status, 405);
   });
+
+  it("GET /auth/token returns 405", async () => {
+    const res = await fetchApi("/auth/token");
+    assert.equal(res.status, 405);
+  });
+
+  it("POST /healthz returns 405", async () => {
+    const res = await fetchApi("/healthz", { method: "POST" });
+    assert.equal(res.status, 405);
+  });
 });
 
 describe("Security headers", () => {
@@ -1422,5 +1491,10 @@ describe("Security headers", () => {
   it("does not set Cache-Control on other routes", async () => {
     const res = await fetchApi("/healthz");
     assert.equal(res.headers.get("cache-control"), null);
+  });
+
+  it("sets Referrer-Policy no-referrer", async () => {
+    const res = await fetchApi("/healthz");
+    assert.equal(res.headers.get("referrer-policy"), "no-referrer");
   });
 });

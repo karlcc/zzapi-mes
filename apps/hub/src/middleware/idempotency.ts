@@ -22,6 +22,9 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   if (!idempotencyKey || idempotencyKey.trim() === "") {
     return c.json({ error: "Missing Idempotency-Key header" }, 400);
   }
+  if (idempotencyKey.length > 128) {
+    return c.json({ error: "Idempotency-Key header exceeds maximum length of 128" }, 400);
+  }
 
   // Hash the request body for dedup comparison
   let bodyHash = "";
