@@ -2462,6 +2462,64 @@ describe("GET route SAP error handling", () => {
   });
 });
 
+describe("GET route SAP 429 Retry-After on non-ping routes", () => {
+  it("forwards Retry-After on /po/:ebeln", async () => {
+    mockPoError = new ZzapiMesHttpError(429, "Too many requests", 45);
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/po/4500000001", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "45");
+  });
+
+  it("forwards Retry-After on /prod-order/:aufnr", async () => {
+    mockProdOrderError = new ZzapiMesHttpError(429, "Too many requests", 20);
+    const token = await validToken(["prod_order"]);
+    const res = await fetchApi("/prod-order/1000000", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "20");
+  });
+
+  it("forwards Retry-After on /material/:matnr", async () => {
+    mockMaterialError = new ZzapiMesHttpError(429, "Too many requests", 30);
+    const token = await validToken(["material"]);
+    const res = await fetchApi("/material/10000001", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "30");
+  });
+
+  it("forwards Retry-After on /stock/:matnr", async () => {
+    mockStockError = new ZzapiMesHttpError(429, "Too many requests", 15);
+    const token = await validToken(["stock"]);
+    const res = await fetchApi("/stock/10000001?werks=1000", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "15");
+  });
+
+  it("forwards Retry-After on /routing/:matnr", async () => {
+    mockRoutingError = new ZzapiMesHttpError(429, "Too many requests", 25);
+    const token = await validToken(["routing"]);
+    const res = await fetchApi("/routing/10000001?werks=1000", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "25");
+  });
+
+  it("forwards Retry-After on /work-center/:arbpl", async () => {
+    mockWorkCenterError = new ZzapiMesHttpError(429, "Too many requests", 10);
+    const token = await validToken(["work_center"]);
+    const res = await fetchApi("/work-center/TURN1?werks=1000", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "10");
+  });
+
+  it("forwards Retry-After on /po/:ebeln/items", async () => {
+    mockPoItemsError = new ZzapiMesHttpError(429, "Too many requests", 35);
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/po/4500000001/items", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "35");
+  });
+});
+
 describe("POST route SAP timeout handling", () => {
   async function writeBack(token: string, path: string, body: Record<string, unknown>, idemKey: string) {
     return fetchApi(path, {

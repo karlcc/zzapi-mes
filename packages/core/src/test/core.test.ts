@@ -551,3 +551,35 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
     }
   });
 });
+
+describe("SapClient GET safety-net: 4xx/5xx without error/errors field", () => {
+  it("throws on GET 409 with no error/errors field", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ status: "rejected" }),
+      { status: 409 },
+    );
+    try {
+      await new SapClient(CFG).getPo("4500000001");
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 409);
+      assert.match(e.message, /SAP error \(HTTP 409\)/);
+    }
+  });
+
+  it("throws on GET 500 with unrecognized body", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ dump: "core.log" }),
+      { status: 500 },
+    );
+    try {
+      await new SapClient(CFG).getMaterial("10000001", "1000");
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 500);
+      assert.match(e.message, /SAP error \(HTTP 500\)/);
+    }
+  });
+});

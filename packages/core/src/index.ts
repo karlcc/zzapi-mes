@@ -263,6 +263,17 @@ export class SapClient {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
     }
+    if ("errors" in json) {
+      const arr = json.errors;
+      const errorMsg = Array.isArray(arr)
+        ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
+        : String(arr);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
+    }
+    if (res.status >= 400) {
+      throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`);
+    }
 
     return json as T;
   }
@@ -313,6 +324,17 @@ export class SapClient {
     if ("error" in json) {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
+    }
+    if ("errors" in json) {
+      const arr = json.errors;
+      const errorMsg = Array.isArray(arr)
+        ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
+        : String(arr);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
+    }
+    if (res.status >= 400) {
+      throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`);
     }
 
     return json as T;
