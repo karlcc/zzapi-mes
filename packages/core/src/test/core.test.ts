@@ -152,6 +152,13 @@ describe("SapClient", () => {
     assert.match(capturedUrl!, /lgort=0001/);
   });
 
+  it("getStock without lgort omits lgort from URL", async () => {
+    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[{"lgort":"0001","clabs":250}]}');
+    await new SapClient(CFG).getStock("10000001", "1000");
+    assert.doesNotMatch(capturedUrl!, /lgort/, "lgort should not appear in URL when omitted");
+    assert.match(capturedUrl!, /werks=1000/);
+  });
+
   it("getPoItems builds correct URL", async () => {
     globalThis.fetch = mockFetch(200, '{"ebeln":"4500000001","items":[{"ebelp":"00010","matnr":"10000001","menge":100,"meins":"EA"}]}');
     await new SapClient(CFG).getPoItems("4500000001");

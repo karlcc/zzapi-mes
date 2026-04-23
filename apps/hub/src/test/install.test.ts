@@ -28,3 +28,13 @@ describe("install.sh Node version guard", () => {
     assert.notEqual(code, 0, "should fail when node not found");
   });
 });
+
+describe("install.sh pnpm pre-flight check", () => {
+  it("exits with error when pnpm is not in PATH", async () => {
+    // Include node's bin dir so Node version guard passes, but exclude /opt/homebrew/bin where pnpm lives
+    const nodeBin = require("node:path").dirname(require("node:child_process").execSync("which node").toString().trim());
+    const { stderr, code } = await runInstall({ PATH: `${nodeBin}:/bin:/usr/bin` });
+    assert.notEqual(code, 0, "should fail when pnpm not found");
+    assert.ok(stderr.includes("pnpm"), `should mention pnpm: ${stderr}`);
+  });
+});

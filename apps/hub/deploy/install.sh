@@ -24,6 +24,12 @@ if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 20 ]; then
   exit 1
 fi
 
+# --- pnpm pre-flight check ---
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "Error: pnpm is required but not found in PATH. Install via: npm install -g pnpm" >&2
+  exit 1
+fi
+
 INSTALL_DIR="/opt/zzapi-mes-hub"
 DATA_DIR="/var/lib/zzapi-mes-hub"
 ENV_FILE="/etc/zzapi-mes-hub.env"

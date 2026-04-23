@@ -664,6 +664,41 @@ describe("Rate limiting", () => {
     const val = Number(retryAfter);
     assert.ok(Number.isInteger(val) && val > 0, `retry-after should be positive integer, got ${retryAfter}`);
   });
+
+  it("rpm=1 produces retry-after ~60s (full token refill period)", async () => {
+    const keyId = "rpm1val";
+    const secret = "rpm1valtestsecret123456789abcdef";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "rpm1 value test",
+      scopes: "ping",
+      rate_limit_per_min: 1,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    const authRes = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: plaintext }),
+    });
+    assert.equal(authRes.status, 200);
+    const { token } = await authRes.json() as { token: string };
+
+    // Consume the one allowed request
+    await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+
+    // Immediate second request hits rate limit
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    const retryAfter = res.headers.get("retry-after");
+    assert.ok(retryAfter, "should have retry-after header");
+    const val = Number(retryAfter);
+    // At rpm=1, a full token takes 60s to refill; no partial refill yet
+    assert.ok(val >= 55 && val <= 60, `rpm=1 retry-after should be ~60s, got ${val}`);
+  });
 });
 
 describe("Metrics", () => {
@@ -2052,6 +2087,38 @@ describe("Empty Idempotency-Key header", () => {
     assert.equal(res.status, 400);
     const body = await res.json() as Record<string, unknown>;
     assert.ok(String(body.error).includes("128"));
+  });
+});
+
+describe("Idempotency body-hash edge case", () => {
+  it("stores empty bodyHash when body is already consumed", async () => {
+    // If c.req.text() throws (body consumed upstream), the catch block
+    // silently leaves bodyHash = "". This test seeds a record with bodyHash=""
+    // and verifies a subsequent request with a readable body gets 422 (mismatch),
+    // documenting the false-positive edge case.
+    const token = await validToken();
+    const idemKey = "body-consumed-test";
+    const keyId = "testkey1234";
+
+    // Seed an idempotency record with empty bodyHash (simulating body-consumed path)
+    db.prepare(
+      "INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(idemKey, keyId, "/confirmation", 201, "", Math.floor(Date.now() / 1000));
+
+    // Subsequent request with a real body → bodyHash will differ from ""
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": idemKey,
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    // 422 because the stored "" doesn't match the real SHA-256 hash
+    assert.equal(res.status, 422);
+    const body = await res.json() as Record<string, unknown>;
+    assert.match(body.error as string, /different request body/);
   });
 });
 

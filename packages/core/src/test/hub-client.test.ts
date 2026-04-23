@@ -261,6 +261,16 @@ describe("HubClient", () => {
     assert.match(capturedUrl!, /\/stock\/10000001\?werks=1000&lgort=0001$/);
   });
 
+  it("getStock without lgort omits lgort from URL", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { matnr: "10000001", werks: "1000", items: [{ lgort: "0001", clabs: 250 }] });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getStock("10000001", "1000");
+    assert.match(capturedUrl!, /\/stock\/10000001\?werks=1000$/);
+    assert.doesNotMatch(capturedUrl!, /lgort/, "lgort should not be in URL when omitted");
+  });
+
   it("getPoItems builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
