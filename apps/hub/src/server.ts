@@ -127,9 +127,18 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   // Rate limit /auth/token (per-IP token bucket) to prevent brute-force
   const authBuckets = new Map<string, { tokens: number; lastRefill: number }>();
   const AUTH_RPM = 10; // 10 auth attempts per minute per IP
+  const AUTH_IDLE_MS = 5 * 60_000; // Evict buckets idle for 5+ minutes
+  let authLastSweep = Date.now();
   app.use("/auth/token", async (c, next) => {
-    const ip = c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    // Periodic eviction of stale auth buckets
     const now = Date.now();
+    if (now - authLastSweep > 60_000) {
+      authLastSweep = now;
+      for (const [ip, b] of authBuckets) {
+        if (now - b.lastRefill > AUTH_IDLE_MS) authBuckets.delete(ip);
+      }
+    }
+    const ip = c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
     let bucket = authBuckets.get(ip);
     if (!bucket) {
       bucket = { tokens: AUTH_RPM, lastRefill: now };
