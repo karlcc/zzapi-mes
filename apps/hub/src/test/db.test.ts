@@ -11,6 +11,7 @@ import {
   updateIdempotencyStatus,
   evictIdempotencyKeys,
   writeAudit,
+  pruneAuditLog,
 } from "../db/index.js";
 
 let db: Database.Database;
@@ -256,5 +257,25 @@ describe("DB layer — migrations", () => {
     const names = indexes.map(i => i.name);
     assert.ok(names.includes("idx_audit_log_created_at_retention"), "v5 retention index");
     assert.ok(!names.includes("idx_audit_log_created_at"), "v6 dropped redundant index");
+  });
+});
+
+describe("pruneAuditLog mid-batch DB error", () => {
+  it("propagates DB error during batched prune", () => {
+    const testDb = new Database(":memory:");
+    runMigrations(testDb);
+    const now = Math.floor(Date.now() / 1000);
+    // Insert rows via raw SQL with old timestamps so pruneAuditLog has work to do
+    const stmt = testDb.prepare("INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    for (let i = 0; i < 11; i++) {
+      stmt.run(`prune-err-${i}`, "k1", "GET", "/ping", null, 200, 10, now - 100 * 86_400);
+    }
+    // Drop audit_log to force DELETE to throw mid-batch
+    testDb.exec("DROP TABLE audit_log");
+    assert.throws(
+      () => { pruneAuditLog(testDb, 30); },
+      /no such table|SQLITE_ERROR/,
+    );
+    testDb.close();
   });
 });
