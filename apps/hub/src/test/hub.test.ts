@@ -1350,3 +1350,77 @@ describe("Idempotency key reuse across routes", () => {
     assert.ok(grRes.status === 409 || grRes.status === 422, `Expected 409 or 422, got ${grRes.status}`);
   });
 });
+
+describe("405 Method Not Allowed", () => {
+  it("POST /ping returns 405", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/ping", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 405);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("not allowed"));
+  });
+
+  it("POST /po/:ebeln returns 405", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/po/3010000608", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 405);
+  });
+
+  it("GET /confirmation returns 405", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 405);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("not allowed"));
+  });
+
+  it("GET /goods-receipt returns 405", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/goods-receipt", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 405);
+  });
+
+  it("GET /goods-issue returns 405", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/goods-issue", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 405);
+  });
+});
+
+describe("Security headers", () => {
+  it("sets X-Content-Type-Options nosniff", async () => {
+    const res = await fetchApi("/healthz");
+    assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+  });
+
+  it("sets X-Frame-Options DENY", async () => {
+    const res = await fetchApi("/healthz");
+    assert.equal(res.headers.get("x-frame-options"), "DENY");
+  });
+
+  it("sets Cache-Control no-store on /auth/token", async () => {
+    const res = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    });
+    assert.equal(res.headers.get("cache-control"), "no-store");
+  });
+
+  it("does not set Cache-Control on other routes", async () => {
+    const res = await fetchApi("/healthz");
+    assert.equal(res.headers.get("cache-control"), null);
+  });
+});

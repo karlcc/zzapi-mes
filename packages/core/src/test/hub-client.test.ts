@@ -500,4 +500,42 @@ describe("HubClient", () => {
       (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 408,
     );
   });
+
+  it("GET request wraps TypeError (network failure) in ZzapiMesHttpError(502)", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      }
+      throw new TypeError("fetch failed");
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 502);
+        assert.match(e.message, /Hub network error/);
+        return true;
+      },
+    );
+  });
+
+  it("POST request wraps TypeError (network failure) in ZzapiMesHttpError(502)", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      }
+      throw new TypeError("fetch failed");
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(
+      () => client.confirmProduction({ orderid: "1000000", operation: "0010", yield: 50 }, "net-err-key"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 502);
+        assert.match(e.message, /Hub network error/);
+        return true;
+      },
+    );
+  });
 });

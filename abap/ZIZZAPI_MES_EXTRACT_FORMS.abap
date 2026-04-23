@@ -13,7 +13,7 @@ FORM extract_field USING iv_json TYPE string
         lo_matcher TYPE REF TO cl_abap_matcher.
 
   " Pattern matches "field":"value" or "field": value (number/bool)
-  CONCATENATE '"' iv_field '""\s*:\s*"?([^",:}\]]+)"?'
+  CONCATENATE '"' iv_field '"\s*:\s*"?([^",:}\]]+)"?'
     INTO lv_pattern.
 
   CREATE OBJECT lo_regex

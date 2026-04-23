@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { SapClient } from "@zzapi-mes/core";
 import { accessLog } from "./middleware/log.js";
 import { requestId } from "./middleware/request-id.js";
+import { securityHeaders } from "./middleware/security-headers.js";
 import { requireJwt, requireScope } from "./middleware/jwt.js";
 import { rateLimit } from "./middleware/rate-limit.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
@@ -85,6 +86,9 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
     await next();
   });
 
+  // Security headers on all routes
+  app.use("*", securityHeaders);
+
   // Request ID on all routes
   app.use("*", requestId);
 
@@ -143,6 +147,14 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   app.use("/stock/*", requireJwt, requireScope("stock"), rateLimit);
   app.use("/routing/*", requireJwt, requireScope("routing"), rateLimit);
   app.use("/work-center/*", requireJwt, requireScope("work_center"), rateLimit);
+  // 405 Method Not Allowed — POST-only routes must reject GET before idempotency guard
+  const notAllowed = (c: any) => c.json({ error: "Method not allowed" }, 405);
+  for (const m of ["get", "put", "patch", "delete"] as const) {
+    app[m]("/confirmation", notAllowed);
+    app[m]("/goods-receipt", notAllowed);
+    app[m]("/goods-issue", notAllowed);
+  }
+
   // Write-back routes: JWT + scope + idempotency + rate limit
   app.use("/confirmation", requireJwt, requireScope("conf"), idempotencyGuard, rateLimit);
   app.use("/goods-receipt", requireJwt, requireScope("gr"), idempotencyGuard, rateLimit);
@@ -158,6 +170,17 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   app.route("/", createConfirmationRouter(client));  // POST /confirmation
   app.route("/", createGoodsReceiptRouter(client));  // POST /goods-receipt
   app.route("/", createGoodsIssueRouter(client));    // POST /goods-issue
+
+  // 405 Method Not Allowed — GET-only routes: reject non-GET
+  for (const m of ["post", "put", "patch", "delete"] as const) {
+    app[m]("/ping", notAllowed);
+    app[m]("/po/*", notAllowed);
+    app[m]("/prod-order/*", notAllowed);
+    app[m]("/material/*", notAllowed);
+    app[m]("/stock/*", notAllowed);
+    app[m]("/routing/*", notAllowed);
+    app[m]("/work-center/*", notAllowed);
+  }
 
   return { app, db };
 }

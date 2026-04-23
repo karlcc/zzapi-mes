@@ -247,6 +247,34 @@ describe("SapClient", () => {
       (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 408,
     );
   });
+
+  it("GET request wraps TypeError (network failure) in ZzapiMesHttpError(502)", async () => {
+    globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
+    const client = new SapClient(CFG);
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 502);
+        assert.match(e.message, /Network error/);
+        return true;
+      },
+    );
+  });
+
+  it("POST request wraps TypeError (network failure) in ZzapiMesHttpError(502)", async () => {
+    globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
+    const client = new SapClient(CFG);
+    await assert.rejects(
+      () => client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 502);
+        assert.match(e.message, /Network error/);
+        return true;
+      },
+    );
+  });
 });
 
 describe("ensureProtocol", () => {

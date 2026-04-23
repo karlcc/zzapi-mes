@@ -57,11 +57,15 @@ CLASS zcl_zzapi_mes_gi IMPLEMENTATION.
         " --- Backflush guard ---
         " Check if the order operation has backflush indicator (AFVC-MGVRG).
         " If backflush is active, the confirmation already handles component GI.
-        DATA: ls_afvc TYPE afvc.
-        SELECT SINGLE * INTO ls_afvc FROM afvc
-          WHERE aufpl = ( SELECT aufpl FROM afko WHERE aufnr = lv_orderid )
-            AND vornr = ( SELECT MIN( vornr ) FROM afvv WHERE aufpl = afko~aufpl )
-            AND mgvrg = abap_true.
+        DATA: ls_afvc TYPE afvc,
+              lv_aufpl TYPE afko-aufpl.
+        SELECT SINGLE aufpl INTO lv_aufpl FROM afko WHERE aufnr = lv_orderid.
+        IF sy-subrc = 0.
+          SELECT SINGLE * INTO ls_afvc FROM afvc
+            WHERE aufpl = lv_aufpl
+              AND vornr = ( SELECT MIN( vornr ) FROM afvv WHERE aufpl = lv_aufpl )
+              AND mgvrg = abap_true.
+        ENDIF.
         IF sy-subrc = 0.
           CONCATENATE '{"orderid":"' lv_orderid '","status":"rejected",'
             '"message":"Backflush is active for this order — GI handled by confirmation"}'

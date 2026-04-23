@@ -74,5 +74,7 @@ export function createConfirmationRouter(sap: SapClient) {
     return c.json(result, sapStatus as 201);
   });
 
+  router.on("GET|PUT|PATCH|DELETE", "/confirmation", (c) => c.json({ error: "Method not allowed" }, 405));
+
   return router;
 }
