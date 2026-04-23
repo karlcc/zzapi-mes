@@ -54,4 +54,28 @@ describe("Hub startup validation", () => {
     assert.notEqual(code, 0);
     assert.ok(stderr.includes("HUB_AUDIT_RETENTION_DAYS"), `stderr should mention HUB_AUDIT_RETENTION_DAYS: ${stderr}`);
   });
+
+  it("rejects HUB_JWT_TTL_SECONDS=0 with exit 1", async () => {
+    const { stderr, code } = await run({ HUB_JWT_TTL_SECONDS: "0" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("HUB_JWT_TTL_SECONDS"), `stderr should mention HUB_JWT_TTL_SECONDS: ${stderr}`);
+  });
+
+  it("rejects HUB_JWT_TTL_SECONDS=30 with exit 1", async () => {
+    const { stderr, code } = await run({ HUB_JWT_TTL_SECONDS: "30" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("HUB_JWT_TTL_SECONDS"), `stderr should mention HUB_JWT_TTL_SECONDS: ${stderr}`);
+  });
+
+  it("rejects SAP_CLIENT=0 with exit 1", async () => {
+    const { stderr, code } = await run({ SAP_CLIENT: "0" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("SAP_CLIENT"), `stderr should mention SAP_CLIENT: ${stderr}`);
+  });
+
+  it("rejects SAP_CLIENT=-1 with exit 1", async () => {
+    const { stderr, code } = await run({ SAP_CLIENT: "-1" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("SAP_CLIENT"), `stderr should mention SAP_CLIENT: ${stderr}`);
+  });
 });
