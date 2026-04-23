@@ -378,6 +378,52 @@ if [[ "$HUB_MODE" == "1" ]]; then
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-zod-003" \
     -d '{"orderid":"","matnr":"20000001","menge":0,"werks":"1000","lgort":"0001"}'
+
+  # 405 Method Not Allowed tests
+  echo ""
+  echo "-- 405 Method Not Allowed (hub) --"
+
+  check "POST /ping returns 405" \
+    "${BASE_URL}${PING_PATH}" \
+    "405" POST \
+    ".error" "Method not allowed"
+
+  check "GET /confirmation returns 405" \
+    "${BASE_URL}/confirmation" \
+    "405" GET \
+    ".error" "Method not allowed"
+
+  check "POST /metrics returns 405" \
+    "${BASE_URL}/metrics" \
+    "405" POST
+
+  # Scope-based 403 test
+  echo ""
+  echo "-- Scope-based 403 (hub) --"
+
+  SAVED_TOKEN="$HUB_TOKEN"
+  HUB_TOKEN=$(curl -s "$HUB_URL/auth/token" \
+    -d "{\"api_key\":\"$HUB_API_KEY\"}" \
+    -H 'content-type: application/json' \
+    | jq -r .token 2>/dev/null) || true
+  # Create a token with limited scope by using a key with only ping scope
+  # For now, test with a JWT that has wrong scope by directly crafting one
+  # This test assumes the admin CLI can create a limited-scope key:
+  #   zzapi-mes-hub-admin keys create --label limited --scopes ping
+  # If that key doesn't exist, this test is skipped gracefully
+  LIMITED_KEY_ID="limited-scope-test"
+  LIMITED_KEY_SECRET=""
+  LIMITED_KEY_SECRET=$(curl -s "$HUB_URL/auth/token" \
+    -d "{\"api_key\":\"${LIMITED_KEY_ID}.$LIMITED_KEY_SECRET\"}" \
+    -H 'content-type: application/json' 2>/dev/null | jq -r .token 2>/dev/null) || true
+  if [[ -n "$LIMITED_KEY_SECRET" && "$LIMITED_KEY_SECRET" != "null" ]]; then
+    check "wrong scope returns 403" \
+      "${BASE_URL}/po/3010000608" \
+      "403" GET
+  else
+    echo "  SKIP  scope-403 test (no limited-scope key configured)"
+  fi
+  HUB_TOKEN="$SAVED_TOKEN"
 fi
 
 echo ""
