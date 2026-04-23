@@ -1307,6 +1307,35 @@ describe("Access log middleware", () => {
     assert.equal(entry.key_id, "-");
     assert.equal(entry.path, "/healthz");
   });
+
+  it("log entry includes sap_status and sap_duration_ms on SAP call", async () => {
+    const token = await validToken(["po"]);
+    const reqId = "log-sap-fields-001";
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
+      if (typeof chunk === "string") chunks.push(chunk);
+      return true;
+    };
+
+    try {
+      await fetchApi("/po/4500000001", {
+        headers: {
+          authorization: `Bearer ${token}`,
+          "x-request-id": reqId,
+        },
+      });
+    } finally {
+      process.stdout.write = origWrite;
+    }
+
+    const logLine = chunks.find((c) => c.includes(reqId));
+    assert.ok(logLine, "log entry for SAP request should appear");
+    const entry = JSON.parse(logLine!);
+    assert.equal(typeof entry.sap_status, "number", "sap_status should be a number");
+    assert.equal(typeof entry.sap_duration_ms, "number", "sap_duration_ms should be a number");
+    assert.ok(entry.sap_duration_ms >= 0, "sap_duration_ms should be non-negative");
+  });
 });
 
 describe("Failed write-back audit logging", () => {
@@ -1900,6 +1929,37 @@ describe("405 Method Not Allowed", () => {
 
   it("405 takes priority over 401 — POST /ping without token", async () => {
     const res = await fetchApi("/ping", { method: "POST" });
+    assert.equal(res.status, 405);
+  });
+
+  // Phase 5A GET routes — POST should return 405
+  it("POST /prod-order/:aufnr returns 405", async () => {
+    const res = await fetchApi("/prod-order/1000000", { method: "POST" });
+    assert.equal(res.status, 405);
+  });
+
+  it("POST /material/:matnr returns 405", async () => {
+    const res = await fetchApi("/material/10000001", { method: "POST" });
+    assert.equal(res.status, 405);
+  });
+
+  it("POST /stock/:matnr returns 405", async () => {
+    const res = await fetchApi("/stock/10000001?werks=1000", { method: "POST" });
+    assert.equal(res.status, 405);
+  });
+
+  it("POST /routing/:matnr returns 405", async () => {
+    const res = await fetchApi("/routing/10000001?werks=1000", { method: "POST" });
+    assert.equal(res.status, 405);
+  });
+
+  it("POST /work-center/:arbpl returns 405", async () => {
+    const res = await fetchApi("/work-center/TURN1?werks=1000", { method: "POST" });
+    assert.equal(res.status, 405);
+  });
+
+  it("POST /po/:ebeln/items returns 405", async () => {
+    const res = await fetchApi("/po/4500000001/items", { method: "POST" });
     assert.equal(res.status, 405);
   });
 });
