@@ -544,8 +544,11 @@ describe("Metrics", () => {
     const token = await validToken();
     await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
 
-    // Check metrics endpoint
-    const res = await fetchApi("/metrics");
+    // Check metrics endpoint — in test mode, no real TCP socket so x-real-ip
+    // fallback is used. localhost access is allowed via header fallback.
+    const res = await fetchApi("/metrics", {
+      headers: { "x-real-ip": "127.0.0.1" },
+    });
     assert.equal(res.status, 200);
     const text = await res.text();
     assert.ok(text.includes("zzapi_hub_requests_total"));
@@ -554,8 +557,10 @@ describe("Metrics", () => {
   });
 
   it("rejects non-localhost access with 403", async () => {
-    // Use a non-localhost URL to test the hostname check
-    const req = new Request("http://10.0.0.1/metrics");
+    // No real TCP socket in test mode + non-localhost x-real-ip → 403
+    const req = new Request("http://10.0.0.1/metrics", {
+      headers: { "x-real-ip": "10.0.0.1" },
+    });
     const res = await app().fetch(req);
     assert.equal(res.status, 403);
     const body = await res.json() as Record<string, unknown>;
@@ -1487,24 +1492,16 @@ describe("Auth rate limiting", () => {
       return testApp.fetch(req);
     }
 
-    // Fill buckets with 1000 unique IPs (the AUTH_BUCKET_CAP)
-    // Each gets 1 token on creation, so all succeed with 401 (wrong key)
+    // Fill buckets with 1000 unique IPs (the AUTH_BUCKET_CAP).
+    // In test mode (no real TCP socket), getClientIp falls back to x-real-ip,
+    // so each unique x-real-ip creates a unique bucket entry.
     for (let i = 0; i < 1000; i++) {
       const res = await fetchWithIp(`10.1.${Math.floor(i / 256)}.${i % 256}`);
       assert.equal(res.status, 401, `IP ${i} should get 401, not rate-limited`);
     }
 
-    // Trigger a sweep by making one more request (sweep runs every 60s)
-    // Force the sweep by manipulating the app's internal state isn't possible
-    // from outside, but the next request from a NEW IP will be rejected
-    // because authBuckets.size >= AUTH_BUCKET_CAP.
-    // We need to trigger the periodic sweep — but since we can't advance
-    // the clock, we test the cap by verifying that 1001th unique IP is
-    // rejected. The sweep check uses Date.now() which will fire on the
-    // 1001th request since the first request set authLastSweep.
-    // Actually, the sweep only runs if (now - authLastSweep > 60_000).
-    // So the 1001th new-IP request hits the `authBuckets.size >= AUTH_BUCKET_CAP`
-    // path inside the bucket-creation block.
+    // 1001th unique IP should be rejected because authBuckets.size >= AUTH_BUCKET_CAP.
+    // In test mode the new-IP creation path hits the cap check.
     const res = await fetchWithIp("10.2.0.1");
     assert.equal(res.status, 429);
   });
@@ -1731,16 +1728,36 @@ describe("Security headers", () => {
     assert.equal(res.headers.get("referrer-policy"), "no-referrer");
   });
 
-  it("sets CORS Access-Control-Allow-Origin header", async () => {
+  it("sets HSTS when HUB_HSTS=1", async () => {
+    process.env.HUB_HSTS = "1";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    const res = await testApp.fetch(new Request("http://localhost/healthz"));
+    assert.equal(res.headers.get("strict-transport-security"), "max-age=63072000; includeSubDomains");
+    delete process.env.HUB_HSTS;
+  });
+
+  it("does not set HSTS when HUB_HSTS is unset", async () => {
+    delete process.env.HUB_HSTS;
+    const res = await fetchApi("/healthz");
+    assert.equal(res.headers.get("strict-transport-security"), null);
+  });
+
+  it("sets CORS Access-Control-Allow-Origin header when HUB_CORS_ORIGIN is set", async () => {
+    process.env.HUB_CORS_ORIGIN = "http://localhost";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
     const req = new Request("http://localhost/healthz", {
       headers: { "Origin": "http://localhost" },
     });
-    const res = await app().fetch(req);
+    const res = await testApp.fetch(req);
     const acao = res.headers.get("access-control-allow-origin");
     assert.ok(acao, "should have CORS origin header");
+    assert.equal(acao, "http://localhost");
+    delete process.env.HUB_CORS_ORIGIN;
   });
 
-  it("CORS preflight returns allowed methods", async () => {
+  it("CORS preflight returns allowed methods when HUB_CORS_ORIGIN is set", async () => {
+    process.env.HUB_CORS_ORIGIN = "http://localhost";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
     const req = new Request("http://localhost/ping", {
       method: "OPTIONS",
       headers: {
@@ -1749,10 +1766,40 @@ describe("Security headers", () => {
         "Access-Control-Request-Headers": "Authorization",
       },
     });
-    const res = await app().fetch(req);
+    const res = await testApp.fetch(req);
     assert.equal(res.status, 204);
     const methods = res.headers.get("access-control-allow-methods");
     assert.ok(methods, "should have allow-methods header");
+    delete process.env.HUB_CORS_ORIGIN;
+  });
+
+  it("rejects HUB_CORS_ORIGIN=* with credentials", async () => {
+    process.env.HUB_CORS_ORIGIN = "*";
+    // createApp calls process.exit(1) when CORS is misconfigured — intercept it
+    const origExit = process.exit;
+    let exitCode = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
+    try {
+      createApp(new MockSapClient() as unknown as SapClient, { db });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.equal(exitCode, 1);
+    } finally {
+      process.exit = origExit;
+      delete process.env.HUB_CORS_ORIGIN;
+    }
+  });
+
+  it("no CORS headers when HUB_CORS_ORIGIN is unset", async () => {
+    delete process.env.HUB_CORS_ORIGIN;
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    const req = new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://localhost" },
+    });
+    const res = await testApp.fetch(req);
+    const acao = res.headers.get("access-control-allow-origin");
+    assert.equal(acao, null, "should NOT have CORS origin header when CORS disabled");
   });
 });
 

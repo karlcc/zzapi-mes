@@ -27,6 +27,7 @@ import { sign } from "hono/jwt";
 import type Database from "better-sqlite3";
 import { openDb, runMigrations } from "./db/index.js";
 import { verifyApiKey } from "./auth/verify.js";
+import { getClientIp } from "./middleware/client-ip.js";
 
 function requireEnv(name: string): string {
   const val = process.env[name];
@@ -118,14 +119,19 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
     await next();
   });
 
-  // CORS — allow service-to-service and CLI clients. Origin is restricted
-  // to HUB_CORS_ORIGIN (comma-separated) or "*" by default. Credentials
-  // enabled so Bearer tokens survive preflight. If no browser clients are
-  // expected, set HUB_CORS_ORIGIN to empty string to disable entirely.
-  const corsOrigins = process.env.HUB_CORS_ORIGIN ?? "*";
+  // CORS — disabled by default. Setting HUB_CORS_ORIGIN to a list of explicit
+  // origins enables it; credentials (Bearer tokens) are allowed for those
+  // origins. We deliberately reject `*` with credentials — a wildcard origin
+  // plus credentialed requests is a CSRF vector, and browsers reject it
+  // anyway. Service-to-service callers (CLI, other backends) don't need CORS.
+  const corsOrigins = process.env.HUB_CORS_ORIGIN;
   if (corsOrigins) {
+    if (corsOrigins.trim() === "*") {
+      console.error("HUB_CORS_ORIGIN=* with credentials is not permitted. Set explicit origins or leave unset.");
+      process.exit(1);
+    }
     app.use("*", cors({
-      origin: corsOrigins === "*" ? "*" : corsOrigins.split(",").map(o => o.trim()),
+      origin: corsOrigins.split(",").map(o => o.trim()),
       allowMethods: ["GET", "POST"],
       allowHeaders: ["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
       exposeHeaders: ["X-Request-ID", "Retry-After"],
@@ -178,7 +184,7 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
         for (const [ip] of toRemove) authBuckets.delete(ip);
       }
     }
-    const ip = c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const ip = getClientIp(c) || "unknown";
     let bucket = authBuckets.get(ip);
     if (!bucket) {
       if (authBuckets.size >= AUTH_BUCKET_CAP) {
@@ -223,7 +229,7 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
       const prefix = dotIdx > 0 && dotIdx <= 32
         ? api_key.slice(0, dotIdx).replace(/[^A-Za-z0-9]/g, "")
         : "malformed";
-      const ip = c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+      const ip = getClientIp(c) || "unknown";
       console.log(JSON.stringify({
         type: "auth_failure",
         ip,

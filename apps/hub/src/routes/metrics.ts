@@ -1,18 +1,17 @@
 import { Hono } from "hono";
 import { register } from "../metrics.js";
+import { isLoopbackPeer, getClientIp } from "../middleware/client-ip.js";
 
 const metrics = new Hono();
 
 metrics.get("/metrics", async (c) => {
-  // Only allow from localhost. Check direct connection IP first —
-  // do NOT trust X-Forwarded-For without a known trusted proxy.
-  const hostname = new URL(c.req.url).hostname;
-  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
-    // Direct localhost connection — allow
-  } else {
-    // Non-localhost — check if behind a trusted reverse proxy
-    const realIp = c.req.header("x-real-ip");
-    if (realIp !== "127.0.0.1" && realIp !== "::1") {
+  // Only allow from localhost. The direct TCP peer address is NOT spoofable;
+  // the previous URL-hostname check was bypassable via a crafted Host header.
+  // If a trusted reverse proxy sits in front (HUB_TRUSTED_PROXY), the
+  // resolved client IP must also be loopback.
+  if (!isLoopbackPeer(c)) {
+    const clientIp = getClientIp(c);
+    if (clientIp !== "127.0.0.1" && clientIp !== "::1") {
       return c.json({ error: "Forbidden" }, 403);
     }
   }

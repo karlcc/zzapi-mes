@@ -267,8 +267,11 @@ describe("E2E integration against mock SAP", () => {
     // 4. x-request-id present in responses
     assert.ok(pingRes.headers.get("x-request-id"));
 
-    // 5. Metrics endpoint works
-    const metricsRes = await app.fetch(new Request("http://localhost/metrics"));
+    // 5. Metrics endpoint works (in test mode, x-real-ip header required for
+    // loopback check since there's no real TCP socket)
+    const metricsRes = await app.fetch(new Request("http://localhost/metrics", {
+      headers: { "x-real-ip": "127.0.0.1" },
+    }));
     assert.equal(metricsRes.status, 200);
     const metricsText = await metricsRes.text();
     assert.ok(metricsText.includes("zzapi_hub_requests_total"));
