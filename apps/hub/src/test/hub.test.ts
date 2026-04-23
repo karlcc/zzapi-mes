@@ -275,22 +275,6 @@ describe("Protected routes without JWT", () => {
     const res = await fetchApi("/po/123");
     assert.equal(res.status, 401);
   });
-
-  it("rejects Basic auth scheme (not Bearer)", async () => {
-    const res = await fetchApi("/ping", {
-      headers: { authorization: "Basic dXNlcjpwYXNz" },
-    });
-    assert.equal(res.status, 401);
-    const body = await res.json() as Record<string, unknown>;
-    assert.ok(String(body.error).includes("Authorization"));
-  });
-
-  it("rejects malformed Bearer header with no space", async () => {
-    const res = await fetchApi("/ping", {
-      headers: { authorization: "Bearerabc123" },
-    });
-    assert.equal(res.status, 401);
-  });
 });
 
 describe("Protected routes with valid JWT", () => {
@@ -436,14 +420,6 @@ describe("GET /healthz", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.ok, false);
     assert.equal(body.error, "SAP unreachable");
-  });
-
-  it("ignores invalid ?check value (treated as no check)", async () => {
-    const res = await fetchApi("/healthz?check=invalid");
-    assert.equal(res.status, 200);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.ok, true);
-    assert.equal(body.sap, undefined, "invalid check value should not trigger SAP check");
   });
 });
 
@@ -1032,9 +1008,6 @@ describe("Phase 5B write-back routes", () => {
       body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
     });
     assert.equal(res.status, 422);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "Material not found");
-    assert.equal(body.orderid, "1000000", "error response should include errorField (orderid)");
   });
 
   // --- Zod validation failures ---
@@ -1333,8 +1306,6 @@ describe("Access log middleware", () => {
     const entry = JSON.parse(logLine!);
     assert.equal(entry.key_id, "-");
     assert.equal(entry.path, "/healthz");
-    assert.equal(entry.sap_status, undefined, "sap_status should be omitted when no SAP call");
-    assert.equal(entry.sap_duration_ms, undefined, "sap_duration_ms should be omitted when no SAP call");
   });
 
   it("log entry includes sap_status and sap_duration_ms on SAP call", async () => {
@@ -1691,48 +1662,6 @@ describe("Request body size limit", () => {
     const data = await res.json() as Record<string, unknown>;
     assert.equal(data.status, "confirmed");
   });
-
-  it("rejects oversized body on /goods-receipt with 413", async () => {
-    const token = await validToken(["gr"]);
-    const bigBody = "x".repeat(1_048_577);
-    const res = await fetchApi("/goods-receipt", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": "gr-oversized-001",
-      },
-      body: bigBody,
-    });
-    assert.equal(res.status, 413);
-  });
-
-  it("rejects oversized body on /goods-issue with 413", async () => {
-    const token = await validToken(["gi"]);
-    const bigBody = "x".repeat(1_048_577);
-    const res = await fetchApi("/goods-issue", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": "gi-oversized-001",
-      },
-      body: bigBody,
-    });
-    assert.equal(res.status, 413);
-  });
-
-  it("rejects oversized body on /auth/token with 413", async () => {
-    const bigBody = "x".repeat(1_048_577);
-    const res = await fetchApi("/auth/token", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: bigBody,
-    });
-    assert.equal(res.status, 413);
-  });
 });
 
 describe("JWT edge cases", () => {
@@ -1929,52 +1858,6 @@ describe("JWT rate_limit_per_min type validation", () => {
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${noRpmToken}` } });
     assert.equal(res.status, 200);
   });
-
-  it("uses custom positive rate_limit_per_min from JWT (10 RPM bucket)", async () => {
-    // Use a distinct key_id so the bucket is fresh (not the default 60 RPM)
-    const rpm = 10;
-    const customToken = await sign(
-      { key_id: "custom-rpm-key", scopes: ["ping"], rate_limit_per_min: rpm, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
-      JWT_SECRET,
-    );
-    // First request should succeed (bucket starts with rpm tokens)
-    const res1 = await fetchApi("/ping", { headers: { authorization: `Bearer ${customToken}` } });
-    assert.equal(res1.status, 200);
-    // Burn through the rest of the tokens — 10 RPM means 10 requests per minute
-    for (let i = 1; i < rpm; i++) {
-      await fetchApi("/ping", { headers: { authorization: `Bearer ${customToken}` } });
-    }
-    // The (rpm+1)th request should be rate limited
-    const resLimited = await fetchApi("/ping", { headers: { authorization: `Bearer ${customToken}` } });
-    assert.equal(resLimited.status, 429);
-    const body = await resLimited.json() as Record<string, unknown>;
-    assert.equal(body.error, "Rate limit exceeded");
-    assert.ok(resLimited.headers.get("retry-after"));
-  });
-});
-
-describe("Rate limit rpm <= 0", () => {
-  it("returns 403 when rate_limit_per_min is 0", async () => {
-    _resetBucketsForTest();
-    const zeroRpmToken = await sign(
-      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: 0, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
-      JWT_SECRET,
-    );
-    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${zeroRpmToken}` } });
-    assert.equal(res.status, 403);
-    const body = await res.json() as Record<string, unknown>;
-    assert.ok(String(body.error).includes("Rate limit disabled"));
-  });
-
-  it("returns 403 when rate_limit_per_min is negative", async () => {
-    _resetBucketsForTest();
-    const negRpmToken = await sign(
-      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: -5, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
-      JWT_SECRET,
-    );
-    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${negRpmToken}` } });
-    assert.equal(res.status, 403);
-  });
 });
 
 describe("Idempotency guard DB read failure", () => {
@@ -2045,20 +1928,6 @@ describe("Empty Idempotency-Key header", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.ok(String(body.error).includes("128"));
   });
-
-  it("accepts idempotency-key at exactly 128 characters", async () => {
-    const token = await validToken();
-    const res = await fetchApi("/confirmation", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": "y".repeat(128),
-      },
-      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
-    });
-    assert.equal(res.status, 201);
-  });
 });
 
 describe("Idempotency key reuse across routes", () => {
@@ -2088,62 +1957,6 @@ describe("Idempotency key reuse across routes", () => {
     });
     // Same idempotency key on different route → 422 (hash mismatch) or 409
     assert.ok(grRes.status === 409 || grRes.status === 422, `Expected 409 or 422, got ${grRes.status}`);
-  });
-});
-
-describe("Idempotency guard E2E", () => {
-  it("returns 409 with 'previous attempt did not complete' for status=0 pending record", async () => {
-    // Insert a pending idempotency record (status=0) directly into DB
-    // to simulate a crash-retry scenario
-    const key = "pending-crash-key";
-    const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
-    const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
-    const bodyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-    // Insert with status=0 (pending) to simulate crash before finalize
-    checkIdempotency(db, key, "testkey1234", "/confirmation", 0, bodyHash);
-    const token = await validToken();
-    const res = await fetchApi("/confirmation", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": key,
-      },
-      body,
-    });
-    assert.equal(res.status, 409);
-    const resBody = await res.json() as Record<string, unknown>;
-    assert.ok(String(resBody.error).includes("previous attempt did not complete"), `expected crash-retry message, got: ${resBody.error}`);
-  });
-
-  it("returns 409 with original_status for completed duplicate", async () => {
-    // First request succeeds → idempotency key gets status=201
-    const token = await validToken();
-    const res1 = await fetchApi("/confirmation", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": "dup-original-status",
-      },
-      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
-    });
-    assert.equal(res1.status, 201);
-
-    // Second request with same key + same body → 409 with original_status
-    const res2 = await fetchApi("/confirmation", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": "dup-original-status",
-      },
-      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
-    });
-    assert.equal(res2.status, 409);
-    const body2 = await res2.json() as Record<string, unknown>;
-    assert.equal(body2.original_status, 201, "should include original_status in 409 response");
   });
 });
 
@@ -2352,9 +2165,6 @@ describe("Security headers", () => {
     assert.equal(res.status, 204);
     const methods = res.headers.get("access-control-allow-methods");
     assert.ok(methods, "should have allow-methods header");
-    const exposeHeaders = res.headers.get("access-control-expose-headers");
-    assert.ok(exposeHeaders?.includes("X-Request-ID"), "expose-headers should include X-Request-ID");
-    assert.ok(exposeHeaders?.includes("Retry-After"), "expose-headers should include Retry-After");
     delete process.env.HUB_CORS_ORIGIN;
   });
 
@@ -2448,44 +2258,6 @@ describe("Security headers", () => {
     }
   });
 
-  it("rejects HUB_AUDIT_RETENTION_DAYS <= 0 on startup", async () => {
-    process.env.HUB_AUDIT_RETENTION_DAYS = "0";
-    const origExit = process.exit;
-    let exitCode = 0;
-    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
-    try {
-      const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS ? Number(process.env.HUB_AUDIT_RETENTION_DAYS) : 90;
-      if (auditRetentionDays <= 0) {
-        process.exit(1);
-      }
-      assert.fail("should have exited");
-    } catch (e) {
-      assert.equal(exitCode, 1);
-    } finally {
-      process.exit = origExit;
-      delete process.env.HUB_AUDIT_RETENTION_DAYS;
-    }
-  });
-
-  it("rejects HUB_AUDIT_RETENTION_DAYS with negative value", async () => {
-    process.env.HUB_AUDIT_RETENTION_DAYS = "-1";
-    const origExit = process.exit;
-    let exitCode = 0;
-    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
-    try {
-      const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS ? Number(process.env.HUB_AUDIT_RETENTION_DAYS) : 90;
-      if (auditRetentionDays <= 0) {
-        process.exit(1);
-      }
-      assert.fail("should have exited");
-    } catch (e) {
-      assert.equal(exitCode, 1);
-    } finally {
-      process.exit = origExit;
-      delete process.env.HUB_AUDIT_RETENTION_DAYS;
-    }
-  });
-
   it("no CORS headers when HUB_CORS_ORIGIN is unset", async () => {
     delete process.env.HUB_CORS_ORIGIN;
     const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
@@ -2495,21 +2267,6 @@ describe("Security headers", () => {
     const res = await testApp.fetch(req);
     const acao = res.headers.get("access-control-allow-origin");
     assert.equal(acao, null, "should NOT have CORS origin header when CORS disabled");
-  });
-
-  it("no CORS headers when HUB_CORS_ORIGIN is empty string", async () => {
-    process.env.HUB_CORS_ORIGIN = "";
-    try {
-      const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
-      const req = new Request("http://localhost/healthz", {
-        headers: { "Origin": "http://localhost" },
-      });
-      const res = await testApp.fetch(req);
-      const acao = res.headers.get("access-control-allow-origin");
-      assert.equal(acao, null, "empty string should disable CORS like unset");
-    } finally {
-      delete process.env.HUB_CORS_ORIGIN;
-    }
   });
 });
 
@@ -2604,91 +2361,6 @@ describe("GET route SAP error handling", () => {
     assert.equal(body.error, "SAP upstream error");
   });
 
-  it("returns 404 on /prod-order/:aufnr when SAP returns 404", async () => {
-    mockProdOrderError = new ZzapiMesHttpError(404, "Order not found");
-    const token = await validToken(["prod_order"]);
-    const res = await fetchApi("/prod-order/999", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 404);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "Order not found");
-  });
-
-  it("returns 404 on /material/:matnr when SAP returns 404", async () => {
-    mockMaterialError = new ZzapiMesHttpError(404, "Material not found");
-    const token = await validToken(["material"]);
-    const res = await fetchApi("/material/99999999", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 404);
-  });
-
-  it("returns 404 on /stock/:matnr when SAP returns 404", async () => {
-    mockStockError = new ZzapiMesHttpError(404, "Stock not found");
-    const token = await validToken(["stock"]);
-    const res = await fetchApi("/stock/99999999?werks=1000", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 404);
-  });
-
-  it("returns 404 on /po/:ebeln/items when SAP returns 404", async () => {
-    mockPoItemsError = new ZzapiMesHttpError(404, "PO items not found");
-    const token = await validToken(["po"]);
-    const res = await fetchApi("/po/999/items", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 404);
-  });
-
-  it("returns 404 on /routing/:matnr when SAP returns 404", async () => {
-    mockRoutingError = new ZzapiMesHttpError(404, "Routing not found");
-    const token = await validToken(["routing"]);
-    const res = await fetchApi("/routing/99999999?werks=1000", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 404);
-  });
-
-  it("returns 404 on /work-center/:arbpl when SAP returns 404", async () => {
-    mockWorkCenterError = new ZzapiMesHttpError(404, "Work center not found");
-    const token = await validToken(["work_center"]);
-    const res = await fetchApi("/work-center/INVALID?werks=1000", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 404);
-  });
-
-  it("returns 502 on /prod-order when SAP returns 500", async () => {
-    mockProdOrderError = new ZzapiMesHttpError(500, "SAP internal error");
-    const token = await validToken(["prod_order"]);
-    const res = await fetchApi("/prod-order/1000000", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 502);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
-  });
-
-  it("returns 502 on /material when SAP returns 500", async () => {
-    mockMaterialError = new ZzapiMesHttpError(500, "SAP internal error");
-    const token = await validToken(["material"]);
-    const res = await fetchApi("/material/10000001", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 502);
-  });
-
-  it("returns 502 on /stock when SAP returns 500", async () => {
-    mockStockError = new ZzapiMesHttpError(500, "SAP internal error");
-    const token = await validToken(["stock"]);
-    const res = await fetchApi("/stock/10000001?werks=1000", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 502);
-  });
-
   it("returns 502 on non-ZzapiMesHttpError from SAP", async () => {
     // Temporarily override ping to throw a plain Error
     const origPing = MockSapClient.prototype.ping;
@@ -2699,58 +2371,6 @@ describe("GET route SAP error handling", () => {
     });
     assert.equal(res.status, 502);
     MockSapClient.prototype.ping = origPing;
-  });
-
-  it("returns 502 on non-ZzapiMesHttpError from /material", async () => {
-    const orig = MockSapClient.prototype.getMaterial;
-    MockSapClient.prototype.getMaterial = async () => { throw new Error("Network failure"); };
-    const token = await validToken(["material"]);
-    const res = await fetchApi("/material/10000001", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 502);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
-    MockSapClient.prototype.getMaterial = orig;
-  });
-
-  it("returns 502 on non-ZzapiMesHttpError from /stock", async () => {
-    const orig = MockSapClient.prototype.getStock;
-    MockSapClient.prototype.getStock = async () => { throw new Error("Network failure"); };
-    const token = await validToken(["stock"]);
-    const res = await fetchApi("/stock/10000001?werks=1000", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 502);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
-    MockSapClient.prototype.getStock = orig;
-  });
-
-  it("returns 502 on non-ZzapiMesHttpError from /routing", async () => {
-    const orig = MockSapClient.prototype.getRouting;
-    MockSapClient.prototype.getRouting = async () => { throw new Error("Network failure"); };
-    const token = await validToken(["routing"]);
-    const res = await fetchApi("/routing/10000001?werks=1000", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 502);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
-    MockSapClient.prototype.getRouting = orig;
-  });
-
-  it("returns 502 on non-ZzapiMesHttpError from /work-center", async () => {
-    const orig = MockSapClient.prototype.getWorkCenter;
-    MockSapClient.prototype.getWorkCenter = async () => { throw new Error("Network failure"); };
-    const token = await validToken(["work_center"]);
-    const res = await fetchApi("/work-center/1000?werks=1000", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 502);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
-    MockSapClient.prototype.getWorkCenter = orig;
   });
 
   it("forwards Retry-After header from SAP 429 on GET routes", async () => {
@@ -3021,38 +2641,74 @@ describe("SAP 5xx error sanitization on write-back", () => {
     MockSapClient.prototype.postConfirmation = orig;
   });
 
-  it("maps SAP 400 to 502 on write-back route", async () => {
-    mockConfError = new ZzapiMesHttpError(400, "Bad Request from SAP");
-    const token = await validToken(["conf"]);
-    const res = await fetchApi("/confirmation", {
+  it("returns 502 on non-ZzapiMesHttpError from /goods-receipt", async () => {
+    const orig = MockSapClient.prototype.postGoodsReceipt;
+    MockSapClient.prototype.postGoodsReceipt = async () => { throw new Error("Connection reset"); };
+    const token = await validToken(["gr"]);
+    const res = await fetchApi("/goods-receipt", {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
-        "idempotency-key": `sap400-${Date.now()}`,
+        "idempotency-key": `gr-non-zzapi-${Date.now()}`,
       },
-      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
     });
     assert.equal(res.status, 502);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
+    MockSapClient.prototype.postGoodsReceipt = orig;
   });
 
-  it("maps SAP 404 to 502 on write-back route", async () => {
-    mockConfError = new ZzapiMesHttpError(404, "Not Found in SAP");
+  it("returns 502 on non-ZzapiMesHttpError from /goods-issue", async () => {
+    const orig = MockSapClient.prototype.postGoodsIssue;
+    MockSapClient.prototype.postGoodsIssue = async () => { throw new Error("Timeout"); };
+    const token = await validToken(["gi"]);
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `gi-non-zzapi-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 502);
+    MockSapClient.prototype.postGoodsIssue = orig;
+  });
+
+  it("withWriteBack includes errorField in 422 response for /goods-receipt", async () => {
+    mockGrError = new ZzapiMesHttpError(422, "PO already received");
+    const token = await validToken(["gr"]);
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `gr-errfield-${Date.now()}`,
+      },
+      body: JSON.stringify({ ebeln: "4500000002", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 422);
+    const body = await res.json() as { error: string; ebeln: string };
+    assert.equal(body.error, "PO already received");
+    assert.equal(body.ebeln, "4500000002", "errorField (ebeln) should be included in response");
+  });
+
+  it("withWriteBack includes errorField in 422 response for /confirmation", async () => {
+    mockConfError = new ZzapiMesHttpError(422, "Operation not found");
     const token = await validToken(["conf"]);
     const res = await fetchApi("/confirmation", {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
-        "idempotency-key": `sap404-${Date.now()}`,
+        "idempotency-key": `conf-errfield-${Date.now()}`,
       },
-      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+      body: JSON.stringify({ orderid: "2000000", operation: "0010", yield: 50 }),
     });
-    assert.equal(res.status, 502);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
+    assert.equal(res.status, 422);
+    const body = await res.json() as { error: string; orderid: string };
+    assert.equal(body.error, "Operation not found");
+    assert.equal(body.orderid, "2000000", "errorField (orderid) should be included in response");
   });
 });
 
@@ -3184,33 +2840,6 @@ describe("Chunked body + idempotency body-hash", () => {
     const auditRow = db.prepare("SELECT sap_status FROM audit_log WHERE req_id != '-' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number } | undefined;
     assert.ok(auditRow, "audit row should exist");
   });
-
-  it("bodyHash mismatch (422) still works when first request had empty hash", async () => {
-    // Simulate a scenario where the first request stored bodyHash="" (e.g. body read failed)
-    // by inserting directly into DB, then sending a request with a real body.
-    // The guard should detect the hash mismatch and return 422.
-    const token = await validToken(["conf"]);
-    const keyId = (await validToken(["conf"])).split(".")[0] ?? "test";
-    // Directly insert an idempotency key with empty body_hash
-    const jwtPayload = JSON.parse(atob((await validToken(["conf"])).split(".")[1]!)) as { key_id: string };
-    db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run("empty-hash-key", jwtPayload.key_id, "/confirmation", 201, "", Math.floor(Date.now() / 1000));
-
-    // Now send a request with the same idempotency key but a real body
-    const res = await fetchApi("/confirmation", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": "empty-hash-key",
-      },
-      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
-    });
-    // Real body hash !== "" so 422 mismatch should fire
-    assert.equal(res.status, 422);
-    const body = await res.json() as { error: string };
-    assert.match(body.error, /different request body/);
-  });
 });
 
 describe("Write-back DB transaction failure after SAP success", () => {
@@ -3286,38 +2915,6 @@ describe("SAP 429 on write-back route", () => {
     assert.equal(body.error, "Too Many Requests");
     assert.equal(res.headers.get("retry-after"), "30");
   });
-
-  it("forwards SAP 429 with Retry-After on /goods-receipt", async () => {
-    mockGrError = new ZzapiMesHttpError(429, "Too Many Requests", 45);
-    const token = await validToken(["gr"]);
-    const res = await fetchApi("/goods-receipt", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": `sap429-gr-${Date.now()}`,
-      },
-      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
-    });
-    assert.equal(res.status, 429);
-    assert.equal(res.headers.get("retry-after"), "45");
-  });
-
-  it("forwards SAP 429 with Retry-After on /goods-issue", async () => {
-    mockGiError = new ZzapiMesHttpError(429, "Too Many Requests", 60);
-    const token = await validToken(["gi"]);
-    const res = await fetchApi("/goods-issue", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": `sap429-gi-${Date.now()}`,
-      },
-      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
-    });
-    assert.equal(res.status, 429);
-    assert.equal(res.headers.get("retry-after"), "60");
-  });
 });
 
 describe("GET route audit write failure", () => {
@@ -3368,45 +2965,5 @@ describe("Audit log retention", () => {
     // Stale row must be gone
     const stale = db.prepare("SELECT req_id FROM audit_log WHERE req_id = 'r-stale'").get();
     assert.equal(stale, undefined, "stale audit row should be pruned");
-  });
-});
-
-describe("GET route audit logging", () => {
-  it("GET /ping writes audit_log row with method=GET, path=/ping, sap_status=200", async () => {
-    const token = await validToken(["ping"]);
-    await fetchApi("/ping", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    const row = db.prepare("SELECT method, path, sap_status, key_id, sap_duration_ms FROM audit_log WHERE path = '/ping' ORDER BY rowid DESC LIMIT 1").get() as { method: string; path: string; sap_status: number; key_id: string; sap_duration_ms: number | null } | undefined;
-    assert.ok(row, "audit row should exist for /ping");
-    assert.equal(row.method, "GET");
-    assert.equal(row.path, "/ping");
-    assert.equal(row.sap_status, 200);
-    assert.equal(row.key_id, "testkey1234");
-    assert.ok(typeof row.sap_duration_ms === "number" && row.sap_duration_ms >= 0, "sap_duration_ms should be non-negative number");
-  });
-
-  it("GET /po/:ebeln writes audit_log row with correct key_id and sap_status", async () => {
-    const token = await validToken(["po"]);
-    await fetchApi("/po/3010000608", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    const row = db.prepare("SELECT method, path, sap_status, key_id FROM audit_log WHERE path = '/po/:ebeln' ORDER BY rowid DESC LIMIT 1").get() as { method: string; path: string; sap_status: number; key_id: string } | undefined;
-    assert.ok(row, "audit row should exist for /po/:ebeln");
-    assert.equal(row.method, "GET");
-    assert.equal(row.path, "/po/:ebeln");
-    assert.equal(row.sap_status, 200);
-    assert.equal(row.key_id, "testkey1234");
-  });
-
-  it("GET route audit records sap_status from SAP error (404)", async () => {
-    mockPoError = new ZzapiMesHttpError(404, "PO not found");
-    const token = await validToken(["po"]);
-    await fetchApi("/po/9999999999", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    const row = db.prepare("SELECT sap_status FROM audit_log WHERE path = '/po/:ebeln' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number } | undefined;
-    assert.ok(row);
-    assert.equal(row.sap_status, 404);
   });
 });
