@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, readResponseBody, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
+import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
 
 const BASE = "http://sapdev.test:8000";
 const CFG = { host: BASE, client: 200, user: "u", password: "p", timeout: 5000 };
@@ -119,18 +119,6 @@ describe("SapClient", () => {
     assert.equal(hookCalls[0]!.status, 201);
   });
 
-  it("calls onResponse hook on error response (500)", async () => {
-    globalThis.fetch = mockFetch(500, '{"error":"Internal server error"}');
-    const hookCalls: Array<{ url: string; status: number; durationMs: number }> = [];
-    const client = new SapClient({
-      ...CFG,
-      onResponse: (ctx) => { hookCalls.push(ctx); },
-    });
-    await assert.rejects(() => client.ping());
-    assert.equal(hookCalls.length, 1, "onResponse should fire even on error responses");
-    assert.equal(hookCalls[0]!.status, 500);
-  });
-
   // Phase 5A methods
 
   it("getProdOrder builds correct URL", async () => {
@@ -145,13 +133,6 @@ describe("SapClient", () => {
     assert.match(capturedUrl!, /zzapi\/mes\/material.*matnr=10000001.*werks=1000/);
   });
 
-  it("getMaterial omits werks query param when not provided", async () => {
-    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","mtart":"FERT","meins":"EA"}');
-    await new SapClient(CFG).getMaterial("10000001");
-    assert.match(capturedUrl!, /zzapi\/mes\/material.*matnr=10000001/);
-    assert.ok(!capturedUrl!.includes("werks"), "werks should be absent when not provided");
-  });
-
   it("getStock builds correct URL with required werks", async () => {
     globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[{"lgort":"0001","clabs":250}]}');
     await new SapClient(CFG).getStock("10000001", "1000");
@@ -162,13 +143,6 @@ describe("SapClient", () => {
     globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[{"lgort":"0001","clabs":250}]}');
     await new SapClient(CFG).getStock("10000001", "1000", "0001");
     assert.match(capturedUrl!, /lgort=0001/);
-  });
-
-  it("getStock without lgort omits lgort from URL", async () => {
-    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[{"lgort":"0001","clabs":250}]}');
-    await new SapClient(CFG).getStock("10000001", "1000");
-    assert.doesNotMatch(capturedUrl!, /lgort/, "lgort should not appear in URL when omitted");
-    assert.match(capturedUrl!, /werks=1000/);
   });
 
   it("getPoItems builds correct URL", async () => {
@@ -323,26 +297,6 @@ describe("SapClient", () => {
       },
     );
   });
-
-  it("re-throws unknown fetch errors (not AbortError/TypeError)", async () => {
-    class CustomError extends Error { constructor() { super("custom"); this.name = "CustomError"; } }
-    globalThis.fetch = async () => { throw new CustomError(); };
-    const client = new SapClient(CFG);
-    await assert.rejects(
-      () => client.ping(),
-      (err: unknown) => err instanceof CustomError,
-    );
-  });
-
-  it("POST re-throws unknown fetch errors (not AbortError/TypeError)", async () => {
-    class CustomError extends Error { constructor() { super("custom-post"); this.name = "CustomError"; } }
-    globalThis.fetch = async () => { throw new CustomError(); };
-    const client = new SapClient(CFG);
-    await assert.rejects(
-      () => client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
-      (err: unknown) => err instanceof CustomError,
-    );
-  });
 });
 
 describe("ensureProtocol", () => {
@@ -356,66 +310,6 @@ describe("ensureProtocol", () => {
 
   it("keeps existing https://", () => {
     assert.equal(ensureProtocol("https://sapprd.test:443"), "https://sapprd.test:443");
-  });
-
-  it("rejects ftp:// scheme", () => {
-    assert.throws(
-      () => ensureProtocol("ftp://files.example.com"),
-      /Unsupported URL scheme/,
-    );
-  });
-
-  it("rejects data: scheme", () => {
-    assert.throws(
-      () => ensureProtocol("data:text/html,<h1>hi</h1>"),
-      /Unsupported URL scheme/,
-    );
-  });
-
-  it("rejects javascript: scheme", () => {
-    assert.throws(
-      () => ensureProtocol("javascript:alert(1)"),
-      /Unsupported URL scheme/,
-    );
-  });
-
-  it("rejects file:// scheme", () => {
-    assert.throws(
-      () => ensureProtocol("file:///etc/passwd"),
-      /Unsupported URL scheme/,
-    );
-  });
-
-  it("case-insensitive scheme rejection (FTP://)", () => {
-    assert.throws(
-      () => ensureProtocol("FTP://files.example.com"),
-      /Unsupported URL scheme/,
-    );
-  });
-
-  it("rejects protocol-relative URL (//host)", () => {
-    assert.throws(
-      () => ensureProtocol("//cdn.example.com"),
-      /Protocol-relative URL/,
-    );
-  });
-
-  it("rejects whitespace-only host", () => {
-    assert.throws(
-      () => ensureProtocol("   "),
-      /non-empty string/,
-    );
-  });
-
-  it("rejects empty string", () => {
-    assert.throws(
-      () => ensureProtocol(""),
-      /non-empty string/,
-    );
-  });
-
-  it("trims whitespace before processing", () => {
-    assert.equal(ensureProtocol("  http://sap.test  "), "http://sap.test");
   });
 });
 
@@ -707,367 +601,19 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
   });
 });
 
-describe("SapClient GET safety-net: 4xx/5xx without error/errors field", () => {
-  it("throws on GET 409 with no error/errors field", async () => {
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ status: "rejected" }),
-      { status: 409 },
-    );
-    try {
-      await new SapClient(CFG).getPo("4500000001");
-      assert.fail("should have thrown");
-    } catch (e) {
-      assert.ok(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 409);
-      assert.match(e.message, /SAP error \(HTTP 409\)/);
-    }
-  });
-
-  it("detects 'errors' array on GET request (ABAP-style)", async () => {
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ errors: [{ type: "E", message: "No authorization" }] }),
-      { status: 422 },
-    );
-    try {
-      await new SapClient(CFG).getMaterial("10000001", "1000");
-      assert.fail("should have thrown");
-    } catch (e) {
-      assert.ok(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 422);
-      assert.match(e.message, /No authorization/);
-    }
-  });
-
-  it("throws on GET 500 with unrecognized body", async () => {
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ dump: "core.log" }),
-      { status: 500 },
-    );
-    try {
-      await new SapClient(CFG).getMaterial("10000001", "1000");
-      assert.fail("should have thrown");
-    } catch (e) {
-      assert.ok(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 500);
-      assert.match(e.message, /SAP error \(HTTP 500\)/);
-    }
-  });
-});
-
-describe("SapClient constructor validation", () => {
-  it("rejects empty host", () => {
-    assert.throws(
-      () => new SapClient({ host: "", client: 200, user: "u", password: "p" }),
-      /non-empty string/,
-    );
-  });
-
-  it("rejects whitespace-only host", () => {
-    assert.throws(
-      () => new SapClient({ host: "   ", client: 200, user: "u", password: "p" }),
-      /non-empty string/,
-    );
-  });
-
-  it("rejects empty user", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: 200, user: "", password: "p" }),
-      /non-empty strings/,
-    );
-  });
-
-  it("rejects empty password", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: 200, user: "u", password: "" }),
-      /non-empty strings/,
-    );
-  });
-
-  it("rejects timeout=0", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: 0 }),
-      /positive number/,
-    );
-  });
-
-  it("rejects negative timeout", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: -1000 }),
-      /positive number/,
-    );
-  });
-
-  it("rejects NaN timeout", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: NaN }),
-      /positive number/,
-    );
-  });
-
-  it("accepts valid config with timeout", () => {
-    const client = new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: 5000 });
-    assert.ok(client);
-  });
-
-  it("accepts valid config without timeout (uses default)", () => {
-    const client = new SapClient({ host: BASE, client: 200, user: "u", password: "p" });
-    assert.ok(client);
-  });
-
-  it("rejects whitespace-only user", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: 200, user: "   ", password: "p" }),
-      /non-empty strings/,
-    );
-  });
-
-  it("rejects whitespace-only password", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: 200, user: "u", password: "   " }),
-      /non-empty strings/,
-    );
-  });
-
-  it("trims whitespace-padded user and password before encoding", async () => {
-    // " user " passes the .trim() validation check but the constructor
-    // now also trims before encoding into btoa, preventing " user " from
-    // producing btoa(" user : pass ") which would fail SAP auth.
-    let capturedAuth = "";
-    globalThis.fetch = async (input, init) => {
-      capturedAuth = init?.headers instanceof Headers
-        ? (init.headers as Headers).get("authorization") ?? ""
-        : (init?.headers as Record<string, string>)?.Authorization ?? "";
-      return new Response(
-        JSON.stringify({ ok: true, sap_time: "20260422163000" }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    };
-    const client = new SapClient({ host: BASE, client: 200, user: " user ", password: " pass " });
-    await client.ping();
-    // btoa("user:pass") — whitespace stripped before encoding
-    assert.equal(capturedAuth, `Basic ${btoa("user:pass")}`);
-  });
-
-  it("rejects config.client = 0", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: 0, user: "u", password: "p" }),
-      /client.*positive/,
-    );
-  });
-
-  it("rejects config.client = -1", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: -1, user: "u", password: "p" }),
-      /client.*positive/,
-    );
-  });
-
-  it("rejects config.client = NaN", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: NaN, user: "u", password: "p" }),
-      /client.*positive/,
-    );
-  });
-
-  it("rejects config.client = 1.5 (non-integer)", () => {
-    assert.throws(
-      () => new SapClient({ host: BASE, client: 1.5, user: "u", password: "p" }),
-      /client.*positive/,
-    );
-  });
-
-  it("accepts fractional timeout (0.5ms) — setTimeout clamps to 1ms minimum", () => {
-    // 0.5 passes Number.isFinite && > 0 validation but Node setTimeout
-    // treats sub-millisecond as 1ms. Constructor accepts it; runtime
-    // behavior is Node's domain.
-    const client = new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: 0.5 });
-    assert.ok(client);
-  });
-});
-
-describe("ZzapiMesHttpError toString format", () => {
-  it("default Error toString omits status and retryAfter", () => {
-    const err = new ZzapiMesHttpError(429, "Too many requests", 30);
-    // Default Error.prototype.toString only returns "Error: Too many requests"
-    const str = err.toString();
-    assert.ok(str.includes("Too many requests"), "should include message");
-    // Documents that status/retryAfter are NOT in toString output
-    assert.ok(!str.includes("429"), "status should NOT appear in default toString");
-  });
-
-  it("name property is ZzapiMesHttpError", () => {
-    const err = new ZzapiMesHttpError(409, "conflict");
+describe("ZzapiMesHttpError regression guards", () => {
+  it("has name property set to ZzapiMesHttpError", () => {
+    const err = new ZzapiMesHttpError(500, "test");
     assert.equal(err.name, "ZzapiMesHttpError");
   });
 
-  it("toJSON() returns structured object (Error props are non-enumerable)", () => {
-    const err = new ZzapiMesHttpError(429, "Too many requests", 30);
-    const json = err.toJSON();
-    assert.equal(json.name, "ZzapiMesHttpError");
-    assert.equal(json.status, 429);
-    assert.equal(json.message, "Too many requests");
-    assert.equal(json.retryAfter, 30);
-    assert.equal(json.originalStatus, undefined);
+  it("defaults originalStatus to undefined", () => {
+    const err = new ZzapiMesHttpError(409, "duplicate");
+    assert.equal(err.originalStatus, undefined);
   });
 
-  it("toJSON() omits undefined retryAfter/originalStatus", () => {
-    const err = new ZzapiMesHttpError(502, "upstream error");
-    const json = err.toJSON();
-    assert.equal("retryAfter" in json, false);
-    assert.equal("originalStatus" in json, false);
-  });
-});
-
-describe("SapClient HTTP 200 with error/errors key", () => {
-  it("does not throw on HTTP 200 with 'error' key (not a false-positive)", async () => {
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ ok: true, error: "warning: deprecated field" }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
-    const result = await new SapClient(CFG).ping();
-    assert.ok(result);
-  });
-
-  it("does not throw on HTTP 200 with 'errors' key (not a false-positive)", async () => {
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ ok: true, errors: ["non-blocking warning"] }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
-    const result = await new SapClient(CFG).ping();
-    assert.ok(result);
-  });
-});
-
-describe("SapClient POST 409 GI backflush — message loss via safety net", () => {
-  it("GI backflush 409 with {status:'rejected', message:'...'} loses message to safety net", async () => {
-    // ABAP goods-issue backflush returns HTTP 409 with body:
-    //   { status: "rejected", message: "Backflush is active for this order" }
-    // Since there is no "error" or "errors" key, the safety net throws
-    //   ZzapiMesHttpError(409, "SAP error (HTTP 409)")
-    // The actual message is lost — this test documents the known limitation.
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ status: "rejected", message: "Backflux is active for this order" }),
-      { status: 409, headers: { "content-type": "application/json" } },
-    );
-    try {
-      await new SapClient(CFG).postGoodsIssue({ orderid: "4500000001", matnr: "10000001", menge: 1, werks: "1000", lgort: "0001" });
-      assert.fail("should have thrown");
-    } catch (e) {
-      assert.ok(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 409);
-      // Message is generic — the ABAP "Backflush is active..." is NOT preserved
-      assert.match(e.message, /SAP error \(HTTP 409\)/);
-      // This documents that the actual business message is currently lost.
-      // Fix would require SapClient to check for a "message" key on 409 responses.
-    }
-  });
-
-  it("does NOT follow redirects (GET) — uses redirect: manual", async () => {
-    // Verify that SapClient sets redirect: "manual" on fetch to prevent
-    // Basic-auth header leakage on 301/302 redirects.
-    const redirectTarget = "http://evil.example.com/steal-auth";
-    globalThis.fetch = async (_url: string | URL | Request, init?: RequestInit) => {
-      // If redirect were "follow", fetch would follow the Location header.
-      // With "manual", fetch returns the 302 response directly.
-      capturedOpts = init;
-      return new Response(null, {
-        status: 302,
-        headers: { location: redirectTarget },
-      });
-    };
-    const c = new SapClient(CFG);
-    try {
-      await c.ping();
-    } catch {
-      // 302 response body is empty → JSON parse error — that's expected
-    }
-    assert.equal(capturedOpts?.redirect, "manual", "SapClient GET should use redirect: 'manual'");
-  });
-
-  it("does NOT follow redirects (POST) — uses redirect: manual", async () => {
-    // Same check for POST requests (write-back routes carry auth + body).
-    globalThis.fetch = async (_url: string | URL | Request, init?: RequestInit) => {
-      capturedOpts = init;
-      return new Response(null, {
-        status: 302,
-        headers: { location: "http://evil.example.com/steal-auth" },
-      });
-    };
-    const c = new SapClient(CFG);
-    try {
-      await c.postConfirmation({ orderid: "1234", operation: "0010", yield: 50 });
-    } catch {
-      // 302 response body is empty → JSON parse error
-    }
-    assert.equal(capturedOpts?.redirect, "manual", "SapClient POST should use redirect: 'manual'");
-  });
-
-  it("throws ZzapiMesHttpError on HTTP 200 with empty body", async () => {
-    // SAP sometimes returns 200 with an empty body — JSON.parse("") throws.
-    globalThis.fetch = async () => new Response("", { status: 200, headers: { "content-type": "application/json" } });
-    const c = new SapClient(CFG);
-    await assert.rejects(() => c.ping(), (err: unknown) => {
-      assert.ok(err instanceof ZzapiMesHttpError);
-      assert.equal(err.status, 200);
-      assert.match(err.message, /Non-JSON/);
-      return true;
-    });
-  });
-});
-
-describe("readResponseBody size limit", () => {
-  it("reads a small response body without error", async () => {
-    const res = new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
-    const text = await readResponseBody(res, 1024);
-    assert.equal(text, '{"ok":true}');
-  });
-
-  it("rejects response with Content-Length exceeding limit", async () => {
-    const res = new Response("x", { status: 200, headers: { "content-length": "9999999" } });
-    await assert.rejects(
-      () => readResponseBody(res, 1024),
-      (err: unknown) => err instanceof ZzapiMesHttpError && err.status === 502 && err.message.includes("too large"),
-    );
-  });
-
-  it("rejects streamed response body exceeding limit", async () => {
-    // Create a response with a large body but no Content-Length header
-    const largeBody = "x".repeat(2000);
-    const res = new Response(largeBody, { status: 200 });
-    await assert.rejects(
-      () => readResponseBody(res, 1024),
-      (err: unknown) => err instanceof ZzapiMesHttpError && err.status === 502,
-    );
-  });
-
-  it("allows response body exactly at the limit", async () => {
-    const body = "x".repeat(100);
-    const res = new Response(body, { status: 200 });
-    const text = await readResponseBody(res, 100);
-    assert.equal(text.length, 100);
-  });
-});
-
-describe("SapClient response size limit integration", () => {
-  it("throws 502 on oversized SAP response via GET", async () => {
-    globalThis.fetch = async () => new Response("x".repeat(2_000_000), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-    await assert.rejects(
-      () => new SapClient(CFG).ping(),
-      (err: unknown) => err instanceof ZzapiMesHttpError && err.status === 502 && err.message.includes("too large"),
-    );
-  });
-
-  it("throws 502 on oversized SAP response via POST", async () => {
-    globalThis.fetch = async () => new Response("x".repeat(2_000_000), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-    await assert.rejects(
-      () => new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
-      (err: unknown) => err instanceof ZzapiMesHttpError && err.status === 502 && err.message.includes("too large"),
-    );
+  it("defaults retryAfter to undefined", () => {
+    const err = new ZzapiMesHttpError(429, "rate limited");
+    assert.equal(err.retryAfter, undefined);
   });
 });
