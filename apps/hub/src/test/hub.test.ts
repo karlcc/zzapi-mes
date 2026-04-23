@@ -6,7 +6,7 @@ import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, Sto
 import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
-import { runMigrations, insertKey, writeAudit, revokeKey, checkIdempotency, evictIdempotencyKeys } from "../db/index.js";
+import { runMigrations, insertKey, writeAudit, revokeKey, checkIdempotency, evictIdempotencyKeys, pruneAuditLog } from "../db/index.js";
 import { _resetBucketsForTest } from "../middleware/rate-limit.js";
 import { _resetSapHealthCacheForTest } from "../routes/health.js";
 
@@ -2142,5 +2142,30 @@ describe("Chunked body + idempotency body-hash", () => {
     // Verify audit row was written
     const auditRow = db.prepare("SELECT sap_status FROM audit_log WHERE req_id != '-' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number } | undefined;
     assert.ok(auditRow, "audit row should exist");
+  });
+});
+
+describe("Audit log retention", () => {
+  it("pruneAuditLog removes rows older than N days and keeps recent ones", () => {
+    const now = Math.floor(Date.now() / 1000);
+    // Insert a recent row (1 second ago)
+    writeAudit(db, {
+      req_id: "r-recent", key_id: "k-recent", method: "POST",
+      path: "/confirmation", sap_status: 201,
+    });
+    // Insert a stale row (31 days ago) via raw SQL to control created_at
+    db.prepare("INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("r-stale", "k-stale", "POST", "/confirmation", null, 201, null, now - 31 * 86_400);
+
+    const removed = pruneAuditLog(db, 30);
+    assert.ok(removed >= 1, "at least one stale row should be pruned");
+
+    // Recent row must still exist
+    const recent = db.prepare("SELECT req_id FROM audit_log WHERE req_id = 'r-recent'").get();
+    assert.ok(recent, "recent audit row should not be pruned");
+
+    // Stale row must be gone
+    const stale = db.prepare("SELECT req_id FROM audit_log WHERE req_id = 'r-stale'").get();
+    assert.equal(stale, undefined, "stale audit row should be pruned");
   });
 });

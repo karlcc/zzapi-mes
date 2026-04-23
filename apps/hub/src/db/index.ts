@@ -96,6 +96,13 @@ export function runMigrations(db: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_idempotency_key_id ON idempotency_keys(key_id);
     `);
   }
+
+  // v5: retention index on audit_log.created_at for efficient pruning
+  if (v < 5) {
+    migrate(5, `
+      CREATE INDEX IF NOT EXISTS idx_audit_log_created_at_retention ON audit_log(created_at);
+    `);
+  }
 }
 
 const FIND_BY_ID = `
@@ -250,4 +257,17 @@ export function writeAudit(
     record.sap_duration_ms ?? null,
     Math.floor(Date.now() / 1000),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Audit log retention — prune rows older than N days
+// ---------------------------------------------------------------------------
+
+const AUDIT_DELETE_OLD = `
+  DELETE FROM audit_log WHERE created_at < ?`;
+
+/** Prune audit_log rows older than `maxAgeDays`. Returns number of deleted rows. */
+export function pruneAuditLog(db: Database.Database, maxAgeDays: number): number {
+  const cutoff = Math.floor(Date.now() / 1000) - maxAgeDays * 86_400;
+  return db.prepare(AUDIT_DELETE_OLD).run(cutoff).changes;
 }
