@@ -83,6 +83,6 @@ export async function withSapCall<T>(
         status as 400 | 404 | 405 | 429 | 502 | 504,
       );
     }
-    return c.json({ error: "Internal proxy error" }, 502);
+    return c.json({ error: "SAP upstream error" }, 502);
   }
 }
