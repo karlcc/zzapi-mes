@@ -73,3 +73,9 @@ export const rateLimit = createMiddleware<{ Variables: HubVariables }>(async (c,
 
   await next();
 });
+
+/** Reset in-memory buckets for test isolation. */
+export function _resetBucketsForTest(): void {
+  buckets.clear();
+  lastSweep = Date.now();
+}

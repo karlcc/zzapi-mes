@@ -7,6 +7,7 @@ import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
 import { runMigrations, insertKey } from "../db/index.js";
+import { _resetBucketsForTest } from "../middleware/rate-limit.js";
 
 const JWT_SECRET = "test-secret";
 
@@ -154,6 +155,7 @@ beforeEach(async () => {
 
   db = new Database(":memory:");
   runMigrations(db);
+  _resetBucketsForTest();
   testKeyPlaintext = await seedTestKey();
 });
 
@@ -1618,6 +1620,56 @@ describe("GET route SAP error handling", () => {
     const res = await fetchApi("/work-center/TURN1?werks=1000", {
       headers: { authorization: `Bearer ${token}` },
     });
+    assert.equal(res.status, 504);
+  });
+
+  it("maps SAP timeout 408 to 504 on /po/:ebeln/items", async () => {
+    mockPoItemsError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/po/4500000001/items", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 504);
+  });
+});
+
+describe("POST route SAP timeout handling", () => {
+  async function writeBack(token: string, path: string, body: Record<string, unknown>, idemKey: string) {
+    return fetchApi(path, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": idemKey,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("maps SAP timeout 408 to 504 on POST /confirmation", async () => {
+    mockConfError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["conf"]);
+    const res = await writeBack(token, "/confirmation", {
+      orderid: "1000000", operation: "0010", yield: 50,
+    }, `conf-408-${Date.now()}`);
+    assert.equal(res.status, 504);
+  });
+
+  it("maps SAP timeout 408 to 504 on POST /goods-receipt", async () => {
+    mockGrError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["gr"]);
+    const res = await writeBack(token, "/goods-receipt", {
+      ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001",
+    }, `gr-408-${Date.now()}`);
+    assert.equal(res.status, 504);
+  });
+
+  it("maps SAP timeout 408 to 504 on POST /goods-issue", async () => {
+    mockGiError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["gi"]);
+    const res = await writeBack(token, "/goods-issue", {
+      orderid: "1000000", matnr: "10000001", menge: 50, werks: "1000", lgort: "0001",
+    }, `gi-408-${Date.now()}`);
     assert.equal(res.status, 504);
   });
 });

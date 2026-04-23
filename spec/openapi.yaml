@@ -309,6 +309,12 @@ paths:
                 type: string
         "403":
           description: Forbidden (non-localhost access)
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # -----------------------------------------------------------------------
   # Phase 5A — MES business endpoints (read-only)

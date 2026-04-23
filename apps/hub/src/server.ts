@@ -118,7 +118,9 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   app.route("/", metricsRoute);
 
   // 405 for public routes
-  app.get("/metrics", notAllowed);   // metrics is GET-only
+  for (const m of ["post", "put", "patch", "delete"] as const) {
+    app[m]("/metrics", notAllowed);
+  }
   app.get("/auth/token", notAllowed);
   app.put("/auth/token", notAllowed);
   app.patch("/auth/token", notAllowed);
