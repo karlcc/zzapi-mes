@@ -68,7 +68,7 @@ Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
    - `409` if same key + same body (true duplicate)
    - `422` if same key + different body (hash mismatch)
 5. **Rate limiting** (`middleware/rate-limit.ts`) — per-key token bucket. Rate-limit changes (e.g. updating `rate_limit_per_min` via admin CLI) only take effect on the next `/auth/token` exchange; in-flight buckets are not retroactively updated.
-6. **Route handler** — calls SAP, then writes audit log + idempotency status update in a single `db.transaction()` (atomic: if process crashes between SAP call and DB write, the idempotency key stays at status=0, allowing safe retry).
+6. **Route handler** — delegates to `withWriteBack()` (`routes/write-back.ts`) which handles Zod validation, SAP call, error mapping, atomic audit+idempotency write, and metrics. Route files are thin wrappers providing schema, SAP method, path, and error-field name.
 
 ### CORS
 
