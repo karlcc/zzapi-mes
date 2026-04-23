@@ -6,7 +6,7 @@ import type { HubVariables } from "../types.js";
 import { writeAudit, updateIdempotencyStatus } from "../db/index.js";
 
 /** Map SAP write-back error status to client-facing status and message. */
-function mapSapError(e: unknown): { sapStatus: number; clientStatus: number; errorMsg: string; retryAfter?: number } {
+export function mapSapError(e: unknown): { sapStatus: number; clientStatus: number; errorMsg: string; retryAfter?: number } {
   if (e instanceof ZzapiMesHttpError) {
     const sapStatus = e.status;
     const clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : e.status === 429 ? 429 : e.status === 408 ? 504 : 502;
