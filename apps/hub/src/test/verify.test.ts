@@ -142,4 +142,14 @@ describe("verifyApiKey", () => {
     assert.ok(result);
     assert.deepEqual(result!.scopes, ["ping", "po"]);
   });
+
+  it("handles empty scopes string (returns empty array, not crash)", async () => {
+    // The schema enforces NOT NULL on scopes, but empty string is valid.
+    // .split(",") on "" → [""], .filter(Boolean) → []. Should not crash.
+    const plaintext = await seedKey("emptyscopeskey", "");
+    db.prepare("UPDATE api_keys SET scopes = ? WHERE id = ?").run("", "emptyscopeskey");
+    const result = await verifyApiKey(db, plaintext);
+    assert.ok(result);
+    assert.deepEqual(result!.scopes, [], "empty scopes string should produce empty array");
+  });
 });

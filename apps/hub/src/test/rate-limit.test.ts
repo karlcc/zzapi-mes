@@ -5,6 +5,8 @@ import {
   _seedBucketForTest,
   _bucketCountForTest,
   _forceSweepForTest,
+  _trySweepForTest,
+  _lastSweepForTest,
 } from "../middleware/rate-limit.js";
 
 describe("rate-limit sweepIdleBuckets", () => {
@@ -43,5 +45,18 @@ describe("rate-limit sweepIdleBuckets", () => {
     // don't export the non-forced version, we verify the force helper is the
     // only way to sweep outside the interval.
     assert.equal(_bucketCountForTest(), 1);
+  });
+
+  it("throttle prevents sweep when called within SWEEP_INTERVAL_MS", () => {
+    const now = Date.now();
+    // Force a sweep to set lastSweep
+    _seedBucketForTest("stale1", 60, now - 12 * 60_000);
+    _forceSweepForTest();
+    assert.equal(_bucketCountForTest(), 0, "first sweep evicts");
+
+    // Add another stale bucket and try normal sweep — should be throttled
+    _seedBucketForTest("stale2", 60, now - 12 * 60_000);
+    _trySweepForTest();
+    assert.equal(_bucketCountForTest(), 1, "throttled sweep should not evict");
   });
 });
