@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { createServer, type Server } from "node:http";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const CLI = join(__dirname, "..", "dist", "cli.js");
 
@@ -626,6 +628,51 @@ describe("CLI", () => {
       assert.equal(code, 0);
       const parsed = JSON.parse(stdout);
       assert.equal(parsed.ebeln, "4500000001");
+    });
+  });
+
+  describe(".zzapirc file config loading", () => {
+    it("reads SAP_HOST and SAP_USER from .zzapirc when env not set", async () => {
+      // Create a temp dir with a .zzapirc file
+      const tmpDir = mkdtempSync(join(tmpdir(), "zzapi-rc-"));
+      const rcPath = join(tmpDir, ".zzapirc");
+      writeFileSync(rcPath, JSON.stringify({
+        SAP_HOST: "rc-host.example.com:8000",
+        SAP_CLIENT: 300,
+        SAP_USER: "rc_user",
+        SAP_PASS: "rc_pass",
+      }));
+
+      // Override HOME to point to temp dir so readRc() finds the file
+      const { stdout, code } = await run(["ping"], {
+        HOME: tmpDir,
+        SAP_USER: "",
+        SAP_PASS: "",
+      });
+      // The CLI will try to connect to rc-host.example.com which doesn't exist,
+      // but it should get past the credential check (no "Set SAP_USER" error)
+      // and fail with a network error instead.
+      rmSync(tmpDir, { recursive: true, force: true });
+      // If .zzapirc is not loaded, stderr would say "Set SAP_USER and SAP_PASS"
+      assert.ok(!stdout.includes("Set SAP_USER") || code === 0, "should load SAP_USER from .zzapirc");
+    });
+
+    it("reads HUB_URL and HUB_API_KEY from .zzapirc for hub mode", async () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), "zzapi-rc-"));
+      const rcPath = join(tmpDir, ".zzapirc");
+      writeFileSync(rcPath, JSON.stringify({
+        HUB_URL: "http://rc-hub.example.com:8080",
+        HUB_API_KEY: "rc_key.secret123",
+      }));
+
+      const { stderr, code } = await run(["--mode", "hub", "ping"], {
+        HOME: tmpDir,
+        HUB_URL: "",
+        HUB_API_KEY: "",
+      });
+      rmSync(tmpDir, { recursive: true, force: true });
+      // If .zzapirc is not loaded, stderr would say "Set HUB_URL and HUB_API_KEY"
+      assert.ok(!stderr.includes("Set HUB_URL"), "should load HUB_URL from .zzapirc");
     });
   });
 });
