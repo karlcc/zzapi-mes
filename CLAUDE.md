@@ -66,7 +66,7 @@ Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
 3. **Idempotency guard** (`middleware/idempotency.ts`) — requires `Idempotency-Key` header, stores SHA-256 body hash in SQLite. Returns:
    - `409` if same key + same body (true duplicate)
    - `422` if same key + different body (hash mismatch)
-4. **Rate limiting** (`middleware/rate-limit.ts`) — per-key token bucket
+4. **Rate limiting** (`middleware/rate-limit.ts`) — per-key token bucket. Rate-limit changes (e.g. updating `rate_limit_per_min` via admin CLI) only take effect on the next `/auth/token` exchange; in-flight buckets are not retroactively updated.
 5. **Audit logging** — writes to `audit_log` table via `writeAudit()`
 
 ### Scope Definitions
@@ -89,6 +89,10 @@ Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
 | 422 | Idempotency key reused with different body, or SAP business rule rejection |
 | 429 | Rate limit exceeded |
 | 502 | SAP upstream error (non-422/409) |
+
+### Path Parameter Validation
+
+All GET route handlers use `validateParam()` from `routes/validate.ts` to enforce: non-empty, alphanumeric-only (`[A-Za-z0-9]+`), and maxLength per parameter. This prevents injection and invalid requests from reaching SAP. Write-back routes validate via Zod schemas instead.
 
 ## Phase Roadmap
 

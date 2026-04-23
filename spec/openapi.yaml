@@ -239,7 +239,9 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
             maxLength: 10
+            pattern: "^[A-Za-z0-9]+$"
           description: Purchasing document number
       responses:
         "200":
@@ -620,7 +622,9 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
             maxLength: 12
+            pattern: "^[A-Za-z0-9]+$"
           description: Production order number
       responses:
         "200":
@@ -696,7 +700,9 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
             maxLength: 18
+            pattern: "^[A-Za-z0-9]+$"
           description: Material number
         - name: werks
           in: query
@@ -704,6 +710,7 @@ paths:
           schema:
             type: string
             maxLength: 4
+            pattern: "^[A-Za-z0-9]+$"
           description: Plant (optional)
       responses:
         "200":
@@ -779,7 +786,9 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
             maxLength: 18
+            pattern: "^[A-Za-z0-9]+$"
           description: Material number
         - name: werks
           in: query
@@ -787,6 +796,7 @@ paths:
           schema:
             type: string
             maxLength: 4
+            pattern: "^[A-Za-z0-9]+$"
           description: Plant
         - name: lgort
           in: query
@@ -794,6 +804,7 @@ paths:
           schema:
             type: string
             maxLength: 4
+            pattern: "^[A-Za-z0-9]+$"
           description: Storage location (optional)
       responses:
         "200":
@@ -869,7 +880,9 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
             maxLength: 10
+            pattern: "^[A-Za-z0-9]+$"
           description: Purchasing document number
       responses:
         "200":
@@ -945,7 +958,9 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
             maxLength: 18
+            pattern: "^[A-Za-z0-9]+$"
           description: Material number
         - name: werks
           in: query
@@ -953,6 +968,7 @@ paths:
           schema:
             type: string
             maxLength: 4
+            pattern: "^[A-Za-z0-9]+$"
           description: Plant
       responses:
         "200":
@@ -1022,7 +1038,9 @@ paths:
           required: true
           schema:
             type: string
+            minLength: 1
             maxLength: 8
+            pattern: "^[A-Za-z0-9]+$"
           description: Work center
         - name: werks
           in: query
@@ -1030,6 +1048,7 @@ paths:
           schema:
             type: string
             maxLength: 4
+            pattern: "^[A-Za-z0-9]+$"
           description: Plant
       responses:
         "200":
