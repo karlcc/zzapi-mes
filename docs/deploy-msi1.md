@@ -83,8 +83,10 @@ Edit `C:\etc\zzapi-mes-hub.env` with production values:
 ```ini
 HUB_PORT=8080
 HUB_JWT_SECRET=<generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))">
+# HUB_JWT_TTL_SECONDS=900         # JWT lifetime (default 900 = 15 min)
 HUB_DB_PATH=C:\var\zzapi-mes-hub\hub.db
 HUB_CORS_ORIGIN=*
+# HUB_AUDIT_RETENTION_DAYS=90     # prune audit_log rows older than N days on startup
 SAP_HOST=sapdev.fastcell.hk:8000
 SAP_CLIENT=200
 SAP_USER=<actual-user>
@@ -172,14 +174,20 @@ nssm start zzapi-mes-hub
 ### 8. Verify
 
 ```powershell
-# Health check
+# Health check (no auth required)
 curl http://localhost:8080/healthz
 
-# Ping SAP round-trip (requires API key)
-curl -H "Authorization: Bearer <api-key>" http://localhost:8080/ping
+# Health check with SAP reachability
+curl "http://localhost:8080/healthz?check=sap"
+
+# Get a JWT token (exchange API key for short-lived token)
+$env:TOKEN = (curl -s http://localhost:8080/auth/token -d '{\"api_key\":\"<key_id>.<secret>\"}' -H 'content-type: application/json' | jq -r .token)
+
+# Ping SAP round-trip (requires JWT)
+curl -H "Authorization: Bearer $env:TOKEN" http://localhost:8080/ping
 
 # Production order
-curl -H "Authorization: Bearer <api-key>" "http://localhost:8080/prod-order/000001001234"
+curl -H "Authorization: Bearer $env:TOKEN" "http://localhost:8080/prod-order/000001001234"
 
 # Metrics
 curl http://localhost:8080/metrics
@@ -229,7 +237,7 @@ graph TB
 |---------|-------|-----|
 | `pnpm install` fails on better-sqlite3 | Missing C++ build tools | Install VS Build Tools (step 2) |
 | Service starts then stops immediately | Missing env vars or SAP unreachable | Check `stderr.log`, verify env vars in nssm |
-| `401 Unauthorized` on /ping | Wrong or missing API key | Recreate key, check Authorization header format |
+| `401 Unauthorized` on /ping | Using raw API key instead of JWT | Exchange API key for JWT via `POST /auth/token`, then use `Bearer <jwt>` |
 | `502 Internal proxy error` | SAP host unreachable from msi-1 | Verify `sapdev.fastcell.hk:8000` connectivity |
 | Service won't start after reboot | nssm not set to AUTO_START | `nssm set zzapi-mes-hub Start SERVICE_AUTO_START` |
 

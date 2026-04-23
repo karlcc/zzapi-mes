@@ -4,7 +4,7 @@ import { SapClient } from "@zzapi-mes/core";
 import { accessLog } from "./middleware/log.js";
 import { requestId } from "./middleware/request-id.js";
 import { securityHeaders } from "./middleware/security-headers.js";
-import { requireJwt, requireScope } from "./middleware/jwt.js";
+import { requireJwt, requireScope, methodGuard } from "./middleware/jwt.js";
 import { rateLimit } from "./middleware/rate-limit.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
 import type { HubVariables } from "./types.js";
@@ -238,24 +238,19 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   app.delete("/healthz", notAllowed);
 
   // --- Protected routes (JWT + scope + rate limit) ---
-  app.use("/ping", requireJwt, requireScope("ping"), rateLimit);
-  app.use("/po/*", requireJwt, requireScope("po"), rateLimit);
-  app.use("/prod-order/*", requireJwt, requireScope("prod_order"), rateLimit);
-  app.use("/material/*", requireJwt, requireScope("material"), rateLimit);
-  app.use("/stock/*", requireJwt, requireScope("stock"), rateLimit);
-  app.use("/routing/*", requireJwt, requireScope("routing"), rateLimit);
-  app.use("/work-center/*", requireJwt, requireScope("work_center"), rateLimit);
-  // 405 Method Not Allowed — POST-only routes must reject GET before idempotency guard
-  for (const m of ["get", "put", "patch", "delete"] as const) {
-    app[m]("/confirmation", notAllowed);
-    app[m]("/goods-receipt", notAllowed);
-    app[m]("/goods-issue", notAllowed);
-  }
+  // GET-only routes: methodGuard rejects non-GET before JWT check
+  app.use("/ping", methodGuard("GET"), requireJwt, requireScope("ping"), rateLimit);
+  app.use("/po/*", methodGuard("GET"), requireJwt, requireScope("po"), rateLimit);
+  app.use("/prod-order/*", methodGuard("GET"), requireJwt, requireScope("prod_order"), rateLimit);
+  app.use("/material/*", methodGuard("GET"), requireJwt, requireScope("material"), rateLimit);
+  app.use("/stock/*", methodGuard("GET"), requireJwt, requireScope("stock"), rateLimit);
+  app.use("/routing/*", methodGuard("GET"), requireJwt, requireScope("routing"), rateLimit);
+  app.use("/work-center/*", methodGuard("GET"), requireJwt, requireScope("work_center"), rateLimit);
 
-  // Write-back routes: JWT + scope + idempotency + rate limit
-  app.use("/confirmation", requireJwt, requireScope("conf"), idempotencyGuard, rateLimit);
-  app.use("/goods-receipt", requireJwt, requireScope("gr"), idempotencyGuard, rateLimit);
-  app.use("/goods-issue", requireJwt, requireScope("gi"), idempotencyGuard, rateLimit);
+  // Write-back routes: methodGuard rejects non-POST before JWT/idempotency
+  app.use("/confirmation", methodGuard("POST"), requireJwt, requireScope("conf"), idempotencyGuard, rateLimit);
+  app.use("/goods-receipt", methodGuard("POST"), requireJwt, requireScope("gr"), idempotencyGuard, rateLimit);
+  app.use("/goods-issue", methodGuard("POST"), requireJwt, requireScope("gi"), idempotencyGuard, rateLimit);
   app.route("/", createPingRouter(client));         // GET /ping
   app.route("/", createPoRouter(client));            // GET /po/:ebeln
   app.route("/", createPoItemsRouter(client));       // GET /po/:ebeln/items
@@ -267,17 +262,6 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   app.route("/", createConfirmationRouter(client));  // POST /confirmation
   app.route("/", createGoodsReceiptRouter(client));  // POST /goods-receipt
   app.route("/", createGoodsIssueRouter(client));    // POST /goods-issue
-
-  // 405 Method Not Allowed — GET-only routes: reject non-GET
-  for (const m of ["post", "put", "patch", "delete"] as const) {
-    app[m]("/ping", notAllowed);
-    app[m]("/po/*", notAllowed);
-    app[m]("/prod-order/*", notAllowed);
-    app[m]("/material/*", notAllowed);
-    app[m]("/stock/*", notAllowed);
-    app[m]("/routing/*", notAllowed);
-    app[m]("/work-center/*", notAllowed);
-  }
 
   return { app, db };
 }

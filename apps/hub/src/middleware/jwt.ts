@@ -3,6 +3,17 @@ import type { HubVariables } from "../types.js";
 
 const JWT_SECRET = () => process.env.HUB_JWT_SECRET ?? "";
 
+/** Reject requests with wrong HTTP method. Must be placed before JWT/scope
+ *  middleware so 405 takes priority over 401/400/etc. */
+export function methodGuard(method: string) {
+  return createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
+    if (c.req.method !== method) {
+      return c.json({ error: "Method not allowed" }, 405);
+    }
+    await next();
+  });
+}
+
 /** Verify bearer JWT on protected routes. Sets c.set("jwtPayload"). */
 export const requireJwt = createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
   const header = c.req.header("Authorization");
@@ -24,7 +35,7 @@ export const requireJwt = createMiddleware<{ Variables: HubVariables }>(async (c
 export function requireScope(scope: string) {
   return createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
     const payload = c.get("jwtPayload");
-    const scopes = (payload?.scopes as string[] | undefined) ?? [];
+    const scopes = Array.isArray(payload?.scopes) ? payload.scopes : [];
     if (!scopes.includes(scope)) {
       return c.json({ error: `Insufficient scope: requires '${scope}'` }, 403);
     }

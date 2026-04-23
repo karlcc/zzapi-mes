@@ -1651,6 +1651,18 @@ describe("405 Method Not Allowed", () => {
     });
     assert.equal(res.status, 405);
   });
+
+  it("405 takes priority over 401 — GET /confirmation without token", async () => {
+    const res = await fetchApi("/confirmation");
+    assert.equal(res.status, 405);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("not allowed"));
+  });
+
+  it("405 takes priority over 401 — POST /ping without token", async () => {
+    const res = await fetchApi("/ping", { method: "POST" });
+    assert.equal(res.status, 405);
+  });
 });
 
 describe("Security headers", () => {

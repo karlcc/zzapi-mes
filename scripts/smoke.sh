@@ -13,7 +13,7 @@
 #   SAP_CLIENT          — SAP client (default: 200)
 #   HUB_MODE=1          — test against hub instead of SAP directly
 #   HUB_URL             — hub base URL (default: http://localhost:8080)
-#   HUB_API_KEY         — hub API key (required in hub mode)
+#   HUB_API_KEY         — hub API key (required only in hub mode)
 
 set -euo pipefail
 
@@ -26,13 +26,17 @@ VERBOSE="${VERBOSE:-0}"
 # Hub mode: set HUB_MODE=1 to test against the hub instead of SAP directly
 HUB_MODE="${HUB_MODE:-0}"
 HUB_URL="${HUB_URL:-http://localhost:8080}"
-HUB_API_KEY="${HUB_API_KEY:?Set HUB_API_KEY env var for hub mode}"
+HUB_API_KEY="${HUB_API_KEY:-}"
 
 BASE_URL="http://${SAP_HOST}"
 
 # When in hub mode, fetch a JWT first
 HUB_TOKEN=""
 if [[ "$HUB_MODE" == "1" ]]; then
+  if [[ -z "$HUB_API_KEY" ]]; then
+    echo "FATAL: HUB_API_KEY is required in hub mode (HUB_MODE=1)"
+    exit 1
+  fi
   BASE_URL="$HUB_URL"
   HUB_TOKEN=$(curl -s "$HUB_URL/auth/token" \
     -d "{\"api_key\":\"$HUB_API_KEY\"}" \
@@ -366,6 +370,13 @@ if [[ "$HUB_MODE" == "1" ]]; then
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-conf-001" \
     -d '{"orderid":"1000000","operation":"0010","yield":50}'
+
+  check "confirmation same key different body returns 422" \
+    "${BASE_URL}/confirmation" \
+    "422" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-conf-001" \
+    -d '{"orderid":"9999999","operation":"0010","yield":99}'
 
   check "confirmation invalid body returns 400" \
     "${BASE_URL}/confirmation" \
