@@ -183,6 +183,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /po/{ebeln}:
     get:
@@ -249,6 +255,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
           content:
             application/json:
               schema:
@@ -586,6 +598,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /material/{matnr}:
     get:
@@ -659,6 +677,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
           content:
             application/json:
               schema:
@@ -747,6 +771,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /po/{ebeln}/items:
     get:
@@ -813,6 +843,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
           content:
             application/json:
               schema:
@@ -890,6 +926,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
           content:
             application/json:
               schema:
@@ -1016,7 +1058,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Duplicate Idempotency-Key
+          description: Duplicate Idempotency-Key, or SAP conflict
           content:
             application/json:
               schema:
@@ -1040,6 +1082,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
           content:
             application/json:
               schema:
@@ -1097,7 +1145,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Duplicate Idempotency-Key
+          description: Duplicate Idempotency-Key, or SAP conflict
           content:
             application/json:
               schema:
@@ -1121,6 +1169,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
           content:
             application/json:
               schema:
@@ -1178,7 +1232,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Duplicate Idempotency-Key, or SAP backflush conflict
+          description: Duplicate Idempotency-Key, or SAP conflict, or SAP backflush conflict
           content:
             application/json:
               schema:
@@ -1202,6 +1256,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
           content:
             application/json:
               schema:

@@ -29,5 +29,7 @@ export function createMaterialRouter(sap: SapClient) {
     }
   });
 
+  router.on("POST|PUT|PATCH|DELETE", "/material/:matnr", (c) => c.json({ error: "Method not allowed" }, 405));
+
   return router;
 }

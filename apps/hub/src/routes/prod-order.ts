@@ -27,5 +27,7 @@ export function createProdOrderRouter(sap: SapClient) {
     }
   });
 
+  router.on("POST|PUT|PATCH|DELETE", "/prod-order/:aufnr", (c) => c.json({ error: "Method not allowed" }, 405));
+
   return router;
 }

@@ -27,5 +27,7 @@ export function createPoRouter(sap: SapClient) {
     }
   });
 
+  router.on("POST|PUT|PATCH|DELETE", "/po/:ebeln", (c) => c.json({ error: "Method not allowed" }, 405));
+
   return router;
 }

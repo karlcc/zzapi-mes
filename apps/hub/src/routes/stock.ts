@@ -34,5 +34,7 @@ export function createStockRouter(sap: SapClient) {
     }
   });
 
+  router.on("POST|PUT|PATCH|DELETE", "/stock/:matnr", (c) => c.json({ error: "Method not allowed" }, 405));
+
   return router;
 }

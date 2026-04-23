@@ -119,6 +119,9 @@ export class HubClient {
       if (e instanceof DOMException && e.name === "AbortError") {
         throw new ZzapiMesHttpError(408, `Hub auth request timeout after ${this.timeout}ms`);
       }
+      if (e instanceof TypeError) {
+        throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
+      }
       throw e;
     } finally {
       clearTimeout(timer);
@@ -151,6 +154,9 @@ export class HubClient {
       if (e instanceof DOMException && e.name === "AbortError") {
         throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
       }
+      if (e instanceof TypeError) {
+        throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
+      }
       throw e;
     } finally {
       clearTimeout(timer);
@@ -171,6 +177,9 @@ export class HubClient {
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
           throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
+        }
+        if (e instanceof TypeError) {
+          throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
         }
         throw e;
       } finally {
@@ -204,6 +213,9 @@ export class HubClient {
       if (e instanceof DOMException && e.name === "AbortError") {
         throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
       }
+      if (e instanceof TypeError) {
+        throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
+      }
       throw e;
     } finally {
       clearTimeout(timer);
@@ -230,6 +242,9 @@ export class HubClient {
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
           throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
+        }
+        if (e instanceof TypeError) {
+          throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
         }
         throw e;
       } finally {

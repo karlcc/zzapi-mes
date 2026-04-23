@@ -25,5 +25,7 @@ export function createPingRouter(sap: SapClient) {
     }
   });
 
+  router.on("POST|PUT|PATCH|DELETE", "/ping", (c) => c.json({ error: "Method not allowed" }, 405));
+
   return router;
 }

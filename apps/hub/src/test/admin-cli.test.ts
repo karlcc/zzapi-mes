@@ -135,4 +135,30 @@ describe("admin CLI", () => {
     const { exitCode } = await runCli(["bogus"]);
     assert.notEqual(exitCode, 0);
   });
+
+  it("keys revoke already-revoked key prints error", async () => {
+    const { stdout: createOut } = await runCli(["keys", "create", "--label", "dbl-revoke", "--scopes", "ping"]);
+    const keyId = createOut.trim().split(".")[0]!;
+
+    // First revoke succeeds
+    const { exitCode: firstCode } = await runCli(["keys", "revoke", keyId]);
+    assert.equal(firstCode, 0);
+
+    // Second revoke fails
+    const { stderr, exitCode } = await runCli(["keys", "revoke", keyId]);
+    assert.notEqual(exitCode, 0);
+    assert.match(stderr, /not found or already revoked/);
+  });
+
+  it("keys list on empty DB outputs nothing", async () => {
+    const { stdout, exitCode } = await runCli(["keys", "list"]);
+    assert.equal(exitCode, 0);
+    assert.equal(stdout.trim(), "");
+  });
+
+  it("keys create requires --label", async () => {
+    const { stderr, exitCode } = await runCli(["keys", "create", "--scopes", "ping"]);
+    assert.notEqual(exitCode, 0);
+    assert.match(stderr, /--label/);
+  });
 });

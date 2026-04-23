@@ -32,5 +32,7 @@ export function createWorkCenterRouter(sap: SapClient) {
     }
   });
 
+  router.on("POST|PUT|PATCH|DELETE", "/work-center/:arbpl", (c) => c.json({ error: "Method not allowed" }, 405));
+
   return router;
 }

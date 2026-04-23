@@ -229,6 +229,9 @@ export class SapClient {
       if (e instanceof DOMException && e.name === "AbortError") {
         throw new ZzapiMesHttpError(408, `Request timeout after ${this.timeout}ms`);
       }
+      if (e instanceof TypeError) {
+        throw new ZzapiMesHttpError(502, `Network error: ${(e as TypeError).message}`);
+      }
       throw e;
     } finally {
       clearTimeout(timer);
@@ -274,6 +277,9 @@ export class SapClient {
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         throw new ZzapiMesHttpError(408, `Request timeout after ${this.timeout}ms`);
+      }
+      if (e instanceof TypeError) {
+        throw new ZzapiMesHttpError(502, `Network error: ${(e as TypeError).message}`);
       }
       throw e;
     } finally {
