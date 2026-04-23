@@ -6,7 +6,7 @@ import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, Sto
 import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
-import { runMigrations, insertKey, writeAudit } from "../db/index.js";
+import { runMigrations, insertKey, writeAudit, revokeKey } from "../db/index.js";
 import { _resetBucketsForTest } from "../middleware/rate-limit.js";
 import { _resetSapHealthCacheForTest } from "../routes/health.js";
 
@@ -1812,5 +1812,184 @@ describe("Graceful shutdown closes DB", () => {
     // better-sqlite3 double-close is a no-op (no throw) on modern Node.
     // Our shutdown code wraps db.close() in try/catch — safe regardless.
     assert.doesNotThrow(() => testDb.close());
+  });
+});
+
+describe("Rate limit 429 on write-back route", () => {
+  it("returns 429 when bucket exhausted on POST /confirmation", async () => {
+    _resetBucketsForTest();
+    const keyId = "wbratelimited";
+    const secret = "wbratelimitedsecret123456789abcd";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "write-back rate limit key",
+      scopes: "conf,gr,gi",
+      rate_limit_per_min: 1,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    const authRes = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: plaintext }),
+    });
+    assert.equal(authRes.status, 200);
+    const { token } = await authRes.json() as { token: string };
+
+    // First request succeeds
+    const res1 = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "rlim-wb-1",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res1.status, 201);
+
+    // Second request should be rate limited
+    const res2 = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "rlim-wb-2",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res2.status, 429);
+  });
+});
+
+describe("SAP 5xx error sanitization on write-back", () => {
+  it("returns generic message for SAP 500 error", async () => {
+    mockConfError = new ZzapiMesHttpError(500, "Internal SAP short dump in table T001");
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `san-500-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+  });
+
+  it("preserves upstream message for SAP 422 business rule error", async () => {
+    mockGrError = new ZzapiMesHttpError(422, "Order already has full quantity received");
+    const token = await validToken(["gr"]);
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `san-422-${Date.now()}`,
+      },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 422);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Order already has full quantity received");
+  });
+
+  it("preserves upstream message for SAP 409 conflict error", async () => {
+    mockGiError = new ZzapiMesHttpError(409, "Backflush conflict: operation locked");
+    const token = await validToken(["gi"]);
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `san-409-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "10000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 409);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Backflush conflict: operation locked");
+  });
+});
+
+describe("Admin CLI key revoke", () => {
+  it("revokeKey returns true and marks key as revoked", async () => {
+    const keyId = "revokeme";
+    const secret = "revokemesecret123456789abcdef0";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "revoke test key",
+      scopes: "ping",
+      rate_limit_per_min: null,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    const ok = revokeKey(db, keyId);
+    assert.equal(ok, true);
+
+    // Verify revoked_at is set
+    const row = db.prepare("SELECT revoked_at FROM api_keys WHERE id = ?").get(keyId) as { revoked_at: number | null } | undefined;
+    assert.ok(row);
+    assert.ok(row.revoked_at !== null);
+  });
+
+  it("revokeKey returns false for non-existent key", () => {
+    const ok = revokeKey(db, "nosuchkey");
+    assert.equal(ok, false);
+  });
+
+  it("revokeKey returns false for already-revoked key", async () => {
+    const keyId = "alreadyrevoked";
+    const secret = "alreadyrevokedsecret123456789ab";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "double revoke test",
+      scopes: "ping",
+      rate_limit_per_min: null,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    const first = revokeKey(db, keyId);
+    assert.equal(first, true);
+    const second = revokeKey(db, keyId);
+    assert.equal(second, false);
+  });
+
+  it("revoked key cannot exchange for JWT", async () => {
+    const keyId = "authrevoked";
+    const secret = "authrevokedsecret123456789abcde";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "auth revoke test",
+      scopes: "ping",
+      rate_limit_per_min: null,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    // Revoke it
+    revokeKey(db, keyId);
+
+    // Try to get a token — should fail
+    const res = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: plaintext }),
+    });
+    assert.equal(res.status, 401);
   });
 });

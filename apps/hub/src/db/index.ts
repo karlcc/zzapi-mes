@@ -59,38 +59,41 @@ export function runMigrations(db: Database.Database): void {
     );
   `);
 
-  // Apply versioned migrations
+  // Apply versioned migrations — each in its own transaction so a partial
+  // failure (e.g. ALTER TABLE on an already-existing column) cannot advance
+  // _migrations and block a re-run.
   const currentVersion = db.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number | null };
   const v = currentVersion?.v ?? 0;
 
+  const migrate = db.transaction((version: number, sql: string) => {
+    db.exec(sql);
+    db.prepare("INSERT INTO _migrations (version, applied_at) VALUES (?, ?)").run(version, Math.floor(Date.now() / 1000));
+  });
+
   if (v < 1) {
-    db.exec(`
+    migrate(1, `
       CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at);
       CREATE INDEX IF NOT EXISTS idx_audit_log_key_id ON audit_log(key_id);
       CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
-      INSERT INTO _migrations (version, applied_at) VALUES (1, ${Math.floor(Date.now() / 1000)});
     `);
   }
 
   if (v < 2) {
-    db.exec(`
+    migrate(2, `
       ALTER TABLE audit_log ADD COLUMN sap_duration_ms INTEGER;
-      INSERT INTO _migrations (version, applied_at) VALUES (2, ${Math.floor(Date.now() / 1000)});
     `);
   }
 
   if (v < 3) {
-    db.exec(`
+    migrate(3, `
       CREATE INDEX IF NOT EXISTS idx_audit_log_path ON audit_log(path);
-      INSERT INTO _migrations (version, applied_at) VALUES (3, ${Math.floor(Date.now() / 1000)});
     `);
   }
 
   if (v < 4) {
-    db.exec(`
+    migrate(4, `
       CREATE INDEX IF NOT EXISTS idx_audit_log_key_created ON audit_log(key_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_idempotency_key_id ON idempotency_keys(key_id);
-      INSERT INTO _migrations (version, applied_at) VALUES (4, ${Math.floor(Date.now() / 1000)});
     `);
   }
 }
