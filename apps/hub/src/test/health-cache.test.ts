@@ -198,7 +198,7 @@ describe("healthz DB write check", () => {
     // Use a simpler approach: override prepare to throw on INSERT
     const origPrepare = db2.prepare.bind(db2);
     db2.prepare = ((sql: string) => {
-      if (sql.includes("INSERT INTO _healthz_write_check")) {
+      if (sql.includes("_healthz_write_check") && sql.includes("INSERT")) {
         const stmt = origPrepare("SELECT 1");
         // Return a fake statement that throws on run()
         return {
@@ -216,6 +216,24 @@ describe("healthz DB write check", () => {
     assert.equal(res.status, 503);
     const body = await res.json() as Record<string, unknown>;
     assert.match(String(body.error), /not writable/);
+    db2.close();
+  });
+
+  it("survives stale _healthz_write_check row from prior crash", async () => {
+    // If the process crashes between INSERT and DELETE, a stale row with id=1
+    // remains. The next health check must succeed because INSERT OR REPLACE
+    // handles the PRIMARY KEY conflict (instead of throwing UNIQUE violation).
+    const db2 = new Database(":memory:");
+    runMigrations(db2);
+    // Simulate a stale row left from a prior crash
+    db2.exec("CREATE TABLE IF NOT EXISTS _healthz_write_check (id INTEGER PRIMARY KEY)");
+    db2.prepare("INSERT INTO _healthz_write_check (id) VALUES (1)").run();
+
+    const app = buildApp(db2);
+    const res = await app.request("/healthz");
+    assert.equal(res.status, 200, "healthz should succeed even with stale row from prior crash");
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.ok, true);
     db2.close();
   });
 });

@@ -40,7 +40,7 @@ health.get("/healthz", async (c) => {
   // the SELECT check above but cause silent failures on write-back routes.
   try {
     db.prepare("CREATE TABLE IF NOT EXISTS _healthz_write_check (id INTEGER PRIMARY KEY)").run();
-    db.prepare("INSERT INTO _healthz_write_check (id) VALUES (1)").run();
+    db.prepare("INSERT OR REPLACE INTO _healthz_write_check (id) VALUES (1)").run();
     db.prepare("DELETE FROM _healthz_write_check WHERE id = 1").run();
   } catch {
     return c.json({ ok: false, error: "database not writable" }, 503);

@@ -58,7 +58,7 @@ export const rateLimit = createMiddleware<{ Variables: HubVariables }>(async (c,
   const keyId = payload.key_id;
   const rpm = payload.rate_limit_per_min ?? DEFAULT_RPM;
   if (rpm <= 0) {
-    return c.json({ error: "Rate limit disabled for this key" }, 403);
+    return c.json({ error: "Invalid rate_limit_per_min: must be positive" }, 400);
   }
 
   const { allowed, retryAfter } = getTokens(keyId, rpm);
