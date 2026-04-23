@@ -1503,6 +1503,38 @@ describe("405 Method Not Allowed", () => {
     const res = await fetchApi("/healthz", { method: "POST" });
     assert.equal(res.status, 405);
   });
+
+  it("POST /metrics returns 405", async () => {
+    const res = await fetchApi("/metrics", { method: "POST" });
+    assert.equal(res.status, 405);
+  });
+
+  it("PUT /ping returns 405", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/ping", {
+      method: "PUT",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 405);
+  });
+
+  it("DELETE /po/:ebeln returns 405", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/po/3010000608", {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 405);
+  });
+
+  it("PUT /confirmation returns 405", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "PUT",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 405);
+  });
 });
 
 describe("Security headers", () => {

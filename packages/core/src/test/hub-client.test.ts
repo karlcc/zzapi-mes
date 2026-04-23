@@ -538,4 +538,31 @@ describe("HubClient", () => {
       },
     );
   });
+
+  it("POST 401 retry preserves idempotency-key header", async () => {
+    let authCalls = 0;
+    let postCalls = 0;
+    const capturedIdemKeys: string[] = [];
+    globalThis.fetch = mockFetch((url, init) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      postCalls++;
+      const headers = init?.headers as Record<string, string>;
+      if (headers?.["idempotency-key"]) capturedIdemKeys.push(headers["idempotency-key"]);
+      if (postCalls === 1) return jsonResponse(401, { error: "expired" });
+      return jsonResponse(201, { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    const result = await client.confirmProduction(
+      { orderid: "1000000", operation: "0010", yield: 50 },
+      "idem-retry-key",
+    );
+    assert.equal(result.status, "confirmed");
+    // Both the initial (401) and retry request must carry the same idempotency-key
+    assert.equal(capturedIdemKeys.length, 2);
+    assert.equal(capturedIdemKeys[0], "idem-retry-key");
+    assert.equal(capturedIdemKeys[1], "idem-retry-key");
+  });
 });

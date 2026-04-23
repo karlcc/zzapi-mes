@@ -60,6 +60,7 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
     client: Number(requireEnv("SAP_CLIENT")),
     user: requireEnv("SAP_USER"),
     password: requireEnv("SAP_PASS"),
+    timeout: Number(process.env.SAP_TIMEOUT) || undefined,
   });
 
   // Open DB if not provided (production path)

@@ -69,7 +69,7 @@ export function createGoodsIssueRouter(sap: SapClient) {
     c.set("sapDurationMs", durationMs);
 
     if (errorMsg !== null) {
-      return c.json({ error: errorMsg, orderid: parsed.data.orderid }, clientStatus as 409 | 422 | 502);
+      return c.json({ error: errorMsg, orderid: parsed.data.orderid }, clientStatus as 409 | 422 | 502 | 504);
     }
     return c.json(result, sapStatus as 201);
   });
