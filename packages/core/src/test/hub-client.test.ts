@@ -919,6 +919,42 @@ describe("HubClient getToken validation", () => {
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).ping();
     assert.ok(result);
   });
+
+  it("auth endpoint timeout throws ZzapiMesHttpError(408)", async () => {
+    globalThis.fetch = mockFetch(() => {
+      throw new DOMException("The operation was aborted", "AbortError");
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY, timeout: 1 });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 408);
+        return true;
+      },
+    );
+  });
+
+  it("retryAfter not forwarded on non-429 write-back (SAP 408→504 drops retryAfter)", async () => {
+    // When SAP returns 408 with retryAfter, mapSapError maps to 504 but
+    // the hub only forwards retryAfter when clientStatus===429.
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return new Response(JSON.stringify({ error: "SAP timeout" }), {
+        status: 408,
+        headers: { "content-type": "application/json", "retry-after": "30" },
+      });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(
+      () => client.confirmProduction({ orderid: "1000000", operation: "0010", yield: 50 }, "retry-non429"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 408, "HubClient sees the raw 408, not the hub-remapped 504");
+        return true;
+      },
+    );
+  });
 });
 
 describe("HubClient constructor validation", () => {
