@@ -1768,3 +1768,19 @@ describe("POST route SAP timeout handling", () => {
     assert.equal(res.status, 504);
   });
 });
+
+describe("Graceful shutdown closes DB", () => {
+  it("createApp returns db that can be closed", () => {
+    const { db: appDb } = createApp(new MockSapClient() as unknown as SapClient, { db });
+    assert.doesNotThrow(() => appDb.close());
+  });
+
+  it("double-close is safe — no throw or caught (matches shutdown pattern)", () => {
+    const testDb = new Database(":memory:");
+    runMigrations(testDb);
+    testDb.close();
+    // better-sqlite3 double-close is a no-op (no throw) on modern Node.
+    // Our shutdown code wraps db.close() in try/catch — safe regardless.
+    assert.doesNotThrow(() => testDb.close());
+  });
+});
