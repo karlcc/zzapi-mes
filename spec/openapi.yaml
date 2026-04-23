@@ -139,17 +139,25 @@ paths:
     get:
       operationId: healthz
       summary: Hub health check
-      description: Lightweight probe — no SAP call, no auth required.
+      description: Lightweight probe — checks database connectivity. Add `?check=sap` to also verify SAP reachability (cached for 30s).
       security: []
+      parameters:
+        - name: check
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sap]
+          description: Optional SAP reachability check (pings SAP ICF handler, 5s timeout, result cached 30s)
       responses:
         "200":
-          description: Hub is running
+          description: Hub is running (and SAP reachable if check=sap)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthzResponse"
         "503":
-          description: Database unreachable
+          description: Database unreachable or SAP unreachable (when check=sap)
           content:
             application/json:
               schema:

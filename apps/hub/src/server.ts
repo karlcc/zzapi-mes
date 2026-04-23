@@ -75,6 +75,7 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   // Expose db to Hono context for write-back middleware
   app.use("*", async (c, next) => {
     c.set("db", db);
+    c.set("sap", client);
     await next();
   });
 

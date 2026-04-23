@@ -105,27 +105,11 @@ export class HubClient {
       return this.tokenCache.token;
     }
     const url = `${this.url}/auth/token`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ api_key: this.apiKey }),
-        signal: controller.signal,
-      });
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") {
-        throw new ZzapiMesHttpError(408, `Hub auth request timeout after ${this.timeout}ms`);
-      }
-      if (e instanceof TypeError) {
-        throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
-      }
-      throw e;
-    } finally {
-      clearTimeout(timer);
-    }
+    const res = await this.fetchWithTimeout(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: this.apiKey }),
+    }, "Hub auth request");
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new ZzapiMesHttpError(res.status, `Hub auth failed: ${body || res.statusText}`);
@@ -141,50 +125,17 @@ export class HubClient {
   private async request<T>(path: string): Promise<T> {
     const token = await this.getToken();
     const url = `${this.url}${path}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
-
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        headers: { authorization: `Bearer ${token}` },
-        signal: controller.signal,
-      });
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") {
-        throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
-      }
-      if (e instanceof TypeError) {
-        throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
-      }
-      throw e;
-    } finally {
-      clearTimeout(timer);
-    }
+    const res = await this.fetchWithTimeout(url, {
+      headers: { authorization: `Bearer ${token}` },
+    }, "Hub request");
 
     // If 401, token may have expired between cache and request — retry once
     if (res.status === 401) {
       this.tokenCache = null;
       const newToken = await this.getToken();
-      const retryController = new AbortController();
-      const retryTimer = setTimeout(() => retryController.abort(), this.timeout);
-      let retryRes: Response;
-      try {
-        retryRes = await fetch(url, {
-          headers: { authorization: `Bearer ${newToken}` },
-          signal: retryController.signal,
-        });
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") {
-          throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
-        }
-        if (e instanceof TypeError) {
-          throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
-        }
-        throw e;
-      } finally {
-        clearTimeout(retryTimer);
-      }
+      const retryRes = await this.fetchWithTimeout(url, {
+        headers: { authorization: `Bearer ${newToken}` },
+      }, "Hub request");
       return this.parseResponse<T>(retryRes);
     }
 
@@ -194,24 +145,46 @@ export class HubClient {
   private async postRequest<Req, Res>(path: string, body: Req, idempotencyKey: string): Promise<Res> {
     const token = await this.getToken();
     const url = `${this.url}${path}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
+    const init: RequestInit = {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify(body),
+    };
+    const res = await this.fetchWithTimeout(url, init, "Hub request");
 
-    let res: Response;
-    try {
-      res = await fetch(url, {
+    // If 401, token may have expired — retry once
+    if (res.status === 401) {
+      this.tokenCache = null;
+      const newToken = await this.getToken();
+      const retryInit: RequestInit = {
         method: "POST",
         headers: {
-          authorization: `Bearer ${token}`,
+          authorization: `Bearer ${newToken}`,
           "content-type": "application/json",
           "idempotency-key": idempotencyKey,
         },
         body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      };
+      const retryRes = await this.fetchWithTimeout(url, retryInit, "Hub request");
+      return this.parseResponse<Res>(retryRes);
+    }
+
+    return this.parseResponse<Res>(res);
+  }
+
+  /** Shared fetch with timeout and error wrapping. Eliminates duplication between request/postRequest. */
+  private async fetchWithTimeout(url: string, init: RequestInit, label: string): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
-        throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
+        throw new ZzapiMesHttpError(408, `${label} timeout after ${this.timeout}ms`);
       }
       if (e instanceof TypeError) {
         throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
@@ -220,40 +193,6 @@ export class HubClient {
     } finally {
       clearTimeout(timer);
     }
-
-    // If 401, token may have expired — retry once
-    if (res.status === 401) {
-      this.tokenCache = null;
-      const newToken = await this.getToken();
-      const retryController = new AbortController();
-      const retryTimer = setTimeout(() => retryController.abort(), this.timeout);
-      let retryRes: Response;
-      try {
-        retryRes = await fetch(url, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${newToken}`,
-            "content-type": "application/json",
-            "idempotency-key": idempotencyKey,
-          },
-          body: JSON.stringify(body),
-          signal: retryController.signal,
-        });
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") {
-          throw new ZzapiMesHttpError(408, `Hub request timeout after ${this.timeout}ms`);
-        }
-        if (e instanceof TypeError) {
-          throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
-        }
-        throw e;
-      } finally {
-        clearTimeout(retryTimer);
-      }
-      return this.parseResponse<Res>(retryRes);
-    }
-
-    return this.parseResponse<Res>(res);
   }
 
   private async parseResponse<T>(res: Response): Promise<T> {

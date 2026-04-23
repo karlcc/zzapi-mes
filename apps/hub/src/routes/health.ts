@@ -1,10 +1,21 @@
 import { Hono } from "hono";
+import type { SapClient } from "@zzapi-mes/core";
 import type { HubVariables } from "../types.js";
 import type Database from "better-sqlite3";
 
 const health = new Hono<{ Variables: HubVariables }>();
 
-health.get("/healthz", (c) => {
+/** Cached SAP reachability result (refreshed every 30s). */
+let sapCache: { ok: boolean; checkedAt: number; error?: string } | null = null;
+const SAP_CACHE_TTL_MS = 30_000;
+const SAP_PING_TIMEOUT_MS = 5_000;
+
+/** Reset SAP health cache (for test isolation). */
+export function _resetSapHealthCacheForTest(): void {
+  sapCache = null;
+}
+
+health.get("/healthz", async (c) => {
   const db = c.get("db") as Database.Database | undefined;
   if (!db) {
     return c.json({ ok: false, error: "database unreachable" }, 503);
@@ -14,6 +25,41 @@ health.get("/healthz", (c) => {
   } catch {
     return c.json({ ok: false, error: "database unreachable" }, 503);
   }
+
+  // Optional SAP reachability check via ?check=sap
+  const check = c.req.query("check");
+  if (check === "sap") {
+    const now = Date.now();
+    if (sapCache && now - sapCache.checkedAt < SAP_CACHE_TTL_MS) {
+      if (!sapCache.ok) {
+        return c.json({ ok: false, error: sapCache.error }, 503);
+      }
+      return c.json({ ok: true, sap: "reachable" });
+    }
+
+    // Ping SAP with timeout
+    const sap = c.get("sap") as SapClient | undefined;
+    if (!sap) {
+      return c.json({ ok: false, error: "SAP client not configured" }, 503);
+    }
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), SAP_PING_TIMEOUT_MS);
+      await Promise.race([
+        sap.ping(),
+        new Promise((_, reject) =>
+          controller.signal.addEventListener("abort", () => reject(new Error("timeout"))),
+        ),
+      ]);
+      clearTimeout(timer);
+      sapCache = { ok: true, checkedAt: now };
+      return c.json({ ok: true, sap: "reachable" });
+    } catch {
+      sapCache = { ok: false, checkedAt: now, error: "SAP unreachable" };
+      return c.json({ ok: false, error: "SAP unreachable" }, 503);
+    }
+  }
+
   return c.json({ ok: true });
 });
 

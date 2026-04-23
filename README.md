@@ -197,7 +197,7 @@ curl localhost:8080/healthz
 curl localhost:8080/metrics
 ```
 
-4. Deploy as systemd unit — see `apps/hub/deploy/`.
+4. Deploy as systemd unit — see `apps/hub/deploy/`. For Windows, see `docs/deploy-msi1.md`.
 
 ## Operating the Hub
 

@@ -2,14 +2,23 @@
 # smoke.sh — curl round-trip tests for zzapi-mes ICF handlers
 # Run after deploying both handlers to sapdev.
 #
-# Usage:  SAP_USER=api_user2 SAP_PASS='Pt@2026' bash scripts/smoke.sh
-#         bash scripts/smoke.sh                    (uses defaults below)
+# Usage:  SAP_USER=api_user2 SAP_PASS='<password>' bash scripts/smoke.sh
 #         VERBOSE=1 bash scripts/smoke.sh          (show response bodies)
+#
+# Required env vars (direct mode):
+#   SAP_USER, SAP_PASS  — SAP credentials (no defaults, will error if unset)
+#
+# Optional env vars:
+#   SAP_HOST            — SAP host (default: sapdev.fastcell.hk:8000)
+#   SAP_CLIENT          — SAP client (default: 200)
+#   HUB_MODE=1          — test against hub instead of SAP directly
+#   HUB_URL             — hub base URL (default: http://localhost:8080)
+#   HUB_API_KEY         — hub API key (required in hub mode)
 
 set -euo pipefail
 
-SAP_USER="${SAP_USER:-api_user2}"
-SAP_PASS="${SAP_PASS:-Pt@2026}"
+SAP_USER="${SAP_USER:?Set SAP_USER env var (or use HUB_MODE=1)}"
+SAP_PASS="${SAP_PASS:?Set SAP_PASS env var (or use HUB_MODE=1)}"
 SAP_HOST="${SAP_HOST:-sapdev.fastcell.hk:8000}"
 SAP_CLIENT="${SAP_CLIENT:-200}"
 VERBOSE="${VERBOSE:-0}"
@@ -17,7 +26,7 @@ VERBOSE="${VERBOSE:-0}"
 # Hub mode: set HUB_MODE=1 to test against the hub instead of SAP directly
 HUB_MODE="${HUB_MODE:-0}"
 HUB_URL="${HUB_URL:-http://localhost:8080}"
-HUB_API_KEY="${HUB_API_KEY:-test-key}"
+HUB_API_KEY="${HUB_API_KEY:?Set HUB_API_KEY env var for hub mode}"
 
 BASE_URL="http://${SAP_HOST}"
 
