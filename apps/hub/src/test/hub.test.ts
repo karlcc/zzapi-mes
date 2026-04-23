@@ -810,6 +810,55 @@ describe("Phase 5B write-back routes", () => {
     assert.equal(res2.status, 409);
   });
 
+  it("pending-status idempotency key returns 409 with 'previous attempt' message", async () => {
+    // Seed a pending idempotency record (status=0) directly into the DB
+    const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
+    const bodyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+    db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("pending-http-test", "testkey1234", "/confirmation", 0, bodyHash, Math.floor(Date.now() / 1000));
+
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "pending-http-test",
+      },
+      body,
+    });
+    assert.equal(res.status, 409);
+    const parsed = await res.json() as Record<string, unknown>;
+    assert.match(String(parsed.error), /previous attempt did not complete/);
+    assert.equal(parsed.original_status, undefined, "pending 409 should not include original_status");
+  });
+
+  it("completed idempotency key returns 409 with original_status", async () => {
+    const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
+    const bodyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+    db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("completed-http-test", "testkey1234", "/confirmation", 201, bodyHash, Math.floor(Date.now() / 1000));
+
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "completed-http-test",
+      },
+      body,
+    });
+    assert.equal(res.status, 409);
+    const parsed = await res.json() as Record<string, unknown>;
+    assert.equal(parsed.original_status, 201);
+    assert.match(String(parsed.error), /Duplicate request/);
+  });
+
   it("idempotency key with different body returns 422", async () => {
     const token = await validToken();
     const headers = {

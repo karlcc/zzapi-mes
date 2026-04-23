@@ -103,3 +103,35 @@ describe("health route SAP cache", () => {
     assert.equal(cache!.error, "SAP unreachable");
   });
 });
+
+describe("healthz DB write check", () => {
+  it("returns 503 when DB INSERT fails (read-only filesystem)", async () => {
+    const db2 = new Database(":memory:");
+    runMigrations(db2);
+    // Make DB read-only by dropping the _healthz_write_check table and revoking CREATE
+    db2.exec("CREATE TABLE _healthz_write_check (id INTEGER PRIMARY KEY)");
+    // Revoke write permissions by dropping all tables and making the DB read-only
+    // Use a simpler approach: override prepare to throw on INSERT
+    const origPrepare = db2.prepare.bind(db2);
+    db2.prepare = ((sql: string) => {
+      if (sql.includes("INSERT INTO _healthz_write_check")) {
+        const stmt = origPrepare("SELECT 1");
+        // Return a fake statement that throws on run()
+        return {
+          ...stmt,
+          run: () => { throw new Error("database is read-only"); },
+          get: stmt.get.bind(stmt),
+          all: stmt.all.bind(stmt),
+        } as any;
+      }
+      return origPrepare(sql);
+    }) as any;
+
+    const app = buildApp(db2);
+    const res = await app.request("/healthz");
+    assert.equal(res.status, 503);
+    const body = await res.json() as Record<string, unknown>;
+    assert.match(String(body.error), /not writable/);
+    db2.close();
+  });
+});
