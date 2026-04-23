@@ -211,22 +211,22 @@ This ABAP include contains shared form routines used by the write-back handlers.
 3. **curl**: Test with POST + JSON body, e.g.:
 
 ```bash
-# Confirmation
+# Confirmation (required: orderid, operation, yield)
 curl -u "$SAP_USER:$SAP_PASS" -X POST \
   -H "Content-Type: application/json" \
-  -d '{"aufnr":"1000000","conf_type":"","plant":"1000","work_center":"","fin_conf":"","postg":"","yield":10,"scrap":0,"rework":0,"emp_id":"","cost_center":"","ov_conf":""}' \
+  -d '{"orderid":"1000000","operation":"0010","yield":10,"scrap":0,"work_actual":0}' \
   "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/conf?sap-client=200"
 
-# Goods receipt
+# Goods receipt (required: ebeln, ebelp, menge, werks, lgort)
 curl -u "$SAP_USER:$SAP_PASS" -X POST \
   -H "Content-Type: application/json" \
-  -d '{"aufnr":"1000000","material":"100000","plant":"1000","qty":10,"uom":"EA"}' \
+  -d '{"ebeln":"4500000001","ebelp":"00010","menge":10,"werks":"1000","lgort":"0001"}' \
   "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/gr?sap-client=200"
 
-# Goods issue
+# Goods issue (required: orderid, matnr, menge, werks, lgort)
 curl -u "$SAP_USER:$SAP_PASS" -X POST \
   -H "Content-Type: application/json" \
-  -d '{"aufnr":"1000000","material":"100000","plant":"1000","qty":10,"uom":"EA"}' \
+  -d '{"orderid":"1000000","matnr":"100000","menge":10,"werks":"1000","lgort":"0001"}' \
   "http://sapdev.fastcell.hk:8000/sap/bc/zzapi/mes/gi?sap-client=200"
 ```
 

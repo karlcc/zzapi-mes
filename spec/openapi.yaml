@@ -1122,7 +1122,140 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   # -----------------------------------------------------------------------
-  # Phase 5B — MES write-back endpoints
+  # Phase 5B — MES write-back endpoints (SAP-direct)
+  # -----------------------------------------------------------------------
+
+  /sap/bc/zzapi/mes/conf:
+    post:
+      operationId: sapConf
+      summary: Production confirmation (SAP-direct)
+      description: SAP ICF handler for production order confirmation via BAPI_PRODORDCONF_CREATE_TT. Requires Basic Auth.
+      security:
+        - basicAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmationRequest"
+      responses:
+        "201":
+          description: Confirmation recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmationResponse"
+        "400":
+          description: Missing required fields (orderid, operation, yield)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed (only POST)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: SAP business rule rejection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sap/bc/zzapi/mes/gr:
+    post:
+      operationId: sapGr
+      summary: Goods receipt (SAP-direct)
+      description: SAP ICF handler for goods receipt via BAPI_GOODSMVT_CREATE (mvt 101). Requires Basic Auth.
+      security:
+        - basicAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoodsReceiptRequest"
+      responses:
+        "201":
+          description: Goods receipt posted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoodsReceiptResponse"
+        "400":
+          description: Missing required fields (ebeln, ebelp, menge, werks, lgort)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed (only POST)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: SAP business rule rejection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sap/bc/zzapi/mes/gi:
+    post:
+      operationId: sapGi
+      summary: Goods issue (SAP-direct)
+      description: SAP ICF handler for goods issue via BAPI_GOODSMVT_CREATE (mvt 261). Includes backflush guard. Requires Basic Auth.
+      security:
+        - basicAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SapClient"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoodsIssueRequest"
+      responses:
+        "201":
+          description: Goods issue posted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoodsIssueResponse"
+        "400":
+          description: Missing required fields (orderid, matnr, menge, werks, lgort)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed (only POST)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Backflush is active for this order — GI handled by confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: SAP business rule rejection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # -----------------------------------------------------------------------
+  # Phase 5B — MES write-back endpoints (hub mirrors)
   # -----------------------------------------------------------------------
 
   /confirmation:
