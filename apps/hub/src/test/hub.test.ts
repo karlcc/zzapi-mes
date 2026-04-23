@@ -1858,6 +1858,28 @@ describe("JWT rate_limit_per_min type validation", () => {
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${noRpmToken}` } });
     assert.equal(res.status, 200);
   });
+
+  it("uses custom positive rate_limit_per_min from JWT (10 RPM bucket)", async () => {
+    // Use a distinct key_id so the bucket is fresh (not the default 60 RPM)
+    const rpm = 10;
+    const customToken = await sign(
+      { key_id: "custom-rpm-key", scopes: ["ping"], rate_limit_per_min: rpm, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    // First request should succeed (bucket starts with rpm tokens)
+    const res1 = await fetchApi("/ping", { headers: { authorization: `Bearer ${customToken}` } });
+    assert.equal(res1.status, 200);
+    // Burn through the rest of the tokens — 10 RPM means 10 requests per minute
+    for (let i = 1; i < rpm; i++) {
+      await fetchApi("/ping", { headers: { authorization: `Bearer ${customToken}` } });
+    }
+    // The (rpm+1)th request should be rate limited
+    const resLimited = await fetchApi("/ping", { headers: { authorization: `Bearer ${customToken}` } });
+    assert.equal(resLimited.status, 429);
+    const body = await resLimited.json() as Record<string, unknown>;
+    assert.equal(body.error, "Rate limit exceeded");
+    assert.ok(resLimited.headers.get("retry-after"));
+  });
 });
 
 describe("Idempotency guard DB read failure", () => {
