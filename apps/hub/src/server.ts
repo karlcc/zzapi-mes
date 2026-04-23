@@ -71,7 +71,9 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   _clearAuthBucketsForTest: () => void;
 } {
   const jwtSecret = requireEnvMin("HUB_JWT_SECRET", 16);
-  const jwtTtl = Number(process.env.HUB_JWT_TTL_SECONDS) || 900;
+  const jwtTtl = process.env.HUB_JWT_TTL_SECONDS !== undefined && process.env.HUB_JWT_TTL_SECONDS !== ""
+    ? Number(process.env.HUB_JWT_TTL_SECONDS)
+    : 900;
   if (jwtTtl <= 60) {
     console.error(`HUB_JWT_TTL_SECONDS must be > 60 (got ${jwtTtl}). HubClient rejects tokens with expires_in <= 60.`);
     process.exit(1);

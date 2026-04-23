@@ -1858,6 +1858,39 @@ describe("JWT rate_limit_per_min type validation", () => {
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${noRpmToken}` } });
     assert.equal(res.status, 200);
   });
+
+  it("rejects JWT with object rate_limit_per_min", async () => {
+    const badToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: { rpm: 10 }, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${badToken}` } });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("rate_limit_per_min"));
+  });
+
+  it("rejects JWT with array rate_limit_per_min", async () => {
+    const badToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: [10], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${badToken}` } });
+    assert.equal(res.status, 401);
+  });
+});
+
+describe("JWT key_id type guard", () => {
+  it("rejects JWT with numeric key_id", async () => {
+    const badToken = await sign(
+      { key_id: 12345, scopes: ["ping"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${badToken}` } });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("key_id"));
+  });
 });
 
 describe("Idempotency guard DB read failure", () => {
