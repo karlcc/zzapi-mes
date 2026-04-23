@@ -1351,13 +1351,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      orderid:
+                        type: string
+                        description: Production order ID from the request body
         "422":
           description: Idempotency-Key reused with different body, or SAP business rule rejection
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      orderid:
+                        type: string
+                        description: Production order ID from the request body
         "429":
           description: Rate limit exceeded
           headers:
@@ -1374,7 +1386,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      orderid:
+                        type: string
+                        description: Production order ID from the request body
         "504":
           description: SAP request timeout
           content:
@@ -1445,13 +1463,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      ebeln:
+                        type: string
+                        description: Purchase order number from the request body
         "422":
           description: Idempotency-Key reused with different body, or SAP business rule rejection
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      ebeln:
+                        type: string
+                        description: Purchase order number from the request body
         "429":
           description: Rate limit exceeded
           headers:
@@ -1468,7 +1498,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      ebeln:
+                        type: string
+                        description: Purchase order number from the request body
         "504":
           description: SAP request timeout
           content:
@@ -1535,7 +1571,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Duplicate Idempotency-Key (original_status present), or SAP backflush conflict (matnr errorField present)
+          description: Duplicate Idempotency-Key (original_status present), or SAP backflush conflict (orderid present)
           content:
             application/json:
               schema:
@@ -1546,15 +1582,21 @@ paths:
                       - $ref: "#/components/schemas/ErrorResponse"
                       - type: object
                         properties:
-                          errorField:
+                          orderid:
                             type: string
-                            example: "matnr"
+                            description: Production order ID from the request body
         "422":
           description: Idempotency-Key reused with different body, or SAP business rule rejection
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      orderid:
+                        type: string
+                        description: Production order ID from the request body
         "429":
           description: Rate limit exceeded
           headers:
@@ -1571,7 +1613,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      orderid:
+                        type: string
+                        description: Production order ID from the request body
         "504":
           description: SAP request timeout
           content:
@@ -1655,11 +1703,9 @@ components:
           type: integer
           description: Original HTTP status from a prior idempotency-checked request (present on 409 duplicate responses only)
           example: 201
-        errorField:
-          type: string
-          nullable: true
-          description: Route-specific identifier field included in write-back error responses (e.g. orderid on /confirmation, ebeln on /goods-receipt, matnr on /goods-issue)
-          example: "orderid"
+      additionalProperties:
+        type: string
+        description: Route-specific identifier field included in write-back error responses (e.g. orderid on /confirmation, ebeln on /goods-receipt, orderid on /goods-issue)
 
     TokenResponse:
       type: object
