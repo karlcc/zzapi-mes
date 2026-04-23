@@ -66,6 +66,16 @@ describe("Admin CLI", () => {
       assert.ok(stdout.includes("listme"));
       assert.ok(stdout.includes("ACTIVE"));
     });
+
+    it("shows REVOKED status for revoked key", async () => {
+      const { stdout: plaintext } = await run(["keys", "create", "--label", "revokedlist"]);
+      const keyId = plaintext.split(".")[0]!;
+      await run(["keys", "revoke", keyId]);
+      const { stdout, code } = await run(["keys", "list"]);
+      assert.equal(code, 0);
+      assert.ok(stdout.includes("REVOKED"));
+      assert.ok(stdout.includes("revokedlist"));
+    });
   });
 
   describe("keys revoke", () => {

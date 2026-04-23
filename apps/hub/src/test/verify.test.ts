@@ -110,4 +110,17 @@ describe("verifyApiKey", () => {
     const result = await verifyApiKey(brokenDb, plaintext);
     assert.equal(result, null);
   });
+
+  it("returns null when argon2.verify throws (corrupted hash)", async () => {
+    insertKey(db, {
+      id: "corruptkey",
+      hash: "$argon2id$INVALID_HASH_GARBAGE",
+      label: "corrupt test",
+      scopes: "ping",
+      rate_limit_per_min: null,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+    const result = await verifyApiKey(db, "corruptkey.someSecret1234567890123456");
+    assert.equal(result, null);
+  });
 });
