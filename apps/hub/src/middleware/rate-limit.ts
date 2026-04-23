@@ -79,3 +79,19 @@ export function _resetBucketsForTest(): void {
   buckets.clear();
   lastSweep = Date.now();
 }
+
+/** Test-only: seed a bucket with a specific lastRefill timestamp (to simulate idle). */
+export function _seedBucketForTest(keyId: string, tokens: number, lastRefill: number): void {
+  buckets.set(keyId, { tokens, lastRefill });
+}
+
+/** Test-only: return bucket count. */
+export function _bucketCountForTest(): number {
+  return buckets.size;
+}
+
+/** Test-only: force a sweep regardless of SWEEP_INTERVAL_MS. */
+export function _forceSweepForTest(): void {
+  lastSweep = 0;
+  sweepIdleBuckets();
+}

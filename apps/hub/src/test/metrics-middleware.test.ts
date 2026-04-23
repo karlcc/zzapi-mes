@@ -1,0 +1,77 @@
+import { describe, it, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+import { Hono } from "hono";
+import { metricsMiddleware } from "../middleware/metrics.js";
+import { register, requestsTotal, requestDuration } from "../metrics.js";
+import type { HubVariables } from "../types.js";
+
+/** Build a minimal app that runs the metrics middleware and sets a jwtPayload. */
+function buildApp(): Hono<{ Variables: HubVariables }> {
+  const app = new Hono<{ Variables: HubVariables }>();
+  app.use("*", async (c, next) => {
+    c.set("jwtPayload", {
+      key_id: "test-key",
+      scopes: ["ping"],
+      iat: 0,
+      exp: 0,
+      rate_limit_per_min: null,
+    });
+    await next();
+  });
+  app.use("*", metricsMiddleware);
+  app.all("*", (c) => c.json({ ok: true }));
+  return app;
+}
+
+async function getRouteLabelFromCounter(): Promise<string[]> {
+  const metrics = await register.getMetricsAsJSON();
+  const counter = metrics.find((m) => m.name === "zzapi_hub_requests_total");
+  if (!counter || !("values" in counter)) return [];
+  return (counter.values as Array<{ labels: { route?: string } }>)
+    .map((v) => v.labels.route ?? "")
+    .filter((r): r is string => !!r);
+}
+
+describe("metrics middleware route normalization", () => {
+  beforeEach(() => {
+    requestsTotal.reset();
+    requestDuration.reset();
+  });
+
+  const cases: Array<{ path: string; expected: string }> = [
+    { path: "/metrics", expected: "/metrics" },
+    { path: "/healthz", expected: "/healthz" },
+    { path: "/auth/token", expected: "/auth/token" },
+    { path: "/po/4500000001", expected: "/po/:ebeln" },
+    { path: "/po/4500000001/items", expected: "/po/:ebeln/items" },
+    { path: "/prod-order/1000000", expected: "/prod-order/:aufnr" },
+    { path: "/material/20000001", expected: "/material/:matnr" },
+    { path: "/stock/20000001", expected: "/stock/:matnr" },
+    { path: "/routing/20000001", expected: "/routing/:matnr" },
+    { path: "/work-center/TURN1", expected: "/work-center/:arbpl" },
+    { path: "/confirmation", expected: "/confirmation" },
+    { path: "/goods-receipt", expected: "/goods-receipt" },
+    { path: "/goods-issue", expected: "/goods-issue" },
+    { path: "/unknown", expected: "/unknown" }, // fallback to raw
+  ];
+
+  for (const { path, expected } of cases) {
+    it(`normalizes ${path} → ${expected}`, async () => {
+      const app = buildApp();
+      await app.request(path, { method: path === "/confirmation" || path === "/goods-receipt" || path === "/goods-issue" ? "POST" : "GET" });
+      const routes = await getRouteLabelFromCounter();
+      assert.ok(routes.includes(expected), `expected ${expected}, got ${JSON.stringify(routes)}`);
+    });
+  }
+
+  it("records zero-scope key_id as '-' when jwtPayload missing", async () => {
+    const app = new Hono<{ Variables: HubVariables }>();
+    app.use("*", metricsMiddleware);
+    app.get("*", (c) => c.json({ ok: true }));
+    await app.request("/healthz");
+    const metrics = await register.getMetricsAsJSON();
+    const counter = metrics.find((m) => m.name === "zzapi_hub_requests_total");
+    const values = (counter as { values: Array<{ labels: { key_id?: string } }> }).values;
+    assert.ok(values.some((v) => v.labels.key_id === "-"));
+  });
+});
