@@ -1165,6 +1165,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /sap/bc/zzapi/mes/gr:
     post:
@@ -1202,6 +1214,18 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: SAP business rule rejection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
           content:
             application/json:
               schema:
@@ -1249,6 +1273,18 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: SAP business rule rejection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
           content:
             application/json:
               schema:

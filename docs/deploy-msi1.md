@@ -1,6 +1,6 @@
 # Hub Deployment Plan — msi-1 (Windows 11)
 
-> **Status**: Proposed
+> **Status**: Deployed and verified 2026-04-23 — service RUNNING at `C:\Users\karlchow\code\zzapi-mes-deploy\`; `/healthz?check=sap` returns `{"ok":true,"sap":"reachable"}`.
 > **Target**: msi-1 (`100.103.147.52` Tailscale / `10.45.16.132` LAN)
 > **Date**: 2026-04-23
 

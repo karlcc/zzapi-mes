@@ -61,7 +61,7 @@ For multi-endpoint routing under one SICF node, dispatch on `server->request->ge
 ### Middleware Chain (write-back routes)
 
 Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
-1. **Method guard** (`middleware/method-guard.ts`) — rejects wrong HTTP methods with 405 before JWT/scope/idempotency checks run
+1. **Method guard** (`middleware/jwt.ts` — `methodGuard()`) — rejects wrong HTTP methods with 405 before JWT/scope/idempotency checks run
 2. **JWT verification** (`middleware/jwt.ts`) — validates Bearer token, extracts scopes
 2. **Scope enforcement** (`middleware/jwt.ts`) — checks required scope (conf/gr/gi)
 3. **Idempotency guard** (`middleware/idempotency.ts`) — requires `Idempotency-Key` header, stores SHA-256 body hash in SQLite. Returns:
