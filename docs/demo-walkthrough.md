@@ -202,7 +202,7 @@ This ABAP include contains shared form routines used by the write-back handlers.
 |---|-------|-----------|-------------|----------|-------------|
 | 9 | `ZCL_ZZAPI_MES_CONF` | `conf` | `abap/ZCL_ZZAPI_MES_CONF.abap` | `/sap/bc/zzapi/mes/conf` | `BAPI_PRODORDCONF_CREATE_TT` |
 | 10 | `ZCL_ZZAPI_MES_GR` | `gr` | `abap/ZCL_ZZAPI_MES_GR.abap` | `/sap/bc/zzapi/mes/gr` | `BAPI_GOODSMVT_CREATE` (mvt 101) |
-| 11 | `ZCL_ZZAPI_MES_GI` | `gi` | `abap/ZIZZAPI_MES_GI.abap` | `/sap/bc/zzapi/mes/gi` | `BAPI_GOODSMVT_CREATE` (mvt 261) |
+| 11 | `ZCL_ZZAPI_MES_GI` | `gi` | `abap/ZCL_ZZAPI_MES_GI.abap` | `/sap/bc/zzapi/mes/gi` | `BAPI_GOODSMVT_CREATE` (mvt 261) |
 
 ### Deployment steps (repeat for each):
 
