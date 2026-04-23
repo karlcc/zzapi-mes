@@ -27,7 +27,12 @@ function readRc(): RcFile {
 function readConfig() {
   const rc = readRc();
   const host = ensureProtocol(process.env.SAP_HOST || rc.SAP_HOST || "sapdev.fastcell.hk:8000");
-  const client = Number(process.env.SAP_CLIENT || rc.SAP_CLIENT) || 200;
+  const clientRaw = process.env.SAP_CLIENT || rc.SAP_CLIENT;
+  const client = clientRaw !== undefined && clientRaw !== "" ? Number(clientRaw) : 200;
+  if (!Number.isFinite(client) || !Number.isInteger(client) || client <= 0) {
+    console.error(`SAP_CLIENT must be a positive integer (got ${clientRaw})`);
+    process.exit(1);
+  }
   const user = process.env.SAP_USER || rc.SAP_USER;
   const password = process.env.SAP_PASS || rc.SAP_PASS;
 

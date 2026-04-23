@@ -884,4 +884,13 @@ describe("HubClient getToken validation", () => {
     assert.ok(capturedUrl!.includes("/material/10000001"));
     assert.ok(!capturedUrl!.includes("werks"), "werks should not be in URL when omitted");
   });
+
+  it("does not throw on HTTP 200 with 'error' key (not a false-positive)", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { ok: true, error: "warning: deprecated field" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).ping();
+    assert.ok(result);
+  });
 });

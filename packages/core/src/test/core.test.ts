@@ -658,4 +658,38 @@ describe("SapClient constructor validation", () => {
     const client = new SapClient({ host: BASE, client: 200, user: "u", password: "p" });
     assert.ok(client);
   });
+
+  it("rejects whitespace-only user", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "   ", password: "p" }),
+      /non-empty strings/,
+    );
+  });
+
+  it("rejects whitespace-only password", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "   " }),
+      /non-empty strings/,
+    );
+  });
+});
+
+describe("SapClient HTTP 200 with error/errors key", () => {
+  it("does not throw on HTTP 200 with 'error' key (not a false-positive)", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ ok: true, error: "warning: deprecated field" }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    const result = await new SapClient(CFG).ping();
+    assert.ok(result);
+  });
+
+  it("does not throw on HTTP 200 with 'errors' key (not a false-positive)", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ ok: true, errors: ["non-blocking warning"] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    const result = await new SapClient(CFG).ping();
+    assert.ok(result);
+  });
 });

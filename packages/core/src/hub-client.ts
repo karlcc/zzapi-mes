@@ -211,12 +211,12 @@ export class HubClient {
     } catch {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
-    if ("error" in json) {
+    if (res.status >= 400 && "error" in json) {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       const originalStatus = res.status === 409 && typeof json.original_status === "number" ? json.original_status : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter, originalStatus);
     }
-    if ("errors" in json) {
+    if (res.status >= 400 && "errors" in json) {
       const arr = json.errors;
       const errorMsg = Array.isArray(arr)
         ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
