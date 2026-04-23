@@ -639,4 +639,58 @@ describe("HubClient getToken validation", () => {
     assert.equal(result.message, "pong");
     assert.ok(authCalled);
   });
+
+  it("refreshes token when cached token is within 60s of expiry", async () => {
+    let authCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        // Return a token with very short expires_in (65s — just above 60s threshold)
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 65 });
+      }
+      return jsonResponse(200, { ok: true, sap_time: "20260422163000" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    // First call: gets token with 65s expiry
+    await client.ping();
+    assert.equal(authCalls, 1);
+    // Simulate 10 seconds passing — still 55s left, within 60s window → should refresh
+    const origNow = Date.now;
+    let offset = 0;
+    Date.now = () => origNow() + offset;
+    offset = 10_000; // 10s elapsed → 55s remaining, under 60s threshold
+    try {
+      await client.ping();
+      assert.equal(authCalls, 2, "should re-auth when token is within 60s of expiry");
+    } finally {
+      Date.now = origNow;
+    }
+  });
+
+  it("re-throws unknown fetch errors (not AbortError/TypeError)", async () => {
+    class CustomError extends Error { constructor() { super("custom"); this.name = "CustomError"; } }
+    globalThis.fetch = mockFetch(() => { throw new CustomError(); });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (err: unknown) => {
+      return err instanceof CustomError;
+    });
+  });
+
+  it("sends POST method and idempotency-key header on write-back requests", async () => {
+    let capturedInit: RequestInit | undefined;
+    globalThis.fetch = mockFetch((url, init) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      capturedInit = init;
+      return jsonResponse(201, {
+        orderid: "1000000", operation: "0010", yield: 50, scrap: 0,
+        confNo: "00000100", confCnt: "0001", status: "confirmed", message: "ok",
+      });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await client.confirmProduction({ orderid: "1000000", operation: "0010", yield: 50 }, "idem-key-1");
+    assert.equal(capturedInit?.method, "POST");
+    const headers = capturedInit?.headers as Record<string, string>;
+    assert.equal(headers?.["idempotency-key"], "idem-key-1");
+    assert.equal(headers?.["content-type"], "application/json");
+  });
 });
