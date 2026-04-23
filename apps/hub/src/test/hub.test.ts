@@ -492,6 +492,14 @@ describe("Request ID middleware", () => {
     assert.ok(reqId);
     assert.match(reqId!, /^[0-9a-f]{8}-[0-9a-f]{4}-/, "empty string header should be replaced with UUID");
   });
+
+  it("replaces x-request-id containing dots with UUID", async () => {
+    const res = await fetchApi("/healthz", { headers: { "x-request-id": "abc.def.ghi" } });
+    const reqId = res.headers.get("x-request-id");
+    assert.ok(reqId);
+    assert.match(reqId!, /^[0-9a-f]{8}-/, "dot-containing ID should be replaced with UUID");
+    assert.notEqual(reqId, "abc.def.ghi");
+  });
 });
 
 describe("requireScope with malformed JWT scopes", () => {
