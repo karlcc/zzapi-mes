@@ -336,6 +336,13 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   app.route("/", createGoodsReceiptRouter(client));  // POST /goods-receipt
   app.route("/", createGoodsIssueRouter(client));    // POST /goods-issue
 
+  // Global error handler — ensures unhandled exceptions return ErrorResponse
+  // schema ({ error: string }) rather than Hono's default { message: string }
+  app.onError((err, c) => {
+    console.error(JSON.stringify({ type: "unhandled_error", path: c.req.path, error: err.message }));
+    return c.json({ error: "Internal Server Error" }, 500);
+  });
+
   return {
     app,
     db,

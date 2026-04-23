@@ -3147,3 +3147,16 @@ describe("Audit log retention", () => {
     assert.equal(stale, undefined, "stale audit row should be pruned");
   });
 });
+
+describe("Hono global error handler", () => {
+  it("returns ErrorResponse schema on unhandled exception", async () => {
+    const throwApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    // Add a route that throws to trigger the global error handler
+    throwApp.get("/throw-test", () => { throw new Error("test unhandled"); });
+    const res = await throwApp.fetch(new Request("http://localhost/throw-test"));
+    assert.equal(res.status, 500);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok("error" in body, "should have 'error' key matching ErrorResponse schema");
+    assert.equal(body.error, "Internal Server Error");
+  });
+});
