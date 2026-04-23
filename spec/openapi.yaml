@@ -7,9 +7,9 @@ info:
     name: UNLICENSED
   x-cors: |
     The hub supports CORS (hono/cors middleware). Configure via HUB_CORS_ORIGIN env var:
-    - "*" (default): any origin allowed
-    - Comma-separated list: restrict to specific origins
-    - Empty string: disable CORS entirely
+    - Unset (default): CORS disabled entirely
+    - Comma-separated list: restrict to specific explicit origins (e.g. "https://mes.example.com,https://app.example.com")
+    - "*" is REJECTED — wildcard origins with credentials is a CSRF vector and browsers reject it; hub exits with code 1 on startup
     Preflight (OPTIONS) returns 204 with Access-Control-Allow-Methods: GET, POST.
     Exposed headers: X-Request-ID, Retry-After.
 
@@ -1535,11 +1535,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Duplicate Idempotency-Key, or SAP conflict, or SAP backflush conflict
+          description: Duplicate Idempotency-Key (original_status present), or SAP backflush conflict (matnr errorField present)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - description: Backflush conflict — GI for this material is handled by confirmation
+                    allOf:
+                      - $ref: "#/components/schemas/ErrorResponse"
+                      - type: object
+                        properties:
+                          errorField:
+                            type: string
+                            example: "matnr"
         "422":
           description: Idempotency-Key reused with different body, or SAP business rule rejection
           content:
@@ -1646,6 +1655,11 @@ components:
           type: integer
           description: Original HTTP status from a prior idempotency-checked request (present on 409 duplicate responses only)
           example: 201
+        errorField:
+          type: string
+          nullable: true
+          description: Route-specific identifier field included in write-back error responses (e.g. orderid on /confirmation, ebeln on /goods-receipt, matnr on /goods-issue)
+          example: "orderid"
 
     TokenResponse:
       type: object
