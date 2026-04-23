@@ -62,7 +62,7 @@ For multi-endpoint routing under one SICF node, dispatch on `server->request->ge
 
 Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
 1. **Method guard** (`middleware/jwt.ts` — `methodGuard()`) — rejects wrong HTTP methods with 405 before JWT/scope/idempotency checks run
-2. **JWT verification** (`middleware/jwt.ts`) — validates Bearer token, extracts `JwtPayload` (typed in `types.ts`: `key_id`, `scopes`, `iat`, `exp`, `rate_limit_per_min`)
+2. **JWT verification** (`middleware/jwt.ts`) — validates Bearer token, extracts `JwtPayload` (typed in `types.ts`: `key_id`, `scopes`, `iat`, `exp`, `rate_limit_per_min`). Rejects tokens with non-number `rate_limit_per_min` (string/boolean) to prevent NaN in rate-limit arithmetic.
 3. **Scope enforcement** (`middleware/jwt.ts`) — checks required scope (conf/gr/gi)
 4. **Idempotency guard** (`middleware/idempotency.ts`) — requires `Idempotency-Key` header, stores SHA-256 body hash in SQLite. Returns:
    - `409` if same key + same body (true duplicate)
@@ -77,6 +77,16 @@ CORS is disabled by default. Set `HUB_CORS_ORIGIN` to a comma-separated list of 
 ### Client IP Resolution
 
 `getClientIp()` in `middleware/client-ip.ts` uses `@hono/node-server/conninfo` to get the unspoofable TCP peer address. Headers (`x-real-ip`, `x-forwarded-for`) are only honored when `HUB_TRUSTED_PROXY` is set to a comma-separated list of proxy IPs that match the peer. Without a trusted proxy config, header-based IP spoofing is impossible. The `isLoopbackPeer()` helper checks the real TCP peer for the `/metrics` localhost guard.
+
+### Startup Validation
+
+The hub validates critical env vars on boot and exits with code 1 on misconfiguration:
+- `HUB_JWT_SECRET` must be ≥ 16 chars (short secrets are brute-forceable)
+- `HUB_JWT_TTL_SECONDS` must be > 60 (shorter TTLs produce tokens HubClient rejects)
+- `HUB_PORT` must be > 0
+- `HUB_AUDIT_RETENTION_DAYS` must be > 0 (negative would prune ALL rows)
+- `SAP_CLIENT` must be > 0
+- `SAP_USER`, `SAP_PASS`, `SAP_HOST` must be set
 
 ### Security Headers
 
@@ -115,7 +125,7 @@ All GET route handlers use `validateParam()` from `routes/validate.ts` to enforc
 
 All 8 read-only hub routes delegate to `withSapCall()` in `routes/sap-call.ts`, which wraps:
 - Timing (`sap_duration_ms` metric)
-- Error mapping (any thrown `ZzapiMesHttpError` → appropriate HTTP status; non-ZzapiMesHttpError → 502)
+- Error mapping (any thrown `ZzapiMesHttpError` → appropriate HTTP status; non-ZzapiMesHttpError → 502). `ZzapiMesHttpError` carries `originalStatus` for 409 duplicates.
 - Audit logging (records key_id, path, sap_status, sap_duration_ms)
 - `Retry-After` header capture on 429 responses
 

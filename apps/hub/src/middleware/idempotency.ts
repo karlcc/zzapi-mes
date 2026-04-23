@@ -45,7 +45,6 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   if (!db) {
     // No DB available (test scenario without db) — skip check
     c.set("idempotencyKey", idempotencyKey);
-    c.set("idempotencyBodyHash", bodyHash);
     await next();
     return;
   }
@@ -58,7 +57,6 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
     // idempotency protection rather than returning an opaque 500 —
     // matches the audit-write failure pattern in sap-call.ts.
     c.set("idempotencyKey", idempotencyKey);
-    c.set("idempotencyBodyHash", bodyHash);
     await next();
     return;
   }
@@ -77,6 +75,5 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   }
 
   c.set("idempotencyKey", idempotencyKey);
-  c.set("idempotencyBodyHash", bodyHash);
   await next();
 });

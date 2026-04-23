@@ -54,6 +54,10 @@ async function main(args: string[]): Promise<void> {
         process.exit(1);
       }
       const rateLimit = opts["rate-limit"] ? parseInt(opts["rate-limit"], 10) : null;
+      if (rateLimit !== null && (Number.isNaN(rateLimit) || rateLimit <= 0)) {
+        console.error("--rate-limit must be a positive integer");
+        process.exit(1);
+      }
 
       // Generate key_id (12 hex chars from 6 random bytes)
       const keyId = randomBytes(6).toString("hex");

@@ -17,7 +17,6 @@ export type HubVariables = {
   sapStatus?: number;
   sapDurationMs?: number;
   idempotencyKey?: string;
-  idempotencyBodyHash?: string;
   db?: Database.Database;
   sap?: SapClient;
 };

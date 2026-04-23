@@ -55,6 +55,24 @@ describe("Admin CLI", () => {
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("Unknown scope"));
     });
+
+    it("rejects non-positive --rate-limit", async () => {
+      const { stderr, code } = await run(["keys", "create", "--label", "rl", "--rate-limit", "0"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("positive integer"));
+    });
+
+    it("rejects negative --rate-limit", async () => {
+      const { stderr, code } = await run(["keys", "create", "--label", "rl", "--rate-limit", "-5"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("positive integer"));
+    });
+
+    it("rejects non-numeric --rate-limit", async () => {
+      const { stderr, code } = await run(["keys", "create", "--label", "rl", "--rate-limit", "abc"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("positive integer"));
+    });
   });
 
   describe("keys list", () => {
