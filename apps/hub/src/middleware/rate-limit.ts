@@ -95,3 +95,13 @@ export function _forceSweepForTest(): void {
   lastSweep = 0;
   sweepIdleBuckets();
 }
+
+/** Test-only: invoke sweepIdleBuckets without resetting lastSweep (tests throttle path). */
+export function _trySweepForTest(): void {
+  sweepIdleBuckets();
+}
+
+/** Test-only: get lastSweep timestamp. */
+export function _lastSweepForTest(): number {
+  return lastSweep;
+}
