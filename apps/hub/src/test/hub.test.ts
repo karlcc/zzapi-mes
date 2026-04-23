@@ -2390,8 +2390,8 @@ describe("Write-back DB transaction failure after SAP success", () => {
 });
 
 describe("SAP 429 on write-back route", () => {
-  it("maps SAP 429 to 502 (not forwarded, unlike GET routes)", async () => {
-    mockConfError = new ZzapiMesHttpError(429, "Too Many Requests");
+  it("forwards SAP 429 with Retry-After header", async () => {
+    mockConfError = new ZzapiMesHttpError(429, "Too Many Requests", 30);
     const token = await validToken(["conf"]);
     const res = await fetchApi("/confirmation", {
       method: "POST",
@@ -2402,10 +2402,36 @@ describe("SAP 429 on write-back route", () => {
       },
       body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
     });
-    // mapSapError treats 429 as non-409/422, so it maps to 502
-    assert.equal(res.status, 502);
+    assert.equal(res.status, 429);
     const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
+    assert.equal(body.error, "Too Many Requests");
+    assert.equal(res.headers.get("retry-after"), "30");
+  });
+});
+
+describe("GET route audit write failure", () => {
+  it("returns 200 even when audit write fails on successful GET", async () => {
+    // Drop audit_log table to force writeAudit to throw
+    db.exec("DROP TABLE audit_log");
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200, "should return 200 even when audit write fails");
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.ok, true);
+  });
+
+  it("returns error response even when audit write fails on failed GET", async () => {
+    db.exec("DROP TABLE audit_log");
+    mockPoError = new ZzapiMesHttpError(404, "PO not found");
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/po/1234567890", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 404, "should return 404 even when audit write fails");
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "PO not found");
   });
 });
 

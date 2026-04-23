@@ -1,7 +1,5 @@
 import { Hono } from "hono";
-import type { SapClient } from "@zzapi-mes/core";
 import type { HubVariables } from "../types.js";
-import type Database from "better-sqlite3";
 
 const health = new Hono<{ Variables: HubVariables }>();
 
@@ -16,7 +14,7 @@ export function _resetSapHealthCacheForTest(): void {
 }
 
 health.get("/healthz", async (c) => {
-  const db = c.get("db") as Database.Database | undefined;
+  const db = c.get("db");
   if (!db) {
     return c.json({ ok: false, error: "database unreachable" }, 503);
   }
@@ -48,7 +46,7 @@ health.get("/healthz", async (c) => {
     }
 
     // Ping SAP with timeout
-    const sap = c.get("sap") as SapClient | undefined;
+    const sap = c.get("sap");
     if (!sap) {
       return c.json({ ok: false, error: "SAP client not configured" }, 503);
     }

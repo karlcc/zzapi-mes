@@ -1,6 +1,5 @@
 import { createMiddleware } from "hono/factory";
 import type { HubVariables } from "../types.js";
-import type Database from "better-sqlite3";
 import { checkIdempotency, evictIdempotencyKeys, type IdempotencyRecord } from "../db/index.js";
 
 /** Evict keys older than 5 minutes (300 seconds). */
@@ -13,7 +12,7 @@ const EVICTION_PROBABILITY = 0.01;
 export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(async (c, next) => {
   // Probabilistic eviction of stale keys (~1% of requests)
   if (Math.random() < EVICTION_PROBABILITY) {
-    const dbForEviction = c.get("db") as Database.Database | undefined;
+    const dbForEviction = c.get("db");
     if (dbForEviction) {
       evictIdempotencyKeys(dbForEviction, IDEMPOTENCY_MAX_AGE_SECONDS);
     }
@@ -38,11 +37,11 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
     // Empty body — hash stays empty
   }
 
-  const payload = c.get("jwtPayload") as Record<string, unknown> | undefined;
-  const keyId = (payload?.key_id as string) ?? "unknown";
+  const payload = c.get("jwtPayload");
+  const keyId = payload.key_id;
 
   // Access db from app context — passed via env
-  const db = c.get("db") as Database.Database | undefined;
+  const db = c.get("db");
   if (!db) {
     // No DB available (test scenario without db) — skip check
     c.set("idempotencyKey", idempotencyKey);

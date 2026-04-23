@@ -1,16 +1,17 @@
 import type { MiddlewareHandler } from "hono";
+import type { HubVariables } from "../types.js";
 
 /** Structured JSON access-log middleware. Writes one line per request to stdout. */
-export const accessLog: MiddlewareHandler = async (c, next) => {
+export const accessLog: MiddlewareHandler<{ Variables: HubVariables }> = async (c, next) => {
   const start = Date.now();
   await next();
   const ms = Date.now() - start;
-  const payload = c.get("jwtPayload") as Record<string, unknown> | undefined;
+  const payload = c.get("jwtPayload");
   const entry = JSON.stringify({
     ts: new Date().toISOString(),
     level: "info",
     req_id: c.get("reqId") ?? "-",
-    key_id: (payload?.key_id as string) ?? "-",
+    key_id: payload?.key_id ?? "-",
     method: c.req.method,
     path: c.req.path,
     status: c.res.status,

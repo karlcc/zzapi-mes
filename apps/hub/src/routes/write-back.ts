@@ -4,15 +4,15 @@ import { z } from "zod";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import { writeAudit, updateIdempotencyStatus } from "../db/index.js";
-import type Database from "better-sqlite3";
 
 /** Map SAP write-back error status to client-facing status and message. */
-function mapSapError(e: unknown): { sapStatus: number; clientStatus: number; errorMsg: string } {
+function mapSapError(e: unknown): { sapStatus: number; clientStatus: number; errorMsg: string; retryAfter?: number } {
   if (e instanceof ZzapiMesHttpError) {
     const sapStatus = e.status;
-    const clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : e.status === 408 ? 504 : 502;
-    const errorMsg = (e.status === 409 || e.status === 422) ? e.message : "SAP upstream error";
-    return { sapStatus, clientStatus, errorMsg };
+    const clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : e.status === 429 ? 429 : e.status === 408 ? 504 : 502;
+    const errorMsg = (e.status === 409 || e.status === 422 || e.status === 429) ? e.message : "SAP upstream error";
+    const retryAfter = e.retryAfter;
+    return { sapStatus, clientStatus, errorMsg, retryAfter };
   }
   return { sapStatus: 502, clientStatus: 502, errorMsg: "SAP upstream error" };
 }
@@ -48,15 +48,16 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
     return c.json({ error: `Invalid request: ${issues}` }, 400);
   }
 
-  const payload = c.get("jwtPayload") as Record<string, unknown> | undefined;
-  const keyId = (payload?.key_id as string) ?? "unknown";
+  const payload = c.get("jwtPayload");
+  const keyId = payload.key_id;
   const reqId = c.get("reqId") ?? "-";
-  const idempotencyKey = c.get("idempotencyKey") as string | undefined;
+  const idempotencyKey = c.get("idempotencyKey");
 
   let result: Record<string, unknown> | null = null;
   let sapStatus: number;
   let clientStatus: number;
   let errorMsg: string | null = null;
+  let retryAfter: number | undefined;
   const start = performance.now();
   try {
     result = await fn(parsed.data);
@@ -67,6 +68,7 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
     sapStatus = mapped.sapStatus;
     clientStatus = mapped.clientStatus;
     errorMsg = mapped.errorMsg;
+    retryAfter = mapped.retryAfter;
   }
   const durationMs = performance.now() - start;
 
@@ -74,7 +76,7 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
   // If the process crashes after SAP succeeds but before this commit,
   // the idempotency key remains at status=0 (pending), allowing a safe
   // retry rather than blocking with no audit trail.
-  const db = c.get("db") as Database.Database | undefined;
+  const db = c.get("db");
   if (db) {
     try {
       const finalizeWrite = db.transaction(() => {
@@ -109,9 +111,12 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
   c.set("sapDurationMs", Math.round(durationMs));
 
   if (errorMsg !== null) {
+    if (retryAfter && clientStatus === 429) {
+      c.header("retry-after", String(retryAfter));
+    }
     return c.json(
       { error: errorMsg, [errorField]: (parsed.data as Record<string, unknown>)[errorField] },
-      clientStatus as 409 | 422 | 502 | 504,
+      clientStatus as 409 | 422 | 429 | 502 | 504,
     );
   }
   return c.json(result, sapStatus as 201);

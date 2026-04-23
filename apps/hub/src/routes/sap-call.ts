@@ -3,7 +3,6 @@ import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import { writeAudit } from "../db/index.js";
-import type Database from "better-sqlite3";
 
 /** Execute a SAP call with timing, metrics, error mapping, and audit logging.
  *  Deduplicates the try/catch + metrics + error mapping across all GET routes. */
@@ -12,8 +11,8 @@ export async function withSapCall<T>(
   route: string,
   fn: () => Promise<T>,
 ) {
-  const payload = c.get("jwtPayload") as Record<string, unknown> | undefined;
-  const keyId = (payload?.key_id as string) ?? "unknown";
+  const payload = c.get("jwtPayload");
+  const keyId = payload.key_id;
   const reqId = c.get("reqId") ?? "-";
   const start = performance.now();
 
@@ -26,7 +25,7 @@ export async function withSapCall<T>(
 
     // Read-only audit trail: records who accessed what and when, with SAP
     // timing. No request body to log for GET requests.
-    const db = c.get("db") as Database.Database | undefined;
+    const db = c.get("db");
     if (db) {
       try {
         writeAudit(db, {
@@ -58,7 +57,7 @@ export async function withSapCall<T>(
       c.set("sapDurationMs", Math.round(sapDurationMs));
       sapDuration.labels({ route }).observe(sapDurationMs / 1000);
 
-      const db = c.get("db") as Database.Database | undefined;
+      const db = c.get("db");
       if (db) {
         try {
           writeAudit(db, {

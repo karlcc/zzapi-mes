@@ -1,8 +1,9 @@
 import type { MiddlewareHandler } from "hono";
+import type { HubVariables } from "../types.js";
 import { requestsTotal, requestDuration } from "../metrics.js";
 
 /** Middleware that records request metrics after the handler runs. */
-export const metricsMiddleware: MiddlewareHandler = async (c, next) => {
+export const metricsMiddleware: MiddlewareHandler<{ Variables: HubVariables }> = async (c, next) => {
   const start = performance.now();
   await next();
   const duration = (performance.now() - start) / 1000;
@@ -21,7 +22,7 @@ export const metricsMiddleware: MiddlewareHandler = async (c, next) => {
     : c.req.path === "/goods-issue" ? "/goods-issue"
     : c.req.path;
 
-  const keyId = (c.get("jwtPayload") as Record<string, unknown> | undefined)?.key_id as string ?? "-";
+  const keyId = c.get("jwtPayload")?.key_id ?? "-";
   const status = String(c.res.status);
 
   requestsTotal.labels({ route, status, key_id: keyId }).inc();

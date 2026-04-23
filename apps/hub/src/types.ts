@@ -1,11 +1,23 @@
+import type Database from "better-sqlite3";
+import type { SapClient } from "@zzapi-mes/core";
+
+/** Decoded JWT payload set by requireJwt middleware. */
+export interface JwtPayload {
+  key_id: string;
+  scopes: string[];
+  iat: number;
+  exp: number;
+  rate_limit_per_min: number | null;
+}
+
 /** Shared Hono context variables for the hub app. */
 export type HubVariables = {
   reqId: string;
-  jwtPayload: Record<string, unknown>;
+  jwtPayload: JwtPayload;
   sapStatus?: number;
   sapDurationMs?: number;
   idempotencyKey?: string;
   idempotencyBodyHash?: string;
-  db?: unknown; // Database.Database — typed loosely to avoid coupling
-  sap?: unknown; // SapClient — typed loosely to avoid coupling
+  db?: Database.Database;
+  sap?: SapClient;
 };
