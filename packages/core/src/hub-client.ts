@@ -27,6 +27,15 @@ export class HubClient {
   private tokenCache: TokenCache | null = null;
 
   constructor(config: HubClientConfig) {
+    if (!config.url || !config.url.trim()) {
+      throw new Error("HubClient config.url must be a non-empty string");
+    }
+    if (!config.apiKey || !config.apiKey.trim()) {
+      throw new Error("HubClient config.apiKey must be a non-empty string");
+    }
+    if (config.timeout !== undefined && (!Number.isFinite(config.timeout) || config.timeout <= 0)) {
+      throw new Error(`HubClient config.timeout must be a positive number (got ${config.timeout})`);
+    }
     this.url = ensureProtocol(config.url).replace(/\/+$/, "");
     this.apiKey = config.apiKey;
     this.timeout = config.timeout ?? 30_000;

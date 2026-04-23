@@ -910,3 +910,54 @@ describe("HubClient getToken validation", () => {
     assert.ok(result);
   });
 });
+
+describe("HubClient constructor validation", () => {
+  it("rejects empty url", () => {
+    assert.throws(
+      () => new HubClient({ url: "", apiKey: "test" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects whitespace-only url", () => {
+    assert.throws(
+      () => new HubClient({ url: "   ", apiKey: "test" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects empty apiKey", () => {
+    assert.throws(
+      () => new HubClient({ url: BASE, apiKey: "" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects whitespace-only apiKey", () => {
+    assert.throws(
+      () => new HubClient({ url: BASE, apiKey: "   " }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects timeout=0", () => {
+    assert.throws(
+      () => new HubClient({ url: BASE, apiKey: API_KEY, timeout: 0 }),
+      /positive number/,
+    );
+  });
+
+  it("rejects negative timeout", () => {
+    assert.throws(
+      () => new HubClient({ url: BASE, apiKey: API_KEY, timeout: -5 }),
+      /positive number/,
+    );
+  });
+
+  it("accepts valid config with and without timeout", () => {
+    const c1 = new HubClient({ url: BASE, apiKey: API_KEY });
+    assert.ok(c1);
+    const c2 = new HubClient({ url: BASE, apiKey: API_KEY, timeout: 5000 });
+    assert.ok(c2);
+  });
+});

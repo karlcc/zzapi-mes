@@ -161,7 +161,7 @@ export class SapClient {
     }
     this.host = ensureProtocol(config.host).replace(/\/+$/, "");
     this.client = config.client;
-    this.auth = btoa(`${config.user}:${config.password}`);
+    this.auth = btoa(`${config.user.trim()}:${config.password.trim()}`);
     if (config.timeout !== undefined && (!Number.isFinite(config.timeout) || config.timeout <= 0)) {
       throw new Error(`SapClient config.timeout must be a positive number (got ${config.timeout})`);
     }

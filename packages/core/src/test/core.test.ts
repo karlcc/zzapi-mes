@@ -672,6 +672,26 @@ describe("SapClient constructor validation", () => {
       /non-empty strings/,
     );
   });
+
+  it("trims whitespace-padded user and password before encoding", async () => {
+    // " user " passes the .trim() validation check but the constructor
+    // now also trims before encoding into btoa, preventing " user " from
+    // producing btoa(" user : pass ") which would fail SAP auth.
+    let capturedAuth = "";
+    globalThis.fetch = async (input, init) => {
+      capturedAuth = init?.headers instanceof Headers
+        ? (init.headers as Headers).get("authorization") ?? ""
+        : (init?.headers as Record<string, string>)?.Authorization ?? "";
+      return new Response(
+        JSON.stringify({ ok: true, sap_time: "20260422163000" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const client = new SapClient({ host: BASE, client: 200, user: " user ", password: " pass " });
+    await client.ping();
+    // btoa("user:pass") — whitespace stripped before encoding
+    assert.equal(capturedAuth, `Basic ${btoa("user:pass")}`);
+  });
 });
 
 describe("SapClient HTTP 200 with error/errors key", () => {
