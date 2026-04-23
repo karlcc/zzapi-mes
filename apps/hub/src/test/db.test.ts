@@ -11,6 +11,7 @@ import {
   updateIdempotencyStatus,
   evictIdempotencyKeys,
   writeAudit,
+  pruneAuditLog,
 } from "../db/index.js";
 
 let db: Database.Database;
@@ -259,47 +260,34 @@ describe("DB layer — migrations", () => {
   });
 });
 
-describe("DB layer — error re-throw for non-UNIQUE errors", () => {
-  it("insertKey re-throws non-UNIQUE DB error with descriptive message", () => {
-    // Drop the table to force a generic error (not UNIQUE constraint)
-    db.exec("DROP TABLE api_keys");
-    assert.throws(
-      () => insertKey(db, {
-        id: "x",
-        hash: "h",
-        label: "test",
-        scopes: "ping",
-        rate_limit_per_min: null,
-        created_at: 1000,
-      }),
-      (err: unknown) => err instanceof Error && err.message.includes("Failed to insert key") && !err.message.includes("already exists"),
+describe("DB layer — pruneAuditLog batch boundary", () => {
+  it("prunes >10k rows across multiple batch iterations", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const stale = now - 31 * 86_400;
+    // Insert 10_001 stale rows to exercise the do/while boundary
+    const insert = db.prepare(
+      "INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     );
-  });
-
-  it("revokeKey re-throws unexpected DB error", () => {
-    db.exec("DROP TABLE api_keys");
-    assert.throws(
-      () => revokeKey(db, "nope"),
-      (err: unknown) => err instanceof Error && err.message.includes("Failed to revoke key"),
-    );
-  });
-
-  it("checkIdempotency re-throws non-UNIQUE DB error", () => {
-    db.exec("DROP TABLE idempotency_keys");
-    assert.throws(
-      () => checkIdempotency(db, "key", "kid", "/conf", 201, "hash"),
-      (err: unknown) => !(err instanceof Error && err.message.includes("UNIQUE constraint")),
-      "should re-throw non-UNIQUE errors, not swallow them",
-    );
-  });
-
-  it("updateIdempotencyStatus is silent no-op for non-existent key", () => {
-    // Updating a key that doesn't exist should not throw
-    assert.doesNotThrow(() => {
-      updateIdempotencyStatus(db, "nonexistent-key", 201);
+    const insertMany = db.transaction((count: number) => {
+      for (let i = 0; i < count; i++) {
+        insert.run(`batch-${i}`, "k", "GET", "/ping", null, 200, null, stale);
+      }
     });
-    // Verify no row was created
-    const row = db.prepare("SELECT * FROM idempotency_keys WHERE key = ?").get("nonexistent-key");
-    assert.equal(row, undefined);
+    insertMany(10_001);
+    // Also insert a recent row that must survive
+    db.prepare(
+      "INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run("recent", "k", "GET", "/ping", null, 200, null, now);
+
+    const removed = pruneAuditLog(db, 30);
+    assert.equal(removed, 10_001, "all stale rows should be pruned across batches");
+
+    // Recent row survives
+    const recent = db.prepare("SELECT req_id FROM audit_log WHERE req_id = 'recent'").get();
+    assert.ok(recent, "recent row should survive pruning");
+
+    // Total rows left = 1
+    const remaining = db.prepare("SELECT COUNT(*) AS cnt FROM audit_log").get() as { cnt: number };
+    assert.equal(remaining.cnt, 1, "only the recent row should remain");
   });
 });

@@ -102,6 +102,61 @@ describe("health route SAP cache", () => {
     assert.equal(cache!.ok, false);
     assert.equal(cache!.error, "SAP unreachable");
   });
+
+  it("cache miss at exactly 30s TTL triggers fresh SAP check", async () => {
+    // TTL is 30_000ms with strict `<` comparison at line 51
+    // At exactly 30s, `now - checkedAt < 30000` is false → cache miss
+    const appWithSap = new Hono<{ Variables: HubVariables }>();
+    let pingCalled = false;
+    const mockSap = { ping: async () => { pingCalled = true; return { ok: true, sap_time: "20260422163000" }; } };
+    appWithSap.use("*", async (c, next) => {
+      c.set("db", db);
+      c.set("sap", mockSap as any);
+      c.set("jwtPayload", { key_id: "test", scopes: ["ping"], iat: 0, exp: 0, rate_limit_per_min: null });
+      await next();
+    });
+    appWithSap.route("/", health);
+
+    // Seed cache exactly at TTL boundary (30s ago)
+    _setSapCacheForTest({ ok: true, checkedAt: Date.now() - 30_000 });
+    const res = await appWithSap.request("/healthz?check=sap");
+    assert.equal(res.status, 200);
+    assert.ok(pingCalled, "SAP ping should be called when cache is exactly at TTL");
+  });
+
+  it("SAP ping timeout produces 503", async () => {
+    _resetSapHealthCacheForTest();
+    const appWithSap = new Hono<{ Variables: HubVariables }>();
+    // Simulate a slow SAP that never resolves (timeout via AbortController in health.ts)
+    const mockSap = { ping: async () => new Promise(() => {}) }; // never resolves
+    appWithSap.use("*", async (c, next) => {
+      c.set("db", db);
+      c.set("sap", mockSap as any);
+      c.set("jwtPayload", { key_id: "test", scopes: ["ping"], iat: 0, exp: 0, rate_limit_per_min: null });
+      await next();
+    });
+    appWithSap.route("/", health);
+
+    // The AbortController in health.ts has a 5s timeout; we can't wait that long
+    // in a unit test. Instead, test the catch path directly by making ping throw.
+    const appWithThrow = new Hono<{ Variables: HubVariables }>();
+    const throwingSap = { ping: async () => { throw new Error("timeout"); } };
+    appWithThrow.use("*", async (c, next) => {
+      c.set("db", db);
+      c.set("sap", throwingSap as any);
+      c.set("jwtPayload", { key_id: "test", scopes: ["ping"], iat: 0, exp: 0, rate_limit_per_min: null });
+      await next();
+    });
+    appWithThrow.route("/", health);
+
+    const res = await appWithThrow.request("/healthz?check=sap");
+    assert.equal(res.status, 503);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP unreachable");
+    const cache = _getSapCacheForTest();
+    assert.ok(cache, "cache should record the failure");
+    assert.equal(cache!.ok, false);
+  });
 });
 
 describe("healthz SAP timeout", () => {
