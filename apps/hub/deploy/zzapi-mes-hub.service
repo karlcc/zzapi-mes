@@ -1,6 +1,7 @@
 [Unit]
 Description=zzapi-mes hub — token-gated SAP proxy
 After=network.target
+ConditionPathExists=/etc/zzapi-mes-hub.env
 
 [Service]
 Type=simple
