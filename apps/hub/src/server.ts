@@ -128,7 +128,10 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   // the raw body and check its length before downstream handlers read it.
   app.use("*", async (c, next) => {
     const contentLength = c.req.header("content-length");
-    if (contentLength && Number(contentLength) > 1_048_576) {
+    // Validate Content-Length: must be a finite number, and if so must not
+    // exceed 1 MB. Number("abc") produces NaN, and NaN > N is always false,
+    // which allowed the old check to be bypassed. Reject non-finite values.
+    if (contentLength && (!Number.isFinite(Number(contentLength)) || Number(contentLength) > 1_048_576)) {
       return c.json({ error: "Request body too large (max 1 MB)" }, 413);
     }
     // For chunked transfer (no Content-Length), read body and enforce limit

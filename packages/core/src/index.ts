@@ -248,6 +248,7 @@ export class SapClient {
       res = await fetch(url, {
         headers: { Authorization: `Basic ${this.auth}` },
         signal: controller.signal,
+        redirect: "manual",
       });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
@@ -310,6 +311,7 @@ export class SapClient {
         },
         body: JSON.stringify(body),
         signal: controller.signal,
+        redirect: "manual",
       });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {

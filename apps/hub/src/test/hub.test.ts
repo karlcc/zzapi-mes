@@ -3252,6 +3252,45 @@ describe("Write-back SAP error + DB failure", () => {
   });
 });
 
+describe("Content-Length NaN bypass (P1 security)", () => {
+  it("rejects non-numeric Content-Length with 413 (NaN bypass)", async () => {
+    // Number("abc") > 1_048_576 → NaN > N → false (bypasses limit).
+    // The fix uses Number.isFinite() so non-numeric Content-Length is rejected.
+    // Note: Request constructor overwrites content-length from the body, so
+    // we must craft a request where content-length header is controlled directly.
+    // We use a GET request (no body) so the Request constructor doesn't override
+    // our spoofed content-length header.
+    const token = await validToken(["ping"]);
+    const req = new Request("http://localhost/ping", {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-length": "abc", // non-numeric — would bypass old check
+      },
+    });
+    const res = await app().fetch(req);
+    assert.equal(res.status, 413, "non-numeric content-length should be rejected as too large");
+    const body = await res.json() as Record<string, unknown>;
+    assert.match(String(body.error), /too large/i);
+  });
+
+  it("still accepts valid numeric Content-Length under limit", async () => {
+    const token = await validToken(["conf"]);
+    const payload = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "nan-legit-001",
+      },
+      body: payload,
+    });
+    // Should not be 413 — may be 201 or another error, but not body-too-large
+    assert.notEqual(res.status, 413, "legitimate numeric content-length under limit should not be rejected");
+  });
+});
+
 describe("413 body-too-large on write-back route", () => {
   it("returns 413 when Content-Length exceeds 1 MB", async () => {
     const token = await validToken(["conf"]);

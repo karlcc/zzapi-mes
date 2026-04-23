@@ -1017,4 +1017,30 @@ describe("HubClient constructor validation", () => {
     const client = new HubClient({ url: "ftp://evil.example.com", apiKey: API_KEY });
     assert.ok(client);
   });
+
+  it("does NOT follow redirects — uses redirect: manual (P1 security)", async () => {
+    // Verify that HubClient sets redirect: "manual" on fetch to prevent
+    // Bearer-token leakage on 301/302 redirects.
+    let authCallOpts: RequestInit | undefined;
+    globalThis.fetch = mockFetch((url, init) => {
+      if (url.endsWith("/auth/token")) {
+        return jsonResponse(200, { token: "jwt-redirect-test", expires_in: 900 });
+      }
+      // Capture the options from the hub request (not the auth request)
+      authCallOpts = init;
+      // Return a 302 redirect — with redirect: "manual" the client sees
+      // the raw 302 response instead of following it.
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://evil.example.com/steal-token" },
+      });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    try {
+      await client.ping();
+    } catch {
+      // 302 response body is empty → JSON parse error — expected
+    }
+    assert.equal(authCallOpts?.redirect, "manual", "HubClient should use redirect: 'manual'");
+  });
 });
