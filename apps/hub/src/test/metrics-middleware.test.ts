@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
-import { metricsMiddleware } from "../middleware/metrics.js";
+import { metricsMiddleware, normalizeRoute } from "../middleware/metrics.js";
 import { register, requestsTotal, requestDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 
@@ -73,5 +73,36 @@ describe("metrics middleware route normalization", () => {
     const counter = metrics.find((m) => m.name === "zzapi_hub_requests_total");
     const values = (counter as { values: Array<{ labels: { key_id?: string } }> }).values;
     assert.ok(values.some((v) => v.labels.key_id === "-"));
+  });
+});
+
+describe("normalizeRoute", () => {
+  it("maps dynamic read paths to parameterized labels", () => {
+    assert.equal(normalizeRoute("/po/3010000608"), "/po/:ebeln");
+    assert.equal(normalizeRoute("/po/3010000608/items"), "/po/:ebeln/items");
+    assert.equal(normalizeRoute("/prod-order/1000000"), "/prod-order/:aufnr");
+    assert.equal(normalizeRoute("/material/10000001"), "/material/:matnr");
+    assert.equal(normalizeRoute("/stock/10000001"), "/stock/:matnr");
+    assert.equal(normalizeRoute("/routing/10000001"), "/routing/:matnr");
+    assert.equal(normalizeRoute("/work-center/TURN1"), "/work-center/:arbpl");
+  });
+
+  it("maps exact paths unchanged", () => {
+    assert.equal(normalizeRoute("/metrics"), "/metrics");
+    assert.equal(normalizeRoute("/healthz"), "/healthz");
+    assert.equal(normalizeRoute("/auth/token"), "/auth/token");
+    assert.equal(normalizeRoute("/confirmation"), "/confirmation");
+    assert.equal(normalizeRoute("/goods-receipt"), "/goods-receipt");
+    assert.equal(normalizeRoute("/goods-issue"), "/goods-issue");
+  });
+
+  it("returns unknown paths verbatim", () => {
+    assert.equal(normalizeRoute("/some/unknown/path"), "/some/unknown/path");
+    assert.equal(normalizeRoute("/"), "/");
+  });
+
+  it("prefers /po/:ebeln/items over /po/:ebeln (rule ordering)", () => {
+    // Regression guard: if rule ordering breaks, /po/X/items would match /po/:ebeln first
+    assert.equal(normalizeRoute("/po/4500000001/items"), "/po/:ebeln/items");
   });
 });

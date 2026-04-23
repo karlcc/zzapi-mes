@@ -2,25 +2,41 @@ import type { MiddlewareHandler } from "hono";
 import type { HubVariables } from "../types.js";
 import { requestsTotal, requestDuration } from "../metrics.js";
 
+/**
+ * Route normalizer rules. First matching rule wins, so more specific prefixes
+ * (e.g. "/po/:ebeln/items") MUST be listed before less specific ones
+ * (e.g. "/po/:ebeln"). Exact matches are handled by the `exact` predicate.
+ */
+const ROUTE_RULES: Array<{ match: (path: string) => boolean; label: string }> = [
+  { match: (p) => p === "/metrics", label: "/metrics" },
+  { match: (p) => p === "/healthz", label: "/healthz" },
+  { match: (p) => p === "/auth/token", label: "/auth/token" },
+  { match: (p) => p.startsWith("/po/") && p.endsWith("/items"), label: "/po/:ebeln/items" },
+  { match: (p) => p.startsWith("/po/"), label: "/po/:ebeln" },
+  { match: (p) => p.startsWith("/prod-order/"), label: "/prod-order/:aufnr" },
+  { match: (p) => p.startsWith("/material/"), label: "/material/:matnr" },
+  { match: (p) => p.startsWith("/stock/"), label: "/stock/:matnr" },
+  { match: (p) => p.startsWith("/routing/"), label: "/routing/:matnr" },
+  { match: (p) => p.startsWith("/work-center/"), label: "/work-center/:arbpl" },
+  { match: (p) => p === "/confirmation", label: "/confirmation" },
+  { match: (p) => p === "/goods-receipt", label: "/goods-receipt" },
+  { match: (p) => p === "/goods-issue", label: "/goods-issue" },
+];
+
+/** Normalize a request path to a low-cardinality metric label. Exported for tests. */
+export function normalizeRoute(path: string): string {
+  for (const rule of ROUTE_RULES) {
+    if (rule.match(path)) return rule.label;
+  }
+  return path;
+}
+
 /** Middleware that records request metrics after the handler runs. */
 export const metricsMiddleware: MiddlewareHandler<{ Variables: HubVariables }> = async (c, next) => {
   const start = performance.now();
   await next();
   const duration = (performance.now() - start) / 1000;
-  const route = c.req.path === "/metrics" ? "/metrics"
-    : c.req.path === "/healthz" ? "/healthz"
-    : c.req.path === "/auth/token" ? "/auth/token"
-    : c.req.path.startsWith("/po/") && c.req.path.endsWith("/items") ? "/po/:ebeln/items"
-    : c.req.path.startsWith("/po/") ? "/po/:ebeln"
-    : c.req.path.startsWith("/prod-order/") ? "/prod-order/:aufnr"
-    : c.req.path.startsWith("/material/") ? "/material/:matnr"
-    : c.req.path.startsWith("/stock/") ? "/stock/:matnr"
-    : c.req.path.startsWith("/routing/") ? "/routing/:matnr"
-    : c.req.path.startsWith("/work-center/") ? "/work-center/:arbpl"
-    : c.req.path === "/confirmation" ? "/confirmation"
-    : c.req.path === "/goods-receipt" ? "/goods-receipt"
-    : c.req.path === "/goods-issue" ? "/goods-issue"
-    : c.req.path;
+  const route = normalizeRoute(c.req.path);
 
   const keyId = c.get("jwtPayload")?.key_id ?? "-";
   const status = String(c.res.status);
