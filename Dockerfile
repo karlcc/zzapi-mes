@@ -38,7 +38,7 @@ FROM node:22-slim
 WORKDIR /app
 
 # Create DB directory and declare as volume for data persistence
-RUN mkdir -p /var/lib/zzapi-mes-hub
+RUN mkdir -p /var/lib/zzapi-mes-hub && chown node:node /var/lib/zzapi-mes-hub
 VOLUME /var/lib/zzapi-mes-hub
 
 # Copy production node_modules and built output from builder

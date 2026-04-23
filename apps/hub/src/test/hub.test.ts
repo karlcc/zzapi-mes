@@ -1928,22 +1928,24 @@ describe("Auth rate limiting", () => {
 });
 
 describe("Rate limit per min = 0", () => {
-  it("rejects request with rate_limit_per_min=0", async () => {
+  it("rejects request with rate_limit_per_min=0 as 400 (not 403)", async () => {
     const zeroRpmToken = await sign(
       { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: 0, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
       JWT_SECRET,
     );
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${zeroRpmToken}` } });
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 400, "rpm<=0 is invalid config, not authorization failure");
+    const body = await res.json() as Record<string, unknown>;
+    assert.match(String(body.error), /must be positive/i);
   });
 
-  it("rejects request with negative rate_limit_per_min", async () => {
+  it("rejects request with negative rate_limit_per_min as 400 (not 403)", async () => {
     const negRpmToken = await sign(
       { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: -1, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
       JWT_SECRET,
     );
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${negRpmToken}` } });
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 400, "negative rpm is invalid config, not authorization failure");
   });
 });
 
@@ -2087,6 +2089,18 @@ describe("Empty Idempotency-Key header", () => {
     assert.equal(res.status, 400);
     const body = await res.json() as Record<string, unknown>;
     assert.ok(String(body.error).includes("128"));
+  });
+
+  it("rejects idempotency-key with control characters", async () => {
+    // Node's Request constructor rejects control chars in headers, so we test
+    // the middleware regex directly rather than via fetchApi.
+    const controlCharRegex = /[\x00-\x1F\x7F]/;
+    assert.ok(controlCharRegex.test("abc\x00def"), "null byte should match control char regex");
+    assert.ok(controlCharRegex.test("abc\ndef"), "newline should match control char regex");
+    assert.ok(controlCharRegex.test("abc\rdef"), "carriage return should match control char regex");
+    assert.ok(controlCharRegex.test("abc\x7Fdef"), "DEL should match control char regex");
+    assert.ok(!controlCharRegex.test("valid-key-123"), "valid key should not match control char regex");
+    assert.ok(!controlCharRegex.test("abc_def-xyz"), "valid alphanumeric+dash+underscore should not match");
   });
 });
 
