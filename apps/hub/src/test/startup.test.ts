@@ -4,39 +4,47 @@ import { spawn } from "node:child_process";
 
 const ENTRY = "dist/index.js";
 
-function runServer(envOverrides: Record<string, string>): Promise<{ stderr: string; exitCode: number | null }> {
+function runWithEnv(env: Record<string, string>): Promise<{ code: number | null; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn("node", [ENTRY], {
-      env: { ...process.env, ...envOverrides },
+      env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stderr = "";
     child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-    child.on("close", (code) => resolve({ stderr, exitCode: code }));
-    // Force-kill after 5s if still running (server started successfully)
-    const timer = setTimeout(() => { child.kill("SIGTERM"); }, 5000);
-    child.on("close", () => { clearTimeout(timer); });
+    const timer = setTimeout(() => { child.kill("SIGKILL"); }, 10_000);
+    child.on("close", (code) => { clearTimeout(timer); resolve({ code, stderr }); });
   });
 }
 
 describe("index.ts startup validation", () => {
   it("rejects HUB_PORT <= 0", async () => {
-    const { stderr, exitCode } = await runServer({ HUB_PORT: "0" });
-    assert.equal(exitCode, 1);
-    assert.ok(stderr.includes("HUB_PORT"), `expected HUB_PORT in stderr, got: ${stderr}`);
+    const { code, stderr } = await runWithEnv({ HUB_PORT: "0" });
+    assert.equal(code, 1, "should exit with code 1 for HUB_PORT=0");
+    assert.ok(stderr.includes("HUB_PORT"), `stderr should mention HUB_PORT, got: ${stderr}`);
   });
 
   it("rejects negative HUB_PORT", async () => {
-    const { stderr, exitCode } = await runServer({ HUB_PORT: "-1" });
-    assert.equal(exitCode, 1);
-    assert.ok(stderr.includes("HUB_PORT"), `expected HUB_PORT in stderr, got: ${stderr}`);
+    const { code, stderr } = await runWithEnv({ HUB_PORT: "-1" });
+    assert.equal(code, 1, "should exit with code 1 for HUB_PORT=-1");
+    assert.ok(stderr.includes("HUB_PORT"), `stderr should mention HUB_PORT, got: ${stderr}`);
   });
 
-  it("rejects HUB_AUDIT_RETENTION_DAYS <= 0 (after server binds)", async () => {
-    const { exitCode } = await runServer({
-      HUB_PORT: "18089", // valid port, allows server to start
+  it("rejects HUB_AUDIT_RETENTION_DAYS=0", async () => {
+    const tmpDir = await import("node:fs/promises").then((fs) => fs.mkdtemp("/tmp/zzapi-startup-"));
+    // Omit HUB_PORT so it defaults to 8080 — server will try to bind briefly,
+    // then setImmediate audit check triggers exit(1). Use 10s timeout.
+    const { code, stderr } = await runWithEnv({
+      HUB_JWT_SECRET: "at-least-16-chars-long",
+      HUB_JWT_TTL_SECONDS: "900",
+      SAP_HOST: "sapdev.test:8000",
+      SAP_CLIENT: "200",
+      SAP_USER: "u",
+      SAP_PASS: "p",
       HUB_AUDIT_RETENTION_DAYS: "0",
+      HUB_DB_PATH: `${tmpDir}/hub.db`,
     });
-    assert.equal(exitCode, 1);
+    assert.equal(code, 1, "should exit with code 1 for HUB_AUDIT_RETENTION_DAYS=0");
+    assert.ok(stderr.includes("HUB_AUDIT_RETENTION_DAYS"), `stderr should mention HUB_AUDIT_RETENTION_DAYS, got: ${stderr}`);
   });
 });

@@ -111,4 +111,17 @@ describe("validateParam", () => {
     const res = await sub.fetch(new Request("http://localhost/x/003010000608"));
     assert.equal(res.status, 200);
   });
+
+  it("rejects any non-empty input when maxLength=0", async () => {
+    const sub = new Hono();
+    sub.get("/x/:id", (c) => {
+      const err = validateParam(c, "id", c.req.param("id"), 0);
+      if (err) return err;
+      return c.json({ ok: true });
+    });
+    const res = await sub.fetch(new Request("http://localhost/x/a"));
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("maximum length"), `expected maxLength error, got: ${body.error}`);
+  });
 });
