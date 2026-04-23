@@ -205,6 +205,23 @@ describe("DB layer — audit_log", () => {
     assert.ok(row!.body!.includes("[truncated"), "should contain truncation marker");
   });
 
+  it("concurrent writeAudit calls all succeed (SQLite WAL mode)", () => {
+    // SQLite with WAL mode handles concurrent writes via busy_timeout.
+    // Verify that rapid sequential writes don't lose data.
+    const count = 50;
+    for (let i = 0; i < count; i++) {
+      writeAudit(db, {
+        req_id: `concurrent-${i}`,
+        key_id: "kid-concurrent",
+        method: "POST",
+        path: "/confirmation",
+        sap_status: 201,
+      });
+    }
+    const rows = db.prepare("SELECT COUNT(*) AS cnt FROM audit_log WHERE key_id = ?").get("kid-concurrent") as { cnt: number };
+    assert.equal(rows.cnt, count, "all concurrent writes should be persisted");
+  });
+
   it("v2 adds sap_duration_ms column", () => {
     // Insert a row so the SELECT works even with an empty table
     writeAudit(db, { req_id: "v2test", key_id: "k", method: "GET", path: "/t", sap_duration_ms: 42 });

@@ -417,6 +417,24 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "${BASE_URL}/metrics" \
     "405" POST
 
+  # GET /metrics (localhost-only, but smoke runs from same host)
+  echo ""
+  echo "-- /metrics endpoint (hub) --"
+
+  check "GET /metrics returns 200 with prometheus output" \
+    "${BASE_URL}/metrics" \
+    "200" GET
+
+  # /auth/token with invalid credentials
+  echo ""
+  echo "-- /auth/token invalid credentials (hub) --"
+
+  check "auth with invalid API key returns 401" \
+    "${BASE_URL}/auth/token" \
+    "401" POST \
+    -H "content-type: application/json" \
+    -d '{"api_key":"invalid.key123"}'
+
   # Scope-based 403 test
   echo ""
   echo "-- Scope-based 403 (hub) --"
