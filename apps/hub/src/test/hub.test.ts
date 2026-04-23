@@ -2828,7 +2828,7 @@ describe("Write-back DB transaction failure after SAP success", () => {
 });
 
 describe("SAP 429 on write-back route", () => {
-  it("forwards SAP 429 with Retry-After header", async () => {
+  it("forwards SAP 429 with Retry-After header on /confirmation", async () => {
     mockConfError = new ZzapiMesHttpError(429, "Too Many Requests", 30);
     const token = await validToken(["conf"]);
     const res = await fetchApi("/confirmation", {
@@ -2844,6 +2844,42 @@ describe("SAP 429 on write-back route", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.error, "Too Many Requests");
     assert.equal(res.headers.get("retry-after"), "30");
+  });
+
+  it("forwards SAP 429 with Retry-After header on /goods-receipt", async () => {
+    mockGrError = new ZzapiMesHttpError(429, "SAP Rate Limited", 60);
+    const token = await validToken(["gr"]);
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `sap429-gr-${Date.now()}`,
+      },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 429);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP Rate Limited");
+    assert.equal(res.headers.get("retry-after"), "60");
+  });
+
+  it("forwards SAP 429 with Retry-After header on /goods-issue", async () => {
+    mockGiError = new ZzapiMesHttpError(429, "SAP Throttled", 45);
+    const token = await validToken(["gi"]);
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `sap429-gi-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 429);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP Throttled");
+    assert.equal(res.headers.get("retry-after"), "45");
   });
 });
 
