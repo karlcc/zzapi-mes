@@ -2110,6 +2110,59 @@ describe("SAP 5xx error sanitization on write-back", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.error, "Backflush conflict: operation locked");
   });
+
+  it("preserves upstream message for SAP 409 on POST /confirmation", async () => {
+    mockConfError = new ZzapiMesHttpError(409, "Order already confirmed");
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `san-409-conf-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 409);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Order already confirmed");
+  });
+
+  it("preserves upstream message for SAP 409 on POST /goods-receipt", async () => {
+    mockGrError = new ZzapiMesHttpError(409, "PO already has full quantity received");
+    const token = await validToken(["gr"]);
+    const res = await fetchApi("/goods-receipt", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `san-409-gr-${Date.now()}`,
+      },
+      body: JSON.stringify({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 409);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "PO already has full quantity received");
+  });
+
+  it("returns 502 on non-ZzapiMesHttpError from write-back route", async () => {
+    const orig = MockSapClient.prototype.postConfirmation;
+    MockSapClient.prototype.postConfirmation = async () => { throw new Error("Network failure"); };
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `non-zzapi-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+    MockSapClient.prototype.postConfirmation = orig;
+  });
 });
 
 describe("Admin CLI key revoke", () => {
