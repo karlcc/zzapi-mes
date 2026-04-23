@@ -100,4 +100,18 @@ describe("Auth rate-limit idle eviction", () => {
     const n = Number(retryAfter);
     assert.ok(Number.isFinite(n) && n > 0, `retry-after should be positive number, got ${retryAfter}`);
   });
+
+  it("handles IPv6 address as bucket key", async () => {
+    const result = createApp(new MockSapClient() as unknown as SapClient, { db });
+    const app = result.app;
+    testHelpers = result as typeof testHelpers;
+
+    const headers = { "content-type": "application/json", "x-real-ip": "::1" };
+    const body = JSON.stringify({ api_key: "wrong.key" });
+
+    // Make a request with IPv6 loopback — should not crash
+    const req = new Request("http://localhost/auth/token", { method: "POST", headers, body });
+    const res = await app.fetch(req);
+    assert.equal(res.status, 401, "IPv6 bucket should work like IPv4");
+  });
 });
