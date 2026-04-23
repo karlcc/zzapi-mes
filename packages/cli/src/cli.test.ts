@@ -631,6 +631,114 @@ describe("CLI", () => {
     });
   });
 
+  describe("direct mode success paths", () => {
+    afterEach(async () => { if (mockServer) await stopMockHub(); });
+
+    it("ping command returns SAP time", async () => {
+      await startMockHub((url) => {
+        return { status: 200, body: { ok: true, sap_time: "20260424120000" } };
+      });
+      const { stdout, code } = await run(
+        ["ping"],
+        { SAP_HOST: `http://localhost:${mockPort}`, SAP_CLIENT: "200", SAP_USER: "testuser", SAP_PASS: "testpass" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.ok, true);
+    });
+
+    it("po command returns purchase order", async () => {
+      await startMockHub((url) => {
+        return { status: 200, body: { ebeln: "4500000001", items: [] } };
+      });
+      const { stdout, code } = await run(
+        ["po", "4500000001"],
+        { SAP_HOST: `http://localhost:${mockPort}`, SAP_CLIENT: "200", SAP_USER: "testuser", SAP_PASS: "testpass" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.ebeln, "4500000001");
+    });
+
+    it("prod-order command returns production order", async () => {
+      await startMockHub(() => {
+        return { status: 200, body: { aufnr: "1000000", status: "REL" } };
+      });
+      const { stdout, code } = await run(
+        ["prod-order", "1000000"],
+        { SAP_HOST: `http://localhost:${mockPort}`, SAP_CLIENT: "200", SAP_USER: "testuser", SAP_PASS: "testpass" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.aufnr, "1000000");
+    });
+
+    it("material command returns material data", async () => {
+      await startMockHub(() => {
+        return { status: 200, body: { matnr: "10000001", maktx: "Test Material" } };
+      });
+      const { stdout, code } = await run(
+        ["material", "10000001"],
+        { SAP_HOST: `http://localhost:${mockPort}`, SAP_CLIENT: "200", SAP_USER: "testuser", SAP_PASS: "testpass" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.matnr, "10000001");
+    });
+
+    it("stock command returns stock data", async () => {
+      await startMockHub(() => {
+        return { status: 200, body: { matnr: "10000001", werks: "1000", labst: 500 } };
+      });
+      const { stdout, code } = await run(
+        ["stock", "10000001", "--werks", "1000"],
+        { SAP_HOST: `http://localhost:${mockPort}`, SAP_CLIENT: "200", SAP_USER: "testuser", SAP_PASS: "testpass" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.matnr, "10000001");
+    });
+
+    it("routing command returns routing data", async () => {
+      await startMockHub(() => {
+        return { status: 200, body: { matnr: "10000001", werks: "1000", operations: [] } };
+      });
+      const { stdout, code } = await run(
+        ["routing", "10000001", "--werks", "1000"],
+        { SAP_HOST: `http://localhost:${mockPort}`, SAP_CLIENT: "200", SAP_USER: "testuser", SAP_PASS: "testpass" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.matnr, "10000001");
+    });
+
+    it("work-center command returns work center data", async () => {
+      await startMockHub(() => {
+        return { status: 200, body: { arbpl: "TURN1", werks: "1000", ktext: "Turning" } };
+      });
+      const { stdout, code } = await run(
+        ["work-center", "TURN1", "--werks", "1000"],
+        { SAP_HOST: `http://localhost:${mockPort}`, SAP_CLIENT: "200", SAP_USER: "testuser", SAP_PASS: "testpass" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.arbpl, "TURN1");
+    });
+
+    it("po-items command returns PO items", async () => {
+      await startMockHub(() => {
+        return { status: 200, body: { ebeln: "4500000001", items: [{ ebelp: "00010" }] } };
+      });
+      const { stdout, code } = await run(
+        ["po-items", "4500000001"],
+        { SAP_HOST: `http://localhost:${mockPort}`, SAP_CLIENT: "200", SAP_USER: "testuser", SAP_PASS: "testpass" },
+      );
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.ebeln, "4500000001");
+    });
+  });
+
   describe(".zzapirc file config loading", () => {
     it("reads SAP_HOST and SAP_USER from .zzapirc when env not set", async () => {
       // Create a temp dir with a .zzapirc file
