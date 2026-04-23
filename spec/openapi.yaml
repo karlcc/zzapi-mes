@@ -199,12 +199,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "413":
-          description: Request body too large (max 1 MB)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
@@ -277,12 +271,6 @@ paths:
               schema:
                 type: integer
               description: Seconds until next request is allowed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "413":
-          description: Request body too large (max 1 MB)
           content:
             application/json:
               schema:
@@ -626,12 +614,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "413":
-          description: Request body too large (max 1 MB)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
@@ -711,12 +693,6 @@ paths:
               schema:
                 type: integer
               description: Seconds until next request is allowed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "413":
-          description: Request body too large (max 1 MB)
           content:
             application/json:
               schema:
@@ -811,12 +787,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "413":
-          description: Request body too large (max 1 MB)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
@@ -889,12 +859,6 @@ paths:
               schema:
                 type: integer
               description: Seconds until next request is allowed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "413":
-          description: Request body too large (max 1 MB)
           content:
             application/json:
               schema:
@@ -978,12 +942,6 @@ paths:
               schema:
                 type: integer
               description: Seconds until next request is allowed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "413":
-          description: Request body too large (max 1 MB)
           content:
             application/json:
               schema:

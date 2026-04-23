@@ -49,6 +49,12 @@ let mockRoutingResult: RoutingResponse | null = null;
 let mockWorkCenterResult: WorkCenterResponse | null = null;
 let mockPingError: ZzapiMesHttpError | null = null;
 let mockPoError: ZzapiMesHttpError | null = null;
+let mockProdOrderError: ZzapiMesHttpError | null = null;
+let mockMaterialError: ZzapiMesHttpError | null = null;
+let mockStockError: ZzapiMesHttpError | null = null;
+let mockPoItemsError: ZzapiMesHttpError | null = null;
+let mockRoutingError: ZzapiMesHttpError | null = null;
+let mockWorkCenterError: ZzapiMesHttpError | null = null;
 let mockConfError: ZzapiMesHttpError | null = null;
 let mockGrError: ZzapiMesHttpError | null = null;
 let mockGiError: ZzapiMesHttpError | null = null;
@@ -63,21 +69,27 @@ class MockSapClient {
     return mockPoResult!;
   }
   async getProdOrder(aufnr: string): Promise<ProdOrderResponse> {
+    if (mockProdOrderError) throw mockProdOrderError;
     return mockProdOrderResult!;
   }
   async getMaterial(matnr: string, werks?: string): Promise<MaterialResponse> {
+    if (mockMaterialError) throw mockMaterialError;
     return mockMaterialResult!;
   }
   async getStock(matnr: string, werks: string, lgort?: string): Promise<StockResponse> {
+    if (mockStockError) throw mockStockError;
     return mockStockResult!;
   }
   async getPoItems(ebeln: string): Promise<PoItemsResponse> {
+    if (mockPoItemsError) throw mockPoItemsError;
     return mockPoItemsResult!;
   }
   async getRouting(matnr: string, werks: string): Promise<RoutingResponse> {
+    if (mockRoutingError) throw mockRoutingError;
     return mockRoutingResult!;
   }
   async getWorkCenter(arbpl: string, werks: string): Promise<WorkCenterResponse> {
+    if (mockWorkCenterError) throw mockWorkCenterError;
     return mockWorkCenterResult!;
   }
   async postConfirmation(data: ConfirmationRequest): Promise<ConfirmationResponse> {
@@ -130,6 +142,12 @@ beforeEach(async () => {
   mockWorkCenterResult = { arbpl: "TURN1", werks: "1000", ktext: "CNC Turning Center", steus: "PP01" };
   mockPingError = null;
   mockPoError = null;
+  mockProdOrderError = null;
+  mockMaterialError = null;
+  mockStockError = null;
+  mockPoItemsError = null;
+  mockRoutingError = null;
+  mockWorkCenterError = null;
   mockConfError = null;
   mockGrError = null;
   mockGiError = null;
@@ -152,7 +170,7 @@ async function fetchApi(path: string, opts?: RequestInit) {
 
 async function validToken(scopes: string[] = [...ALL_SCOPES]): Promise<string> {
   return sign(
-    { key_id: "testkey1234", scopes, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+    { key_id: "testkey1234", scopes, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900, rate_limit_per_min: 600 },
     JWT_SECRET,
   );
 }
@@ -1513,5 +1531,93 @@ describe("Security headers", () => {
   it("sets Referrer-Policy no-referrer", async () => {
     const res = await fetchApi("/healthz");
     assert.equal(res.headers.get("referrer-policy"), "no-referrer");
+  });
+});
+
+describe("GET route SAP error handling", () => {
+  it("maps SAP timeout 408 to 504 on /ping", async () => {
+    mockPingError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 504);
+    const body = await res.json() as { error: string };
+    assert.match(body.error, /timeout/i);
+  });
+
+  it("maps SAP timeout 408 to 504 on /po/:ebeln", async () => {
+    mockPoError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/po/3010000608", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 504);
+  });
+
+  it("maps SAP timeout 408 to 504 on /prod-order/:aufnr", async () => {
+    mockProdOrderError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["prod_order"]);
+    const res = await fetchApi("/prod-order/1000000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 504);
+  });
+
+  it("passes SAP 500 through on /ping", async () => {
+    mockPingError = new ZzapiMesHttpError(500, "SAP internal error");
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 500);
+  });
+
+  it("returns 502 on non-ZzapiMesHttpError from SAP", async () => {
+    // Temporarily override ping to throw a plain Error
+    const origPing = MockSapClient.prototype.ping;
+    MockSapClient.prototype.ping = async () => { throw new Error("Network failure"); };
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+    MockSapClient.prototype.ping = origPing;
+  });
+
+  it("maps SAP timeout 408 to 504 on /material/:matnr", async () => {
+    mockMaterialError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["material"]);
+    const res = await fetchApi("/material/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 504);
+  });
+
+  it("maps SAP timeout 408 to 504 on /stock/:matnr", async () => {
+    mockStockError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["stock"]);
+    const res = await fetchApi("/stock/10000001?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 504);
+  });
+
+  it("maps SAP timeout 408 to 504 on /routing/:matnr", async () => {
+    mockRoutingError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["routing"]);
+    const res = await fetchApi("/routing/10000001?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 504);
+  });
+
+  it("maps SAP timeout 408 to 504 on /work-center/:arbpl", async () => {
+    mockWorkCenterError = new ZzapiMesHttpError(408, "SAP request timeout");
+    const token = await validToken(["work_center"]);
+    const res = await fetchApi("/work-center/TURN1?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 504);
   });
 });

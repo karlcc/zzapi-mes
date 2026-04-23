@@ -18,8 +18,10 @@ export function createPingRouter(sap: SapClient) {
       return c.json(result);
     } catch (err) {
       if (err instanceof ZzapiMesHttpError) {
+        // Map SAP timeout (408) to gateway timeout (504) per OpenAPI spec
+        const status = err.status === 408 ? 504 : err.status;
         c.set("sapStatus", err.status);
-        return c.json({ error: err.message }, err.status as 404 | 405 | 500);
+        return c.json({ error: err.message }, status as 400 | 404 | 405 | 500 | 504);
       }
       return c.json({ error: "Internal proxy error" }, 502);
     }

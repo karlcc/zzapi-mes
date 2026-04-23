@@ -40,7 +40,7 @@ export function createGoodsIssueRouter(sap: SapClient) {
     } catch (e) {
       if (e instanceof ZzapiMesHttpError) {
         sapStatus = e.status;
-        clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : 502;
+        clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : e.status === 408 ? 504 : 502;
         errorMsg = e.message;
       } else {
         sapStatus = 502;

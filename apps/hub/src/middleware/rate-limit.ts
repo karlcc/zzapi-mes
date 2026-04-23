@@ -8,6 +8,9 @@ interface Bucket {
 
 const DEFAULT_RPM = 60;
 const IDLE_TIMEOUT_MS = 10 * 60_000; // Evict buckets idle for 10+ minutes
+// In-memory token buckets — state is lost on process restart, allowing a brief
+// burst of previously-throttled traffic after deployment. This is an accepted
+// trade-off vs. the complexity of persisting buckets to SQLite.
 const buckets = new Map<string, Bucket>();
 let lastSweep = Date.now();
 const SWEEP_INTERVAL_MS = 60_000; // Sweep once per minute at most

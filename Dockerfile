@@ -43,9 +43,12 @@ VOLUME /var/lib/zzapi-mes-hub
 
 # Copy production node_modules and built output from builder
 COPY --from=builder /app/node_modules/ node_modules/
-COPY --from=builder /app/packages/core/ packages/core/
-COPY --from=builder /app/packages/sdk/ packages/sdk/
+COPY --from=builder /app/packages/core/dist/ packages/core/dist/
+COPY --from=builder /app/packages/core/package.json packages/core/
+COPY --from=builder /app/packages/sdk/dist/ packages/sdk/dist/
+COPY --from=builder /app/packages/sdk/package.json packages/sdk/
 COPY --from=builder /app/apps/hub/dist/ apps/hub/dist/
+COPY --from=builder /app/apps/hub/package.json apps/hub/
 COPY --from=builder /app/package.json ./
 
 ENV NODE_ENV=production

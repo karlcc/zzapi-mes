@@ -125,6 +125,8 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   app.delete("/auth/token", notAllowed);
 
   // Rate limit /auth/token (per-IP token bucket) to prevent brute-force
+  // In-memory — state is lost on process restart, allowing a brief burst.
+  // Accepted trade-off vs. persistence complexity.
   const authBuckets = new Map<string, { tokens: number; lastRefill: number }>();
   const AUTH_RPM = 10; // 10 auth attempts per minute per IP
   const AUTH_IDLE_MS = 5 * 60_000; // Evict buckets idle for 5+ minutes
