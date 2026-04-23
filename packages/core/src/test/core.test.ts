@@ -119,6 +119,18 @@ describe("SapClient", () => {
     assert.equal(hookCalls[0]!.status, 201);
   });
 
+  it("calls onResponse hook on error response (500)", async () => {
+    globalThis.fetch = mockFetch(500, '{"error":"Internal server error"}');
+    const hookCalls: Array<{ url: string; status: number; durationMs: number }> = [];
+    const client = new SapClient({
+      ...CFG,
+      onResponse: (ctx) => { hookCalls.push(ctx); },
+    });
+    await assert.rejects(() => client.ping());
+    assert.equal(hookCalls.length, 1, "onResponse should fire even on error responses");
+    assert.equal(hookCalls[0]!.status, 500);
+  });
+
   // Phase 5A methods
 
   it("getProdOrder builds correct URL", async () => {
@@ -309,6 +321,26 @@ describe("SapClient", () => {
         assert.match(e.message, /Network error/);
         return true;
       },
+    );
+  });
+
+  it("re-throws unknown fetch errors (not AbortError/TypeError)", async () => {
+    class CustomError extends Error { constructor() { super("custom"); this.name = "CustomError"; } }
+    globalThis.fetch = async () => { throw new CustomError(); };
+    const client = new SapClient(CFG);
+    await assert.rejects(
+      () => client.ping(),
+      (err: unknown) => err instanceof CustomError,
+    );
+  });
+
+  it("POST re-throws unknown fetch errors (not AbortError/TypeError)", async () => {
+    class CustomError extends Error { constructor() { super("custom-post"); this.name = "CustomError"; } }
+    globalThis.fetch = async () => { throw new CustomError(); };
+    const client = new SapClient(CFG);
+    await assert.rejects(
+      () => client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (err: unknown) => err instanceof CustomError,
     );
   });
 });

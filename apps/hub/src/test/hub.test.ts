@@ -2877,6 +2877,7 @@ describe("SAP 5xx error sanitization on write-back", () => {
     assert.equal(res.status, 502);
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.error, "SAP upstream error");
+    assert.equal(body.orderid, "1000000", "error response should include orderid errorField");
   });
 
   it("preserves upstream message for SAP 422 business rule error", async () => {
@@ -2894,6 +2895,7 @@ describe("SAP 5xx error sanitization on write-back", () => {
     assert.equal(res.status, 422);
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.error, "Order already has full quantity received");
+    assert.equal(body.ebeln, "4500000001", "error response should include ebeln errorField");
   });
 
   it("preserves upstream message for SAP 409 conflict error", async () => {
