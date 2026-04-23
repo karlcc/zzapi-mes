@@ -252,6 +252,17 @@ describe("POST /auth/token", () => {
     });
     assert.equal(res.status, 400);
   });
+
+  it("rejects non-JSON body with 400", async () => {
+    const res = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: "this is not json",
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("JSON"));
+  });
 });
 
 describe("Protected routes without JWT", () => {
@@ -370,6 +381,28 @@ describe("GET /healthz", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.ok, false);
     assert.equal(body.error, "database unreachable");
+  });
+
+  it("returns 503 when DB is not writable", async () => {
+    // Create a DB that succeeds on SELECT but throws on CREATE TABLE (read-only filesystem)
+    const roDb = new Database(":memory:");
+    runMigrations(roDb);
+    // Make the healthz write check fail by dropping the method to run CREATE
+    const originalRun = roDb.prepare.bind(roDb);
+    roDb.prepare = ((sql: string) => {
+      if (sql.includes("CREATE TABLE") || sql.includes("INSERT INTO _healthz")) {
+        throw new Error("readonly database");
+      }
+      return originalRun(sql);
+    }) as typeof roDb.prepare;
+    const roApp = createApp(new MockSapClient() as unknown as SapClient, { db: roDb }).app;
+    const req = new Request("http://localhost/healthz");
+    const res = await roApp.fetch(req);
+    assert.equal(res.status, 503);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "database not writable");
+    roDb.close();
   });
 
   it("returns ok with sap=reachable when ?check=sap and SAP responds", async () => {
@@ -1596,6 +1629,28 @@ describe("JWT rate_limit_per_min type validation", () => {
   });
 });
 
+describe("Idempotency guard DB read failure", () => {
+  it("proceeds without idempotency protection when checkIdempotency throws", async () => {
+    // Drop idempotency_keys table to force checkIdempotency to throw
+    db.exec("DROP TABLE idempotency_keys");
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "idem-db-fail-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    // Request should still succeed (SAP call goes through) even though
+    // idempotency protection is degraded
+    assert.equal(res.status, 201);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.status, "confirmed");
+  });
+});
+
 describe("Empty Idempotency-Key header", () => {
   it("rejects empty string idempotency-key", async () => {
     const token = await validToken();
@@ -1866,6 +1921,22 @@ describe("Security headers", () => {
     } finally {
       process.exit = origExit;
       delete process.env.HUB_CORS_ORIGIN;
+    }
+  });
+
+  it("rejects HUB_JWT_TTL_SECONDS <= 60", async () => {
+    process.env.HUB_JWT_TTL_SECONDS = "30";
+    const origExit = process.exit;
+    let exitCode = 0;
+    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
+    try {
+      createApp(new MockSapClient() as unknown as SapClient, { db });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.equal(exitCode, 1);
+    } finally {
+      process.exit = origExit;
+      delete process.env.HUB_JWT_TTL_SECONDS;
     }
   });
 
