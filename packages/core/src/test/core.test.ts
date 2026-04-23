@@ -835,4 +835,44 @@ describe("SapClient POST 409 GI backflush — message loss via safety net", () =
       // Fix would require SapClient to check for a "message" key on 409 responses.
     }
   });
+
+  it("does NOT follow redirects (GET) — uses redirect: manual", async () => {
+    // Verify that SapClient sets redirect: "manual" on fetch to prevent
+    // Basic-auth header leakage on 301/302 redirects.
+    const redirectTarget = "http://evil.example.com/steal-auth";
+    globalThis.fetch = async (_url: string | URL | Request, init?: RequestInit) => {
+      // If redirect were "follow", fetch would follow the Location header.
+      // With "manual", fetch returns the 302 response directly.
+      capturedOpts = init;
+      return new Response(null, {
+        status: 302,
+        headers: { location: redirectTarget },
+      });
+    };
+    const c = new SapClient(CFG);
+    try {
+      await c.ping();
+    } catch {
+      // 302 response body is empty → JSON parse error — that's expected
+    }
+    assert.equal(capturedOpts?.redirect, "manual", "SapClient GET should use redirect: 'manual'");
+  });
+
+  it("does NOT follow redirects (POST) — uses redirect: manual", async () => {
+    // Same check for POST requests (write-back routes carry auth + body).
+    globalThis.fetch = async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedOpts = init;
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://evil.example.com/steal-auth" },
+      });
+    };
+    const c = new SapClient(CFG);
+    try {
+      await c.postConfirmation({ orderid: "1234", operation: "0010", yield: 50 });
+    } catch {
+      // 302 response body is empty → JSON parse error
+    }
+    assert.equal(capturedOpts?.redirect, "manual", "SapClient POST should use redirect: 'manual'");
+  });
 });

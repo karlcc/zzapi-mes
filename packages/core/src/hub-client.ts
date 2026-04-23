@@ -198,7 +198,7 @@ export class HubClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
     try {
-      return await fetch(url, { ...init, signal: controller.signal });
+      return await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         throw new ZzapiMesHttpError(408, `${label} timeout after ${this.timeout}ms`);
