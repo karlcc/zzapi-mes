@@ -23,6 +23,12 @@ BACKUP_DIR="C:/Users/karlchow/code/zzapi-mes-prev"
 NSSM="C:\\Windows\\nssm.exe"
 SERVICE="zzapi-mes-hub"
 
+# --- nssm pre-flight check ---
+if ! ssh $HOST "powershell -Command \"Test-Path '$NSSM'\"" | grep -q "True"; then
+  echo "Error: nssm not found at $NSSM on $HOST. Install nssm first." >&2
+  exit 1
+fi
+
 # --- Rollback mode ---
 if [[ "${1:-}" == "--rollback" ]]; then
   echo "=== ROLLBACK: restoring previous build on $HOST ==="
