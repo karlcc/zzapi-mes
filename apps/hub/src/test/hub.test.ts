@@ -6,7 +6,7 @@ import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, Sto
 import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
-import { runMigrations, insertKey } from "../db/index.js";
+import { runMigrations, insertKey, writeAudit } from "../db/index.js";
 import { _resetBucketsForTest } from "../middleware/rate-limit.js";
 import { _resetSapHealthCacheForTest } from "../routes/health.js";
 
@@ -308,6 +308,20 @@ describe("Expired JWT", () => {
     const token = await expiredToken();
     const res = await fetchApi("/ping", {
       headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 401);
+  });
+
+  it("returns 401 for expired token on write-back route", async () => {
+    const token = await expiredToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "expired-jwt-test",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
     });
     assert.equal(res.status, 401);
   });
@@ -1082,6 +1096,22 @@ describe("Phase 5B write-back routes", () => {
     assert.equal(row.method, "POST");
     assert.equal(row.path, "/goods-issue");
     assert.equal(row.sap_status, 201);
+  });
+
+  it("truncates oversized audit body to bounded size", async () => {
+    const huge = "x".repeat(10_000);
+    writeAudit(db, {
+      req_id: "r-trunc",
+      key_id: "k-trunc",
+      method: "POST",
+      path: "/confirmation",
+      body: huge,
+      sap_status: 201,
+    });
+    const row = db.prepare("SELECT body FROM audit_log WHERE req_id = 'r-trunc'").get() as { body: string } | undefined;
+    assert.ok(row);
+    assert.ok(row.body.length < huge.length, "body must be truncated");
+    assert.ok(row.body.includes("[truncated"), "body must carry truncation marker");
   });
 });
 
