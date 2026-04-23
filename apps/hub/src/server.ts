@@ -62,7 +62,14 @@ export interface AppDeps {
 }
 
 /** Build the Hono app. Callers provide a SapClient (or one is created from env). */
-export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variables: HubVariables }>; db: Database.Database } {
+export function createApp(sap?: SapClient, deps?: AppDeps): {
+  app: Hono<{ Variables: HubVariables }>;
+  db: Database.Database;
+  _seedAuthBucketForTest: (ip: string, tokens: number, lastRefill: number) => void;
+  _authBucketCountForTest: () => number;
+  _forceAuthSweepForTest: () => void;
+  _clearAuthBucketsForTest: () => void;
+} {
   const jwtSecret = requireEnvMin("HUB_JWT_SECRET", 16);
   const jwtTtl = Number(process.env.HUB_JWT_TTL_SECONDS) || 900;
   if (jwtTtl <= 60) {
@@ -173,6 +180,34 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   const AUTH_IDLE_MS = 5 * 60_000; // Evict buckets idle for 5+ minutes
   const AUTH_BUCKET_CAP = 1_000; // Hard cap on bucket count to bound memory
   let authLastSweep = Date.now();
+
+  /** Test-only: seed an auth bucket. */
+  function _seedAuthBucketForTest(ip: string, tokens: number, lastRefill: number): void {
+    authBuckets.set(ip, { tokens, lastRefill });
+  }
+  /** Test-only: return auth bucket count. */
+  function _authBucketCountForTest(): number {
+    return authBuckets.size;
+  }
+  /** Test-only: force a sweep regardless of throttle. */
+  function _forceAuthSweepForTest(): void {
+    const now = Date.now();
+    authLastSweep = 0;
+    for (const [ip, b] of authBuckets) {
+      if (now - b.lastRefill > AUTH_IDLE_MS) authBuckets.delete(ip);
+    }
+    if (authBuckets.size > AUTH_BUCKET_CAP) {
+      const entries = [...authBuckets.entries()].sort((a, b) => a[1].lastRefill - b[1].lastRefill);
+      const toRemove = entries.slice(0, Math.ceil(entries.length / 2));
+      for (const [ip] of toRemove) authBuckets.delete(ip);
+    }
+    authLastSweep = now;
+  }
+  /** Test-only: clear all auth buckets. */
+  function _clearAuthBucketsForTest(): void {
+    authBuckets.clear();
+    authLastSweep = Date.now();
+  }
   app.use("/auth/token", async (c, next) => {
     const now = Date.now();
     // Periodic eviction of stale auth buckets + enforce hard cap
@@ -288,5 +323,12 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   app.route("/", createGoodsReceiptRouter(client));  // POST /goods-receipt
   app.route("/", createGoodsIssueRouter(client));    // POST /goods-issue
 
-  return { app, db };
+  return {
+    app,
+    db,
+    _seedAuthBucketForTest,
+    _authBucketCountForTest,
+    _forceAuthSweepForTest,
+    _clearAuthBucketsForTest,
+  };
 }
