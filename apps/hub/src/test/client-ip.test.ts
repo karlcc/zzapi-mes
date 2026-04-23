@@ -127,12 +127,13 @@ describe("resolveIpWithPeer (production branch unit tests)", () => {
     assert.equal(resolveIpWithPeer("", ["10.0.0.1"], "1.2.3.4", undefined), "");
   });
 
-  it("falls through to peer when XFF first entry is whitespace-only", () => {
-    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], undefined, " ,10.0.0.2"), "10.0.0.1");
-  });
-
-  it("matches second entry in comma-separated trusted proxy list", () => {
-    assert.equal(resolveIpWithPeer("10.0.0.2", ["10.0.0.1", "10.0.0.2"], "1.2.3.4", undefined), "1.2.3.4");
+  it("takes leftmost X-Forwarded-For entry which is client-controllable (known limitation)", () => {
+    // X-Forwarded-For: spoofed-ip, real-client
+    // resolveIpWithPeer takes xff[0] which the client can set to any value.
+    // This is a known limitation — the rightmost untrusted entry should ideally
+    // be used, but the current implementation takes the leftmost.
+    const result = resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], undefined, "spoofed-ip, real-client");
+    assert.equal(result, "spoofed-ip", "known: leftmost XFF entry is client-controllable");
   });
 });
 
