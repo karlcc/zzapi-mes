@@ -160,6 +160,9 @@ export class SapClient {
       throw new Error("SapClient config.user and config.password must be non-empty strings");
     }
     this.host = ensureProtocol(config.host).replace(/\/+$/, "");
+    if (!Number.isFinite(config.client) || !Number.isInteger(config.client) || config.client <= 0) {
+      throw new Error(`SapClient config.client must be a positive integer (got ${config.client})`);
+    }
     this.client = config.client;
     this.auth = btoa(`${config.user.trim()}:${config.password.trim()}`);
     if (config.timeout !== undefined && (!Number.isFinite(config.timeout) || config.timeout <= 0)) {

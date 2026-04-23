@@ -1400,6 +1400,27 @@ describe("Access log middleware", () => {
     assert.equal(typeof entry.sap_duration_ms, "number", "sap_duration_ms should be a number");
     assert.ok(entry.sap_duration_ms >= 0, "sap_duration_ms should be non-negative");
   });
+
+  it("omits sap_status and sap_duration_ms on non-SAP routes", async () => {
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
+      if (typeof chunk === "string") chunks.push(chunk);
+      return true;
+    };
+
+    try {
+      await fetchApi("/healthz");
+    } finally {
+      process.stdout.write = origWrite;
+    }
+
+    const logLine = chunks.find((c) => c.includes("healthz"));
+    assert.ok(logLine, "log entry for healthz should appear");
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.sap_status, undefined, "sap_status should be absent on non-SAP route");
+    assert.equal(entry.sap_duration_ms, undefined, "sap_duration_ms should be absent on non-SAP route");
+  });
 });
 
 describe("Failed write-back audit logging", () => {
