@@ -209,4 +209,12 @@ describe("DB layer — migrations", () => {
     assert.ok(names.includes("idx_audit_log_key_id"));
     assert.ok(names.includes("idx_audit_log_created_at"));
   });
+
+  it("v4 creates composite and idempotency indexes", () => {
+    const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'").all() as { name: string }[];
+    const names = indexes.map(i => i.name);
+    assert.ok(names.includes("idx_audit_log_key_created"), "composite index on audit_log(key_id, created_at)");
+    assert.ok(names.includes("idx_idempotency_key_id"), "index on idempotency_keys(key_id)");
+    assert.ok(names.includes("idx_audit_log_path"), "v3 path index");
+  });
 });

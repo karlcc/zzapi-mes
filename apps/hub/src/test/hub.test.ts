@@ -1230,6 +1230,23 @@ describe("Request body size limit", () => {
     });
     assert.equal(res.status, 413);
   });
+
+  it("chunked body under limit reaches handler successfully", async () => {
+    const token = await validToken();
+    // No content-length header → chunked path, but body is small and valid
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "chunked-ok-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 201);
+    const data = await res.json() as Record<string, unknown>;
+    assert.equal(data.status, "confirmed");
+  });
 });
 
 describe("JWT edge cases", () => {

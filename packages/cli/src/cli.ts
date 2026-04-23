@@ -108,6 +108,11 @@ Options:
   --ebelp <item>      PO item number (goods-receipt, default: 00010)
   --menge <qty>       Quantity (goods-receipt, goods-issue)
   --matnr <material>  Material number (goods-issue)
+  --scrap <qty>       Scrap quantity (confirm, default: 0)
+  --work-actual <h>  Actual work hours (confirm)
+  --postg-date <d>   Posting date YYYYMMDD (confirm, goods-receipt, goods-issue)
+  --charg <batch>    Batch number (goods-receipt, goods-issue)
+  --budat <d>        Posting date YYYYMMDD (alias for --postg-date)
 
 Modes:
   --mode direct  Talk to SAP directly (default)
@@ -196,12 +201,18 @@ Environment (hub mode):
       const operation = opIdx !== -1 ? args[opIdx + 1]! : "0010";
       const yieldIdx = args.indexOf("--yield");
       const yieldQty = yieldIdx !== -1 ? Number(args[yieldIdx + 1]) : die("--yield is required");
+      const scrapIdx = args.indexOf("--scrap");
+      const scrap = scrapIdx !== -1 ? Number(args[scrapIdx + 1]) : undefined;
+      const waIdx = args.indexOf("--work-actual");
+      const workActual = waIdx !== -1 ? Number(args[waIdx + 1]) : undefined;
+      const pdIdx = args.indexOf("--postg-date") !== -1 ? args.indexOf("--postg-date") : args.indexOf("--budat");
+      const postgDate = pdIdx !== -1 ? args[pdIdx + 1] : undefined;
       let res;
       if (mode === "hub") {
         const idemKey = `cli-conf-${orderid}-${Date.now()}`;
-        res = await (client as HubClient).confirmProduction({ orderid, operation, yield: yieldQty }, idemKey);
+        res = await (client as HubClient).confirmProduction({ orderid, operation, yield: yieldQty, scrap, work_actual: workActual, postg_date: postgDate }, idemKey);
       } else {
-        res = await (client as InstanceType<typeof ZzapiMesClient>).postConfirmation({ orderid, operation, yield: yieldQty });
+        res = await (client as InstanceType<typeof ZzapiMesClient>).postConfirmation({ orderid, operation, yield: yieldQty, scrap, work_actual: workActual, postg_date: postgDate });
       }
       console.log(JSON.stringify(res, null, 2));
       break;
@@ -216,12 +227,16 @@ Environment (hub mode):
       const lgort = lgortIdx !== -1 ? args[lgortIdx + 1]! : die("--lgort is required");
       const ebelpIdx = args.indexOf("--ebelp");
       const ebelp = ebelpIdx !== -1 ? args[ebelpIdx + 1]! : "00010";
+      const chargIdx = args.indexOf("--charg");
+      const charg = chargIdx !== -1 ? args[chargIdx + 1] : undefined;
+      const grPdIdx = args.indexOf("--postg-date") !== -1 ? args.indexOf("--postg-date") : args.indexOf("--budat");
+      const budat = grPdIdx !== -1 ? args[grPdIdx + 1] : undefined;
       let res;
       if (mode === "hub") {
         const idemKey = `cli-gr-${ebeln}-${Date.now()}`;
-        res = await (client as HubClient).goodsReceipt({ ebeln, ebelp, menge, werks, lgort }, idemKey);
+        res = await (client as HubClient).goodsReceipt({ ebeln, ebelp, menge, werks, lgort, charg, budat }, idemKey);
       } else {
-        res = await (client as InstanceType<typeof ZzapiMesClient>).postGoodsReceipt({ ebeln, ebelp, menge, werks, lgort });
+        res = await (client as InstanceType<typeof ZzapiMesClient>).postGoodsReceipt({ ebeln, ebelp, menge, werks, lgort, charg, budat });
       }
       console.log(JSON.stringify(res, null, 2));
       break;
@@ -236,12 +251,16 @@ Environment (hub mode):
       const werks = werksIdx !== -1 ? args[werksIdx + 1]! : die("--werks is required");
       const lgortIdx = args.indexOf("--lgort");
       const lgort = lgortIdx !== -1 ? args[lgortIdx + 1]! : die("--lgort is required");
+      const giChargIdx = args.indexOf("--charg");
+      const charg = giChargIdx !== -1 ? args[giChargIdx + 1] : undefined;
+      const giPdIdx = args.indexOf("--postg-date") !== -1 ? args.indexOf("--postg-date") : args.indexOf("--budat");
+      const budat = giPdIdx !== -1 ? args[giPdIdx + 1] : undefined;
       let res;
       if (mode === "hub") {
         const idemKey = `cli-gi-${orderid}-${Date.now()}`;
-        res = await (client as HubClient).goodsIssue({ orderid, matnr, menge, werks, lgort }, idemKey);
+        res = await (client as HubClient).goodsIssue({ orderid, matnr, menge, werks, lgort, charg, budat }, idemKey);
       } else {
-        res = await (client as InstanceType<typeof ZzapiMesClient>).postGoodsIssue({ orderid, matnr, menge, werks, lgort });
+        res = await (client as InstanceType<typeof ZzapiMesClient>).postGoodsIssue({ orderid, matnr, menge, werks, lgort, charg, budat });
       }
       console.log(JSON.stringify(res, null, 2));
       break;

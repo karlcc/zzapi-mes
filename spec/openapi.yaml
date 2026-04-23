@@ -111,6 +111,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body too large (max 1 MB)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Auth rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -1048,6 +1065,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: SAP request timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -1072,6 +1101,7 @@ paths:
           required: true
           schema:
             type: string
+            maxLength: 128
           description: Client-generated idempotency key for deduplication
       requestBody:
         required: true
@@ -1165,6 +1195,7 @@ paths:
           required: true
           schema:
             type: string
+            maxLength: 128
           description: Client-generated idempotency key for deduplication
       requestBody:
         required: true
@@ -1258,6 +1289,7 @@ paths:
           required: true
           schema:
             type: string
+            maxLength: 128
           description: Client-generated idempotency key for deduplication
       requestBody:
         required: true
