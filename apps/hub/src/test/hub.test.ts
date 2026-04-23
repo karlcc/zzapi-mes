@@ -2967,3 +2967,19 @@ describe("Audit log retention", () => {
     assert.equal(stale, undefined, "stale audit row should be pruned");
   });
 });
+
+describe("/ping SAP null/empty response handling", () => {
+  it("returns 502 when SAP ping throws Non-JSON parse error", async () => {
+    // Simulate SapClient.ping() throwing when SAP returns invalid JSON
+    mockPingError = new ZzapiMesHttpError(200, "Non-JSON response (HTTP 200)");
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    // ZzapiMesHttpError with status 200 is a client error (200 >= 400 is false),
+    // so withSapCall maps it to 502 "SAP upstream error"
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+  });
+});

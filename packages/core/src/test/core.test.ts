@@ -169,6 +169,24 @@ describe("SapClient", () => {
     assert.match(capturedUrl!, /zzapi\/mes\/wc.*arbpl=TURN1.*werks=1000/);
   });
 
+  it("getStock URLSearchParams encodes special characters in werks", async () => {
+    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[]}');
+    await new SapClient(CFG).getStock("10000001", "plant & co");
+    assert.match(capturedUrl!, /werks=plant\+%26\+co/);
+  });
+
+  it("getRouting URLSearchParams encodes special characters in werks", async () => {
+    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","plnnr":"50000123","operations":[]}');
+    await new SapClient(CFG).getRouting("10000001", "werks=1000");
+    assert.match(capturedUrl!, /werks=werks%3D1000/);
+  });
+
+  it("getWorkCenter URLSearchParams encodes special characters in arbpl", async () => {
+    globalThis.fetch = mockFetch(200, '{"arbpl":"TURN1","werks":"1000","ktext":"CNC","steus":"PP01"}');
+    await new SapClient(CFG).getWorkCenter("TURN 1", "1000");
+    assert.match(capturedUrl!, /arbpl=TURN\+1/);
+  });
+
   it("postConfirmation sends POST with JSON body to zzapi/mes/conf", async () => {
     globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}');
     const res = await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });

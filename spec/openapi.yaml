@@ -7,9 +7,10 @@ info:
     name: UNLICENSED
   x-cors: |
     The hub supports CORS (hono/cors middleware). Configure via HUB_CORS_ORIGIN env var:
-    - Unset (default): CORS disabled entirely
-    - Comma-separated list: restrict to specific explicit origins (e.g. "https://mes.example.com,https://app.example.com")
-    - "*" is REJECTED — wildcard origins with credentials is a CSRF vector and browsers reject it; hub exits with code 1 on startup
+    - Unset (default): CORS disabled — no Access-Control headers sent
+    - Comma-separated list: restrict to specific origins (e.g. "https://app.example.com,https://admin.example.com")
+    - "*" is REJECTED at startup (exit 1) — wildcard origins with credentials is a CSRF vector and browsers reject it anyway
+    - Empty string: same as unset — CORS disabled
     Preflight (OPTIONS) returns 204 with Access-Control-Allow-Methods: GET, POST.
     Exposed headers: X-Request-ID, Retry-After.
 
@@ -138,12 +139,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -163,7 +158,8 @@ paths:
           required: false
           schema:
             type: string
-          description: "Optional SAP reachability check: pass `sap` to ping the SAP ICF handler (5s timeout, result cached 30s). Unknown values are silently ignored."
+            enum: [sap]
+          description: Optional SAP reachability check (pings SAP ICF handler, 5s timeout, result cached 30s)
       responses:
         "200":
           description: Hub is running (and SAP reachable if check=sap)
@@ -218,12 +214,6 @@ paths:
               schema:
                 type: integer
               description: Seconds until next request is allowed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
           content:
             application/json:
               schema:
@@ -302,12 +292,6 @@ paths:
               schema:
                 type: integer
               description: Seconds until next request is allowed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
           content:
             application/json:
               schema:
@@ -699,12 +683,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
@@ -803,12 +781,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -891,12 +863,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
@@ -971,12 +937,6 @@ paths:
               schema:
                 type: integer
               description: Seconds until next request is allowed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
           content:
             application/json:
               schema:
@@ -1079,18 +1039,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "405":
-          description: Method not allowed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
   /work-center/{arbpl}:
     get:
@@ -1155,12 +1103,6 @@ paths:
               schema:
                 type: integer
               description: Seconds until next request is allowed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
           content:
             application/json:
               schema:
@@ -1414,37 +1356,13 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - allOf:
-                    - $ref: "#/components/schemas/ErrorResponse"
-                    - type: object
-                      required: [orderid]
-                      properties:
-                        orderid:
-                          type: string
-                          description: Production order ID from the request body
-                        original_status:
-                          type: integer
-                          description: Original HTTP status from the first successful request (present on completed duplicates)
-                  - allOf:
-                    - $ref: "#/components/schemas/ErrorResponse"
-                    - type: object
-                      properties:
-                        error:
-                          type: string
-                          description: "Duplicate request; previous attempt did not complete. Retry with a new Idempotency-Key"
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
+          description: Idempotency-Key reused with different body, or SAP business rule rejection
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [orderid]
-                    properties:
-                      orderid:
-                        type: string
-                        description: Production order ID from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limit exceeded
           headers:
@@ -1456,38 +1374,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [orderid]
-                    properties:
-                      orderid:
-                        type: string
-                        description: Production order ID from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "504":
           description: SAP request timeout
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [orderid]
-                    properties:
-                      orderid:
-                        type: string
-                        description: Production order ID from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -1552,27 +1450,13 @@ paths:
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [ebeln]
-                    properties:
-                      ebeln:
-                        type: string
-                        description: Purchase order number from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: Idempotency-Key reused with different body, or SAP business rule rejection
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [ebeln]
-                    properties:
-                      ebeln:
-                        type: string
-                        description: Purchase order number from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limit exceeded
           headers:
@@ -1584,38 +1468,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [ebeln]
-                    properties:
-                      ebeln:
-                        type: string
-                        description: Purchase order number from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "504":
           description: SAP request timeout
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [ebeln]
-                    properties:
-                      ebeln:
-                        type: string
-                        description: Purchase order number from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -1676,34 +1540,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Duplicate Idempotency-Key (original_status present), or SAP backflush conflict (orderid present)
+          description: Duplicate Idempotency-Key, or SAP conflict, or SAP backflush conflict
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - description: Backflush conflict — GI for this material is handled by confirmation
-                    allOf:
-                      - $ref: "#/components/schemas/ErrorResponse"
-                      - type: object
-                        required: [orderid]
-                        properties:
-                          orderid:
-                            type: string
-                            description: Production order ID from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: Idempotency-Key reused with different body, or SAP business rule rejection
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [orderid]
-                    properties:
-                      orderid:
-                        type: string
-                        description: Production order ID from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limit exceeded
           headers:
@@ -1715,38 +1562,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [orderid]
-                    properties:
-                      orderid:
-                        type: string
-                        description: Production order ID from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "504":
           description: SAP request timeout
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [orderid]
-                    properties:
-                      orderid:
-                        type: string
-                        description: Production order ID from the request body
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -1824,9 +1651,6 @@ components:
           type: integer
           description: Original HTTP status from a prior idempotency-checked request (present on 409 duplicate responses only)
           example: 201
-      additionalProperties:
-        type: string
-        description: Route-specific identifier field included in write-back error responses (e.g. orderid on /confirmation, ebeln on /goods-receipt, orderid on /goods-issue)
 
     TokenResponse:
       type: object
