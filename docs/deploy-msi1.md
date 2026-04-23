@@ -84,9 +84,10 @@ Edit `C:\etc\zzapi-mes-hub.env` with production values:
 HUB_PORT=8080
 HUB_JWT_SECRET=<generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))">
 HUB_DB_PATH=C:\var\zzapi-mes-hub\hub.db
+HUB_CORS_ORIGIN=*
 SAP_HOST=sapdev.fastcell.hk:8000
 SAP_CLIENT=200
-SAP_USER=api_user2
+SAP_USER=<actual-user>
 SAP_PASS=<actual-password>
 ```
 
@@ -99,7 +100,7 @@ Set system-level env vars (so the service can read them):
 [System.Environment]::SetEnvironmentVariable("HUB_DB_PATH", "C:\var\zzapi-mes-hub\hub.db", "Machine")
 [System.Environment]::SetEnvironmentVariable("SAP_HOST", "sapdev.fastcell.hk:8000", "Machine")
 [System.Environment]::SetEnvironmentVariable("SAP_CLIENT", "200", "Machine")
-[System.Environment]::SetEnvironmentVariable("SAP_USER", "api_user2", "Machine")
+[System.Environment]::SetEnvironmentVariable("SAP_USER", "<actual-user>", "Machine")
 [System.Environment]::SetEnvironmentVariable("SAP_PASS", "<actual-password>", "Machine")
 ```
 
@@ -152,7 +153,7 @@ nssm install zzapi-mes-hub
 #     HUB_DB_PATH=C:\var\zzapi-mes-hub\hub.db
 #     SAP_HOST=sapdev.fastcell.hk:8000
 #     SAP_CLIENT=200
-#     SAP_USER=api_user2
+#     SAP_USER=<actual-user>
 #     SAP_PASS=<actual-password>
 ```
 
@@ -163,7 +164,7 @@ nssm install zzapi-mes-hub "C:\Program Files\nodejs\node.exe" "C:\Users\karl\cod
 nssm set zzapi-mes-hub AppDirectory "C:\Users\karl\code\zzapi-mes\apps\hub"
 nssm set zzapi-mes-hub AppStdout "C:\var\zzapi-mes-hub\stdout.log"
 nssm set zzapi-mes-hub AppStderr "C:\var\zzapi-mes-hub\stderr.log"
-nssm set zzapi-mes-hub AppEnvironmentExtra "HUB_PORT=8080" "HUB_JWT_SECRET=<secret>" "HUB_DB_PATH=C:\var\zzapi-mes-hub\hub.db" "SAP_HOST=sapdev.fastcell.hk:8000" "SAP_CLIENT=200" "SAP_USER=api_user2" "SAP_PASS=<pass>"
+nssm set zzapi-mes-hub AppEnvironmentExtra "HUB_PORT=8080" "HUB_JWT_SECRET=<secret>" "HUB_DB_PATH=C:\var\zzapi-mes-hub\hub.db" "SAP_HOST=sapdev.fastcell.hk:8000" "SAP_CLIENT=200" "SAP_USER=<actual-user>" "SAP_PASS=<pass>"
 nssm set zzapi-mes-hub Start SERVICE_AUTO_START
 nssm start zzapi-mes-hub
 ```

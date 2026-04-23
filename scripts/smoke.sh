@@ -2,7 +2,7 @@
 # smoke.sh — curl round-trip tests for zzapi-mes ICF handlers
 # Run after deploying both handlers to sapdev.
 #
-# Usage:  SAP_USER=api_user2 SAP_PASS='<password>' bash scripts/smoke.sh
+# Usage:  SAP_USER=your_user SAP_PASS='<password>' bash scripts/smoke.sh
 #         VERBOSE=1 bash scripts/smoke.sh          (show response bodies)
 #
 # Required env vars (direct mode):

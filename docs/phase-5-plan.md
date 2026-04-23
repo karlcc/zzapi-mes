@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 - **Material master view scope**: MARA (general) + MARC (plant) + MAKT (description). Skip MARD (storage) — covered by stock endpoint.
 - **JSON serializer for complex structures**: `ZZ_CL_JSON` handles flat structures; for nested (prod order = header + operations array + components array), need custom JSON assembly or a new ABAP helper. Investigate before PR 1.
 - **Goods receipt variant**: Start with production order GR (movement 101, mvt_ind='F'). PO GR (mvt_ind='B') can follow later.
-- **BAPI authorization**: `api_user2` may lack permissions for `BAPI_GOODSMVT_CREATE`, `BAPI_PRODORDCONF_CREATE_TT`. Check with Basis before starting Phase 5B.
+- **BAPI authorization**: The SAP API user may lack permissions for `BAPI_GOODSMVT_CREATE`, `BAPI_PRODORDCONF_CREATE_TT`. Check with Basis before starting Phase 5B.
 - **Production order list vs. detail**: `BAPI_PRODORD_GET_LIST` (search by plant/status/material) + `BAPI_PRODORD_GET_DETAIL` (single order). Start with detail only; add list endpoint if needed.
 
 ## Blockers

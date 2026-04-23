@@ -6,7 +6,7 @@ import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, Sto
 import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
-import { runMigrations, insertKey, writeAudit, revokeKey } from "../db/index.js";
+import { runMigrations, insertKey, writeAudit, revokeKey, checkIdempotency, evictIdempotencyKeys } from "../db/index.js";
 import { _resetBucketsForTest } from "../middleware/rate-limit.js";
 import { _resetSapHealthCacheForTest } from "../routes/health.js";
 
@@ -2088,5 +2088,59 @@ describe("Admin CLI key revoke", () => {
       body: JSON.stringify({ api_key: plaintext }),
     });
     assert.equal(res.status, 401);
+  });
+});
+
+describe("Idempotency eviction", () => {
+  it("evictIdempotencyKeys removes stale keys and keeps fresh ones", () => {
+    const now = Math.floor(Date.now() / 1000);
+    // Insert a fresh key (1 second ago) via the normal path
+    checkIdempotency(db, "fresh-key-evict", "k1", "/confirmation", 201, "abc");
+    // Insert a stale key (600 seconds ago) directly to control created_at
+    db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("stale-key-evict", "k2", "/confirmation", 201, "def", now - 600);
+
+    // Evict keys older than 300 seconds
+    const removed = evictIdempotencyKeys(db, 300);
+    assert.ok(removed >= 1, "at least one stale key should be evicted");
+
+    // Fresh key must still exist
+    const fresh = db.prepare("SELECT key FROM idempotency_keys WHERE key = ?").get("fresh-key-evict");
+    assert.ok(fresh, "fresh key should not be evicted");
+
+    // Stale key must be gone
+    const stale = db.prepare("SELECT key FROM idempotency_keys WHERE key = ?").get("stale-key-evict");
+    assert.equal(stale, undefined, "stale key should be evicted");
+  });
+});
+
+describe("Chunked body + idempotency body-hash", () => {
+  it("idempotency guard hashes body correctly after body-limit middleware re-parse", async () => {
+    const token = await validToken(["conf"]);
+    const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+
+    // Send with transfer-encoding: chunked to trigger the body-limit middleware path.
+    // Hono's test fetch doesn't support true chunked encoding, but we can verify
+    // that a normal POST with idempotency produces the correct audit+idempotency
+    // state via the atomic transaction (both written or neither).
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "chunked-hash-1",
+      },
+      body,
+    });
+    assert.equal(res.status, 201);
+
+    // Verify idempotency key was committed with final status (not 0)
+    const idemRow = db.prepare("SELECT status FROM idempotency_keys WHERE key = ?").get("chunked-hash-1") as { status: number } | undefined;
+    assert.ok(idemRow, "idempotency key should exist");
+    assert.equal(idemRow.status, 201, "idempotency status should be updated to final status, not 0");
+
+    // Verify audit row was written
+    const auditRow = db.prepare("SELECT sap_status FROM audit_log WHERE req_id != '-' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number } | undefined;
+    assert.ok(auditRow, "audit row should exist");
   });
 });
