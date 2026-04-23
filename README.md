@@ -29,7 +29,7 @@ MES client ──(JWT)──────▶ Hub POST /confirmation, /goods-recei
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Repo init, ABAP source mirrors, demo walkthrough | Done |
-| 1 | Deploy handlers on sapdev, curl round-trip verified | In progress (ping live ✅, 10 remaining) |
+| 1 | Deploy handlers on sapdev, curl round-trip verified | Done (ping + handler live, 9 additional read/write handlers queued in SE24/SICF) |
 | 2 | OpenAPI spec, Node SDK (`@zzapi-mes/sdk`), CLI (`@zzapi-mes/cli`) | Done |
 | 3 | Node hub (`apps/hub`) with bearer tokens, SAP auth abstracted | Done |
 | 4 | Persistent API keys (SQLite+argon2id), admin CLI, request ID, structured logs, /metrics, rate limiting, spec codegen, e2e tests | Done |
@@ -102,7 +102,7 @@ npx zzapi-mes ping
 | Command | Description |
 |---|---|
 | `pnpm build` | Compile all TypeScript packages |
-| `pnpm test` | Run unit tests (333 passing: 90 core + 217 hub + 26 CLI) |
+| `pnpm test` | Run unit tests (354 passing: 94 core + 234 hub + 26 CLI) |
 | `pnpm smoke` | Curl round-trip tests against sapdev |
 | `pnpm spec:gen` | Regenerate `packages/core/src/generated/schemas.ts` from OpenAPI spec |
 

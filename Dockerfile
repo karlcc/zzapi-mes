@@ -55,7 +55,7 @@ ENV NODE_ENV=production
 ENV HUB_PORT=8080
 # HUB_JWT_SECRET — must be set at runtime (docker run -e or compose)
 # HUB_DB_PATH — defaults to /var/lib/zzapi-mes-hub/hub.db
-# HUB_CORS_ORIGIN — defaults to "*" (any origin); set comma-separated allowlist or "" to disable
+# HUB_CORS_ORIGIN — defaults to disabled; set comma-separated explicit origins to enable. Wildcard "*" is rejected (CSRF vector with credentials).
 # SAP_HOST, SAP_CLIENT, SAP_USER, SAP_PASS — must be set at runtime
 
 EXPOSE 8080
