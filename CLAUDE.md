@@ -1,6 +1,4 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# Guidance
 
 ## Project Overview
 
@@ -23,6 +21,8 @@ The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go throug
 ## Commands
 
 - `pnpm build` — compile core, SDK, CLI, and hub TypeScript packages.
+- `pnpm --filter @zzapi-mes/hub dev` — run the hub locally with tsx watch (reads `HUB_*` + `SAP_*` env).
+- `pnpm --filter @zzapi-mes/hub migrate` — apply SQLite migrations before first start / after schema changes.
 - `pnpm test` — run unit tests across core + hub + CLI (Node built-in test runner, mocked fetch + in-memory SQLite for hub).
 - `pnpm spec:gen` — regenerate Zod schemas from `spec/openapi.yaml` via `scripts/spec-gen.sh` (runs openapi-zod-client then strips zodios code and adds `*Schema` re-exports). CI drift gate checks this.
 - `pnpm smoke` — run the curl smoke suite against sapdev. Requires handlers to already be deployed. Override creds/host via env:
@@ -63,12 +63,12 @@ For multi-endpoint routing under one SICF node, dispatch on `server->request->ge
 Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
 1. **Method guard** (`middleware/jwt.ts` — `methodGuard()`) — rejects wrong HTTP methods with 405 before JWT/scope/idempotency checks run
 2. **JWT verification** (`middleware/jwt.ts`) — validates Bearer token, extracts scopes
-2. **Scope enforcement** (`middleware/jwt.ts`) — checks required scope (conf/gr/gi)
-3. **Idempotency guard** (`middleware/idempotency.ts`) — requires `Idempotency-Key` header, stores SHA-256 body hash in SQLite. Returns:
+3. **Scope enforcement** (`middleware/jwt.ts`) — checks required scope (conf/gr/gi)
+4. **Idempotency guard** (`middleware/idempotency.ts`) — requires `Idempotency-Key` header, stores SHA-256 body hash in SQLite. Returns:
    - `409` if same key + same body (true duplicate)
    - `422` if same key + different body (hash mismatch)
-4. **Rate limiting** (`middleware/rate-limit.ts`) — per-key token bucket. Rate-limit changes (e.g. updating `rate_limit_per_min` via admin CLI) only take effect on the next `/auth/token` exchange; in-flight buckets are not retroactively updated.
-5. **Route handler** — calls SAP, then writes audit log + idempotency status update in a single `db.transaction()` (atomic: if process crashes between SAP call and DB write, the idempotency key stays at status=0, allowing safe retry).
+5. **Rate limiting** (`middleware/rate-limit.ts`) — per-key token bucket. Rate-limit changes (e.g. updating `rate_limit_per_min` via admin CLI) only take effect on the next `/auth/token` exchange; in-flight buckets are not retroactively updated.
+6. **Route handler** — calls SAP, then writes audit log + idempotency status update in a single `db.transaction()` (atomic: if process crashes between SAP call and DB write, the idempotency key stays at status=0, allowing safe retry).
 
 ### CORS
 
@@ -123,7 +123,7 @@ All 8 read-only hub routes delegate to `withSapCall()` in `routes/sap-call.ts`, 
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Deploy `ZCL_ZZAPI_MES_PING` + `ZCL_ZZAPI_MES_HANDLER`, curl round-trip verified | In progress (ping live ✅, 10 remaining) |
+| 1 | Deploy `ZCL_ZZAPI_MES_PING` + `ZCL_ZZAPI_MES_HANDLER`, curl round-trip verified | Done (ping + handler live, 9 additional read/write classes mirrored in `abap/`) |
 | 2 | OpenAPI spec, Node SDK, CLI | Done |
 | 3 | Hub with JWT auth, SAP auth abstracted | Done |
 | 4 | Persistent API keys, admin CLI, request IDs, logs, metrics, rate limiting, spec codegen, e2e tests | Done |
