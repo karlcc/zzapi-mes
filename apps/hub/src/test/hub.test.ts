@@ -421,6 +421,14 @@ describe("GET /healthz", () => {
     assert.equal(body.ok, false);
     assert.equal(body.error, "SAP unreachable");
   });
+
+  it("ignores invalid ?check value (treated as no check)", async () => {
+    const res = await fetchApi("/healthz?check=invalid");
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.ok, true);
+    assert.equal(body.sap, undefined, "invalid check value should not trigger SAP check");
+  });
 });
 
 describe("Request ID middleware", () => {
@@ -2267,6 +2275,21 @@ describe("Security headers", () => {
     const res = await testApp.fetch(req);
     const acao = res.headers.get("access-control-allow-origin");
     assert.equal(acao, null, "should NOT have CORS origin header when CORS disabled");
+  });
+
+  it("no CORS headers when HUB_CORS_ORIGIN is empty string", async () => {
+    process.env.HUB_CORS_ORIGIN = "";
+    try {
+      const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+      const req = new Request("http://localhost/healthz", {
+        headers: { "Origin": "http://localhost" },
+      });
+      const res = await testApp.fetch(req);
+      const acao = res.headers.get("access-control-allow-origin");
+      assert.equal(acao, null, "empty string should disable CORS like unset");
+    } finally {
+      delete process.env.HUB_CORS_ORIGIN;
+    }
   });
 });
 
