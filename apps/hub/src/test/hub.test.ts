@@ -2226,6 +2226,18 @@ describe("Security headers", () => {
     assert.equal(res.headers.get("strict-transport-security"), null);
   });
 
+  it("does not set HSTS for non-'1' truthy values (strict === '1')", async () => {
+    // HUB_HSTS uses strict equality: only "1" enables HSTS
+    // "true", "yes", "on" are all silently treated as off
+    for (const val of ["true", "yes", "on", "TRUE", "0"]) {
+      process.env.HUB_HSTS = val;
+      const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+      const res = await testApp.fetch(new Request("http://localhost/healthz"));
+      assert.equal(res.headers.get("strict-transport-security"), null, `HUB_HSTS="${val}" should NOT enable HSTS`);
+    }
+    delete process.env.HUB_HSTS;
+  });
+
   it("sets CORS Access-Control-Allow-Origin header when HUB_CORS_ORIGIN is set", async () => {
     process.env.HUB_CORS_ORIGIN = "http://localhost";
     const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
@@ -3176,5 +3188,24 @@ describe("Hono global error handler", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.ok("error" in body, "should have 'error' key matching ErrorResponse schema");
     assert.equal(body.error, "Internal Server Error");
+  });
+
+  it("logs forensics JSON to console.error on unhandled exception", async () => {
+    const throwApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    throwApp.get("/throw-forensics", () => { throw new Error("forensics test"); });
+    // Capture console.error output
+    const logs: string[] = [];
+    const origError = console.error;
+    console.error = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+    try {
+      await throwApp.fetch(new Request("http://localhost/throw-forensics"));
+      assert.ok(logs.length > 0, "should log to console.error");
+      const parsed = JSON.parse(logs[0]!);
+      assert.equal(parsed.type, "unhandled_error");
+      assert.equal(parsed.path, "/throw-forensics");
+      assert.equal(parsed.error, "forensics test");
+    } finally {
+      console.error = origError;
+    }
   });
 });
