@@ -153,9 +153,21 @@ export class SapClient {
   private onResponse?: SapClientConfig["onResponse"];
 
   constructor(config: SapClientConfig) {
+    if (!config.host || !config.host.trim()) {
+      throw new Error("SapClient config.host must be a non-empty string");
+    }
+    if (!config.user || !config.user.trim() || !config.password || !config.password.trim()) {
+      throw new Error("SapClient config.user and config.password must be non-empty strings");
+    }
     this.host = ensureProtocol(config.host).replace(/\/+$/, "");
+    if (!Number.isFinite(config.client) || !Number.isInteger(config.client) || config.client <= 0) {
+      throw new Error(`SapClient config.client must be a positive integer (got ${config.client})`);
+    }
     this.client = config.client;
-    this.auth = btoa(`${config.user}:${config.password}`);
+    this.auth = btoa(`${config.user.trim()}:${config.password.trim()}`);
+    if (config.timeout !== undefined && (!Number.isFinite(config.timeout) || config.timeout <= 0)) {
+      throw new Error(`SapClient config.timeout must be a positive number (got ${config.timeout})`);
+    }
     this.timeout = config.timeout ?? 30_000;
     this.onRequest = config.onRequest;
     this.onResponse = config.onResponse;
@@ -259,9 +271,20 @@ export class SapClient {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
 
-    if ("error" in json) {
+    if (res.status >= 400 && "error" in json) {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
+    }
+    if (res.status >= 400 && "errors" in json) {
+      const arr = json.errors;
+      const errorMsg = Array.isArray(arr)
+        ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
+        : String(arr);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
+    }
+    if (res.status >= 400) {
+      throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`);
     }
 
     return json as T;
@@ -310,9 +333,20 @@ export class SapClient {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
 
-    if ("error" in json) {
+    if (res.status >= 400 && "error" in json) {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
+    }
+    if (res.status >= 400 && "errors" in json) {
+      const arr = json.errors;
+      const errorMsg = Array.isArray(arr)
+        ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
+        : String(arr);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
+    }
+    if (res.status >= 400) {
+      throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`);
     }
 
     return json as T;

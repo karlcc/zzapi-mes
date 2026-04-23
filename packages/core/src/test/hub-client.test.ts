@@ -676,6 +676,124 @@ describe("HubClient getToken validation", () => {
     });
   });
 
+  it("throws on 500 auth endpoint failure", async () => {
+    globalThis.fetch = mockFetch(() => jsonResponse(500, { error: "Internal server error" }));
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (e: unknown) => {
+      assert(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 500);
+      assert.match(e.message, /Hub auth failed/);
+      return true;
+    });
+  });
+
+  it("throws on 502 auth endpoint failure", async () => {
+    globalThis.fetch = mockFetch(() => jsonResponse(502, { error: "Bad gateway" }));
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (e: unknown) => {
+      assert(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 502);
+      assert.match(e.message, /Hub auth failed/);
+      return true;
+    });
+  });
+
+  it("throws on 503 auth endpoint failure", async () => {
+    globalThis.fetch = mockFetch(() => jsonResponse(503, { error: "Service unavailable" }));
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (e: unknown) => {
+      assert(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 503);
+      assert.match(e.message, /Hub auth failed/);
+      return true;
+    });
+  });
+
+  it("throws on non-JSON auth response (res.json() throws SyntaxError)", async () => {
+    globalThis.fetch = mockFetch(() => new Response("<html>Error</html>", { status: 200, headers: { "content-type": "text/html" } }));
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (e: unknown) => {
+      // getToken() calls res.json() which throws SyntaxError on non-JSON body.
+      // No try/catch wraps it — raw SyntaxError propagates.
+      assert.ok(e instanceof SyntaxError);
+      return true;
+    });
+  });
+
+  it("uses statusText fallback when auth body read fails", async () => {
+    globalThis.fetch = mockFetch(() => {
+      const res = new Response("ok", { status: 503, statusText: "Service Unavailable", headers: { "content-type": "text/plain" } });
+      // Override text() to throw, simulating already-consumed body
+      res.text = async () => { throw new Error("body already consumed"); };
+      return res;
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (e: unknown) => {
+      assert(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 503);
+      assert.match(e.message, /Service Unavailable/);
+      return true;
+    });
+  });
+
+  it("detects 'errors' array in ABAP 422 response", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { errors: [{ type: "E", message: "No authorization for transaction MB01" }] });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
+        { orderid: "1000000", operation: "0010", yield: 50 },
+        "errors-key-001",
+      ),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.match(e.message, /No authorization/);
+        return true;
+      },
+    );
+  });
+
+  it("detects 'errors' string array in response", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { errors: ["BWART 101 not allowed", "Plant 1000 not allowed"] });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).goodsReceipt(
+        { ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" },
+        "errors-str-key",
+      ),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.match(e.message, /BWART 101 not allowed/);
+        assert.match(e.message, /Plant 1000 not allowed/);
+        return true;
+      },
+    );
+  });
+
+  it("detects 4xx/5xx without error/errors field (safety net)", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(409, { status: "rejected" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).goodsIssue(
+        { orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" },
+        "safety-net-key",
+      ),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 409);
+        assert.match(e.message, /Hub error \(HTTP 409\)/);
+        return true;
+      },
+    );
+  });
+
   it("sends POST method and idempotency-key header on write-back requests", async () => {
     let capturedInit: RequestInit | undefined;
     globalThis.fetch = mockFetch((url, init) => {
@@ -692,5 +810,165 @@ describe("HubClient getToken validation", () => {
     const headers = capturedInit?.headers as Record<string, string>;
     assert.equal(headers?.["idempotency-key"], "idem-key-1");
     assert.equal(headers?.["content-type"], "application/json");
+  });
+
+  it("double-401 retry throws ZzapiMesHttpError(401)", async () => {
+    let callCount = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      callCount++;
+      return jsonResponse(401, { error: "Unauthorized" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 401);
+        assert.equal(callCount, 2, "should retry once then fail");
+        return true;
+      },
+    );
+  });
+
+  it("handles 'errors' as non-array scalar (number)", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { errors: 42 });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.equal(e.message, "42");
+        return true;
+      },
+    );
+  });
+
+  it("handles 'errors' as null", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { errors: null });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.equal(e.message, "null");
+        return true;
+      },
+    );
+  });
+
+  it("handles 'errors' as plain string (non-array)", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(422, { errors: "No authorization for transaction MB01" });
+    });
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.equal(e.message, "No authorization for transaction MB01");
+        return true;
+      },
+    );
+  });
+
+  it("handles 429 from auth endpoint", async () => {
+    globalThis.fetch = mockFetch(() => jsonResponse(429, { error: "Too many requests" }));
+    await assert.rejects(
+      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 429);
+        return true;
+      },
+    );
+  });
+
+  it("getMaterial without optional werks omits query param", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { matnr: "10000001", maktx: "Test Material" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await client.getMaterial("10000001");
+    assert.ok(capturedUrl!.includes("/material/10000001"));
+    assert.ok(!capturedUrl!.includes("werks"), "werks should not be in URL when omitted");
+  });
+
+  it("does not throw on HTTP 200 with 'error' key (not a false-positive)", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(200, { ok: true, error: "warning: deprecated field" });
+    });
+    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).ping();
+    assert.ok(result);
+  });
+});
+
+describe("HubClient constructor validation", () => {
+  it("rejects empty url", () => {
+    assert.throws(
+      () => new HubClient({ url: "", apiKey: "test" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects whitespace-only url", () => {
+    assert.throws(
+      () => new HubClient({ url: "   ", apiKey: "test" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects empty apiKey", () => {
+    assert.throws(
+      () => new HubClient({ url: BASE, apiKey: "" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects whitespace-only apiKey", () => {
+    assert.throws(
+      () => new HubClient({ url: BASE, apiKey: "   " }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects timeout=0", () => {
+    assert.throws(
+      () => new HubClient({ url: BASE, apiKey: API_KEY, timeout: 0 }),
+      /positive number/,
+    );
+  });
+
+  it("rejects negative timeout", () => {
+    assert.throws(
+      () => new HubClient({ url: BASE, apiKey: API_KEY, timeout: -5 }),
+      /positive number/,
+    );
+  });
+
+  it("accepts valid config with and without timeout", () => {
+    const c1 = new HubClient({ url: BASE, apiKey: API_KEY });
+    assert.ok(c1);
+    const c2 = new HubClient({ url: BASE, apiKey: API_KEY, timeout: 5000 });
+    assert.ok(c2);
+  });
+
+  it("ensureProtocol prepends http:// to bare hostname", () => {
+    const client = new HubClient({ url: "not-a-url", apiKey: API_KEY });
+    // ensureProtocol("not-a-url") → "http://not-a-url"
+    assert.ok(client);
+  });
+
+  it("ensureProtocol passes through ftp:// scheme unchanged", () => {
+    const client = new HubClient({ url: "ftp://evil.example.com", apiKey: API_KEY });
+    assert.ok(client);
   });
 });

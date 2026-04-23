@@ -551,3 +551,218 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
     }
   });
 });
+
+describe("SapClient GET safety-net: 4xx/5xx without error/errors field", () => {
+  it("throws on GET 409 with no error/errors field", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ status: "rejected" }),
+      { status: 409 },
+    );
+    try {
+      await new SapClient(CFG).getPo("4500000001");
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 409);
+      assert.match(e.message, /SAP error \(HTTP 409\)/);
+    }
+  });
+
+  it("detects 'errors' array on GET request (ABAP-style)", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ errors: [{ type: "E", message: "No authorization" }] }),
+      { status: 422 },
+    );
+    try {
+      await new SapClient(CFG).getMaterial("10000001", "1000");
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 422);
+      assert.match(e.message, /No authorization/);
+    }
+  });
+
+  it("throws on GET 500 with unrecognized body", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ dump: "core.log" }),
+      { status: 500 },
+    );
+    try {
+      await new SapClient(CFG).getMaterial("10000001", "1000");
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 500);
+      assert.match(e.message, /SAP error \(HTTP 500\)/);
+    }
+  });
+});
+
+describe("SapClient constructor validation", () => {
+  it("rejects empty host", () => {
+    assert.throws(
+      () => new SapClient({ host: "", client: 200, user: "u", password: "p" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects whitespace-only host", () => {
+    assert.throws(
+      () => new SapClient({ host: "   ", client: 200, user: "u", password: "p" }),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects empty user", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "", password: "p" }),
+      /non-empty strings/,
+    );
+  });
+
+  it("rejects empty password", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "" }),
+      /non-empty strings/,
+    );
+  });
+
+  it("rejects timeout=0", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: 0 }),
+      /positive number/,
+    );
+  });
+
+  it("rejects negative timeout", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: -1000 }),
+      /positive number/,
+    );
+  });
+
+  it("rejects NaN timeout", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: NaN }),
+      /positive number/,
+    );
+  });
+
+  it("accepts valid config with timeout", () => {
+    const client = new SapClient({ host: BASE, client: 200, user: "u", password: "p", timeout: 5000 });
+    assert.ok(client);
+  });
+
+  it("accepts valid config without timeout (uses default)", () => {
+    const client = new SapClient({ host: BASE, client: 200, user: "u", password: "p" });
+    assert.ok(client);
+  });
+
+  it("rejects whitespace-only user", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "   ", password: "p" }),
+      /non-empty strings/,
+    );
+  });
+
+  it("rejects whitespace-only password", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 200, user: "u", password: "   " }),
+      /non-empty strings/,
+    );
+  });
+
+  it("trims whitespace-padded user and password before encoding", async () => {
+    // " user " passes the .trim() validation check but the constructor
+    // now also trims before encoding into btoa, preventing " user " from
+    // producing btoa(" user : pass ") which would fail SAP auth.
+    let capturedAuth = "";
+    globalThis.fetch = async (input, init) => {
+      capturedAuth = init?.headers instanceof Headers
+        ? (init.headers as Headers).get("authorization") ?? ""
+        : (init?.headers as Record<string, string>)?.Authorization ?? "";
+      return new Response(
+        JSON.stringify({ ok: true, sap_time: "20260422163000" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const client = new SapClient({ host: BASE, client: 200, user: " user ", password: " pass " });
+    await client.ping();
+    // btoa("user:pass") — whitespace stripped before encoding
+    assert.equal(capturedAuth, `Basic ${btoa("user:pass")}`);
+  });
+
+  it("rejects config.client = 0", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 0, user: "u", password: "p" }),
+      /client.*positive/,
+    );
+  });
+
+  it("rejects config.client = -1", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: -1, user: "u", password: "p" }),
+      /client.*positive/,
+    );
+  });
+
+  it("rejects config.client = NaN", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: NaN, user: "u", password: "p" }),
+      /client.*positive/,
+    );
+  });
+
+  it("rejects config.client = 1.5 (non-integer)", () => {
+    assert.throws(
+      () => new SapClient({ host: BASE, client: 1.5, user: "u", password: "p" }),
+      /client.*positive/,
+    );
+  });
+});
+
+describe("SapClient HTTP 200 with error/errors key", () => {
+  it("does not throw on HTTP 200 with 'error' key (not a false-positive)", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ ok: true, error: "warning: deprecated field" }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    const result = await new SapClient(CFG).ping();
+    assert.ok(result);
+  });
+
+  it("does not throw on HTTP 200 with 'errors' key (not a false-positive)", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ ok: true, errors: ["non-blocking warning"] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    const result = await new SapClient(CFG).ping();
+    assert.ok(result);
+  });
+});
+
+describe("SapClient POST 409 GI backflush — message loss via safety net", () => {
+  it("GI backflush 409 with {status:'rejected', message:'...'} loses message to safety net", async () => {
+    // ABAP goods-issue backflush returns HTTP 409 with body:
+    //   { status: "rejected", message: "Backflush is active for this order" }
+    // Since there is no "error" or "errors" key, the safety net throws
+    //   ZzapiMesHttpError(409, "SAP error (HTTP 409)")
+    // The actual message is lost — this test documents the known limitation.
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ status: "rejected", message: "Backflux is active for this order" }),
+      { status: 409, headers: { "content-type": "application/json" } },
+    );
+    try {
+      await new SapClient(CFG).postGoodsIssue({ orderid: "4500000001", matnr: "10000001", menge: 1, werks: "1000", lgort: "0001" });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 409);
+      // Message is generic — the ABAP "Backflush is active..." is NOT preserved
+      assert.match(e.message, /SAP error \(HTTP 409\)/);
+      // This documents that the actual business message is currently lost.
+      // Fix would require SapClient to check for a "message" key on 409 responses.
+    }
+  });
+});

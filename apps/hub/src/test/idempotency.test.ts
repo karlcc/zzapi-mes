@@ -99,3 +99,27 @@ describe("idempotency guard pending-status handling", () => {
     assert.equal(existing!.status, 0, "pending status should be 0");
   });
 });
+
+describe("idempotency empty bodyHash edge case", () => {
+  let eDb: Database.Database;
+  beforeEach(() => {
+    eDb = new Database(":memory:");
+    runMigrations(eDb);
+  });
+  afterEach(() => { eDb.close(); });
+
+  it("empty body_hash matches any subsequent body hash (known edge case)", () => {
+    // Simulate a scenario where the first request's body read fails (body already consumed),
+    // leaving body_hash="" in the DB. A second request with the same idempotency key but
+    // a real body hash will compare "" !== "abc123..." and produce a false 422 mismatch.
+    // This is a known edge case — body_hash="" acts as a wildcard that never matches.
+    const result1 = checkIdempotency(eDb, "empty-hash-key", "k1", "/confirmation", 0, "");
+    assert.equal(result1, null, "first insert with empty hash succeeds");
+
+    // Second request with same key but real hash — the mismatch fires
+    const existing = checkIdempotency(eDb, "empty-hash-key", "k1", "/confirmation", 0, "abc123def");
+    assert.ok(existing, "should return existing record");
+    assert.equal(existing!.body_hash, "", "stored hash should be empty");
+    assert.notEqual(existing!.body_hash, "abc123def", "hash mismatch — would trigger 422 in middleware");
+  });
+});

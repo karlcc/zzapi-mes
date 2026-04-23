@@ -27,6 +27,15 @@ export class HubClient {
   private tokenCache: TokenCache | null = null;
 
   constructor(config: HubClientConfig) {
+    if (!config.url || !config.url.trim()) {
+      throw new Error("HubClient config.url must be a non-empty string");
+    }
+    if (!config.apiKey || !config.apiKey.trim()) {
+      throw new Error("HubClient config.apiKey must be a non-empty string");
+    }
+    if (config.timeout !== undefined && (!Number.isFinite(config.timeout) || config.timeout <= 0)) {
+      throw new Error(`HubClient config.timeout must be a positive number (got ${config.timeout})`);
+    }
     this.url = ensureProtocol(config.url).replace(/\/+$/, "");
     this.apiKey = config.apiKey;
     this.timeout = config.timeout ?? 30_000;
@@ -211,10 +220,21 @@ export class HubClient {
     } catch {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
-    if ("error" in json) {
+    if (res.status >= 400 && "error" in json) {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       const originalStatus = res.status === 409 && typeof json.original_status === "number" ? json.original_status : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter, originalStatus);
+    }
+    if (res.status >= 400 && "errors" in json) {
+      const arr = json.errors;
+      const errorMsg = Array.isArray(arr)
+        ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
+        : String(arr);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
+    }
+    if (res.status >= 400) {
+      throw new ZzapiMesHttpError(res.status, `Hub error (HTTP ${res.status})`);
     }
     return json as T;
   }

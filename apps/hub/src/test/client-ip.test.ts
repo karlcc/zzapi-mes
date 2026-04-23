@@ -126,6 +126,14 @@ describe("resolveIpWithPeer (production branch unit tests)", () => {
   it("ignores empty peer even with trusted list", () => {
     assert.equal(resolveIpWithPeer("", ["10.0.0.1"], "1.2.3.4", undefined), "");
   });
+
+  it("falls through to peer when XFF first entry is whitespace-only", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], undefined, " ,10.0.0.2"), "10.0.0.1");
+  });
+
+  it("matches second entry in comma-separated trusted proxy list", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.2", ["10.0.0.1", "10.0.0.2"], "1.2.3.4", undefined), "1.2.3.4");
+  });
 });
 
 describe("isLoopbackAddr", () => {

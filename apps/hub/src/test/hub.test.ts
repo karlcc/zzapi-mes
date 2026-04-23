@@ -485,6 +485,21 @@ describe("Request ID middleware", () => {
     const res = await fetchApi("/healthz", { headers: { "x-request-id": "abc_def-123_XYZ" } });
     assert.equal(res.headers.get("x-request-id"), "abc_def-123_XYZ");
   });
+
+  it("replaces empty-string x-request-id with UUID", async () => {
+    const res = await fetchApi("/healthz", { headers: { "x-request-id": "" } });
+    const reqId = res.headers.get("x-request-id");
+    assert.ok(reqId);
+    assert.match(reqId!, /^[0-9a-f]{8}-[0-9a-f]{4}-/, "empty string header should be replaced with UUID");
+  });
+
+  it("replaces x-request-id containing dots with UUID", async () => {
+    const res = await fetchApi("/healthz", { headers: { "x-request-id": "abc.def.ghi" } });
+    const reqId = res.headers.get("x-request-id");
+    assert.ok(reqId);
+    assert.match(reqId!, /^[0-9a-f]{8}-/, "dot-containing ID should be replaced with UUID");
+    assert.notEqual(reqId, "abc.def.ghi");
+  });
 });
 
 describe("requireScope with malformed JWT scopes", () => {
@@ -808,6 +823,55 @@ describe("Phase 5B write-back routes", () => {
 
     const res2 = await fetchApi("/confirmation", { method: "POST", headers, body });
     assert.equal(res2.status, 409);
+  });
+
+  it("pending-status idempotency key returns 409 with 'previous attempt' message", async () => {
+    // Seed a pending idempotency record (status=0) directly into the DB
+    const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
+    const bodyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+    db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("pending-http-test", "testkey1234", "/confirmation", 0, bodyHash, Math.floor(Date.now() / 1000));
+
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "pending-http-test",
+      },
+      body,
+    });
+    assert.equal(res.status, 409);
+    const parsed = await res.json() as Record<string, unknown>;
+    assert.match(String(parsed.error), /previous attempt did not complete/);
+    assert.equal(parsed.original_status, undefined, "pending 409 should not include original_status");
+  });
+
+  it("completed idempotency key returns 409 with original_status", async () => {
+    const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
+    const bodyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+    db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("completed-http-test", "testkey1234", "/confirmation", 201, bodyHash, Math.floor(Date.now() / 1000));
+
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "completed-http-test",
+      },
+      body,
+    });
+    assert.equal(res.status, 409);
+    const parsed = await res.json() as Record<string, unknown>;
+    assert.equal(parsed.original_status, 201);
+    assert.match(String(parsed.error), /Duplicate request/);
   });
 
   it("idempotency key with different body returns 422", async () => {
@@ -1336,6 +1400,27 @@ describe("Access log middleware", () => {
     assert.equal(typeof entry.sap_duration_ms, "number", "sap_duration_ms should be a number");
     assert.ok(entry.sap_duration_ms >= 0, "sap_duration_ms should be non-negative");
   });
+
+  it("omits sap_status and sap_duration_ms on non-SAP routes", async () => {
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
+      if (typeof chunk === "string") chunks.push(chunk);
+      return true;
+    };
+
+    try {
+      await fetchApi("/healthz");
+    } finally {
+      process.stdout.write = origWrite;
+    }
+
+    const logLine = chunks.find((c) => c.includes("healthz"));
+    assert.ok(logLine, "log entry for healthz should appear");
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.sap_status, undefined, "sap_status should be absent on non-SAP route");
+    assert.equal(entry.sap_duration_ms, undefined, "sap_duration_ms should be absent on non-SAP route");
+  });
 });
 
 describe("Failed write-back audit logging", () => {
@@ -1858,6 +1943,39 @@ describe("JWT rate_limit_per_min type validation", () => {
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${noRpmToken}` } });
     assert.equal(res.status, 200);
   });
+
+  it("rejects JWT with object rate_limit_per_min", async () => {
+    const badToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: { rpm: 10 }, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${badToken}` } });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("rate_limit_per_min"));
+  });
+
+  it("rejects JWT with array rate_limit_per_min", async () => {
+    const badToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: [10], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${badToken}` } });
+    assert.equal(res.status, 401);
+  });
+});
+
+describe("JWT key_id type guard", () => {
+  it("rejects JWT with numeric key_id", async () => {
+    const badToken = await sign(
+      { key_id: 12345, scopes: ["ping"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${badToken}` } });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("key_id"));
+  });
 });
 
 describe("Idempotency guard DB read failure", () => {
@@ -2137,6 +2255,18 @@ describe("Security headers", () => {
     assert.equal(res.headers.get("strict-transport-security"), null);
   });
 
+  it("does not set HSTS for non-'1' truthy values (strict === '1')", async () => {
+    // HUB_HSTS uses strict equality: only "1" enables HSTS
+    // "true", "yes", "on" are all silently treated as off
+    for (const val of ["true", "yes", "on", "TRUE", "0"]) {
+      process.env.HUB_HSTS = val;
+      const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+      const res = await testApp.fetch(new Request("http://localhost/healthz"));
+      assert.equal(res.headers.get("strict-transport-security"), null, `HUB_HSTS="${val}" should NOT enable HSTS`);
+    }
+    delete process.env.HUB_HSTS;
+  });
+
   it("sets CORS Access-Control-Allow-Origin header when HUB_CORS_ORIGIN is set", async () => {
     process.env.HUB_CORS_ORIGIN = "http://localhost";
     const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
@@ -2267,6 +2397,56 @@ describe("Security headers", () => {
     const res = await testApp.fetch(req);
     const acao = res.headers.get("access-control-allow-origin");
     assert.equal(acao, null, "should NOT have CORS origin header when CORS disabled");
+  });
+
+  it("CORS comma-separated multiple origins allows each origin", async () => {
+    process.env.HUB_CORS_ORIGIN = "http://app.example.com,http://mes.example.com";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    // First origin
+    const res1 = await testApp.fetch(new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://app.example.com" },
+    }));
+    assert.equal(res1.headers.get("access-control-allow-origin"), "http://app.example.com");
+    // Second origin
+    const res2 = await testApp.fetch(new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://mes.example.com" },
+    }));
+    assert.equal(res2.headers.get("access-control-allow-origin"), "http://mes.example.com");
+    delete process.env.HUB_CORS_ORIGIN;
+  });
+
+  it("CORS exposes X-Request-ID and Retry-After headers", async () => {
+    process.env.HUB_CORS_ORIGIN = "http://localhost";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    const res = await testApp.fetch(new Request("http://localhost/ping", {
+      method: "OPTIONS",
+      headers: {
+        "Origin": "http://localhost",
+        "Access-Control-Request-Method": "GET",
+      },
+    }));
+    const expose = res.headers.get("access-control-expose-headers");
+    assert.ok(expose?.includes("X-Request-ID"), "should expose X-Request-ID");
+    assert.ok(expose?.includes("Retry-After"), "should expose Retry-After");
+    delete process.env.HUB_CORS_ORIGIN;
+  });
+
+  it("CORS trailing-slash mismatch silently denies origin", async () => {
+    process.env.HUB_CORS_ORIGIN = "http://localhost:3000";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    // Origin with trailing slash does NOT match
+    const res = await testApp.fetch(new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://localhost:3000/" },
+    }));
+    const acao = res.headers.get("access-control-allow-origin");
+    // Hono's cors middleware does strict string matching — trailing slash is a mismatch
+    assert.equal(acao, null, "trailing slash in Origin should not match CORS config without slash");
+    // Without trailing slash should match
+    const res2 = await testApp.fetch(new Request("http://localhost/healthz", {
+      headers: { "Origin": "http://localhost:3000" },
+    }));
+    assert.equal(res2.headers.get("access-control-allow-origin"), "http://localhost:3000");
+    delete process.env.HUB_CORS_ORIGIN;
   });
 });
 
@@ -2426,6 +2606,64 @@ describe("GET route SAP error handling", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 504);
+  });
+});
+
+describe("GET route SAP 429 Retry-After on non-ping routes", () => {
+  it("forwards Retry-After on /po/:ebeln", async () => {
+    mockPoError = new ZzapiMesHttpError(429, "Too many requests", 45);
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/po/4500000001", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "45");
+  });
+
+  it("forwards Retry-After on /prod-order/:aufnr", async () => {
+    mockProdOrderError = new ZzapiMesHttpError(429, "Too many requests", 20);
+    const token = await validToken(["prod_order"]);
+    const res = await fetchApi("/prod-order/1000000", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "20");
+  });
+
+  it("forwards Retry-After on /material/:matnr", async () => {
+    mockMaterialError = new ZzapiMesHttpError(429, "Too many requests", 30);
+    const token = await validToken(["material"]);
+    const res = await fetchApi("/material/10000001", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "30");
+  });
+
+  it("forwards Retry-After on /stock/:matnr", async () => {
+    mockStockError = new ZzapiMesHttpError(429, "Too many requests", 15);
+    const token = await validToken(["stock"]);
+    const res = await fetchApi("/stock/10000001?werks=1000", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "15");
+  });
+
+  it("forwards Retry-After on /routing/:matnr", async () => {
+    mockRoutingError = new ZzapiMesHttpError(429, "Too many requests", 25);
+    const token = await validToken(["routing"]);
+    const res = await fetchApi("/routing/10000001?werks=1000", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "25");
+  });
+
+  it("forwards Retry-After on /work-center/:arbpl", async () => {
+    mockWorkCenterError = new ZzapiMesHttpError(429, "Too many requests", 10);
+    const token = await validToken(["work_center"]);
+    const res = await fetchApi("/work-center/TURN1?werks=1000", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "10");
+  });
+
+  it("forwards Retry-After on /po/:ebeln/items", async () => {
+    mockPoItemsError = new ZzapiMesHttpError(429, "Too many requests", 35);
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/po/4500000001/items", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "35");
   });
 });
 
@@ -2873,6 +3111,77 @@ describe("GET route audit write failure", () => {
   });
 });
 
+describe("Write-back SAP error + DB failure", () => {
+  it("returns SAP error (502) even when DB audit write also fails", async () => {
+    const orig = MockSapClient.prototype.postConfirmation;
+    MockSapClient.prototype.postConfirmation = async () => { throw new Error("Network failure"); };
+    const brokenDb = new Database(":memory:");
+    runMigrations(brokenDb);
+    const keyId = "wberrdbtest";
+    const secret = "wberrdbsecret123456789abcdef0123";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(brokenDb, {
+      id: keyId,
+      hash,
+      label: "wb err+db test",
+      scopes: ALL_SCOPES.join(","),
+      rate_limit_per_min: null,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+    brokenDb.exec("DROP TABLE audit_log");
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db: brokenDb }).app;
+    const token = await sign(
+      { key_id: keyId, scopes: [...ALL_SCOPES], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900, rate_limit_per_min: 600 },
+      JWT_SECRET,
+    );
+
+    const errors: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: unknown[]) => { if (typeof args[0] === "string") errors.push(args[0]); };
+
+    try {
+      const req = new Request("http://localhost/confirmation", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": "wb-sap-err-db-001",
+        },
+        body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+      });
+      const res = await testApp.fetch(req);
+      assert.equal(res.status, 502, "should return SAP error even when DB also fails");
+      const body = await res.json() as Record<string, unknown>;
+      assert.equal(body.error, "SAP upstream error");
+      assert.ok(errors.some(e => e.includes("audit_write_error")), "should still log audit_write_error");
+    } finally {
+      console.error = origErr;
+      MockSapClient.prototype.postConfirmation = orig;
+      brokenDb.close();
+    }
+  });
+});
+
+describe("413 body-too-large on write-back route", () => {
+  it("returns 413 when Content-Length exceeds 1 MB", async () => {
+    const token = await validToken(["conf"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "413-test-1",
+        "content-length": "2000000",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 413);
+    const body = await res.json() as Record<string, unknown>;
+    assert.match(String(body.error), /too large/i);
+  });
+});
+
 describe("Audit log retention", () => {
   it("pruneAuditLog removes rows older than N days and keeps recent ones", () => {
     const now = Math.floor(Date.now() / 1000);
@@ -2915,5 +3224,48 @@ describe("SAP_TIMEOUT env var passthrough", () => {
       if (origTimeout !== undefined) process.env.SAP_TIMEOUT = origTimeout;
       else delete process.env.SAP_TIMEOUT;
     }
+  });
+});
+
+describe("Hono global error handler", () => {
+  it("returns ErrorResponse schema on unhandled exception", async () => {
+    const throwApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    // Add a route that throws to trigger the global error handler
+    throwApp.get("/throw-test", () => { throw new Error("test unhandled"); });
+    const res = await throwApp.fetch(new Request("http://localhost/throw-test"));
+    assert.equal(res.status, 500);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok("error" in body, "should have 'error' key matching ErrorResponse schema");
+    assert.equal(body.error, "Internal Server Error");
+  });
+
+  it("logs forensics JSON to console.error on unhandled exception", async () => {
+    const throwApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    throwApp.get("/throw-forensics", () => { throw new Error("forensics test"); });
+    // Capture console.error output
+    const logs: string[] = [];
+    const origError = console.error;
+    console.error = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+    try {
+      await throwApp.fetch(new Request("http://localhost/throw-forensics"));
+      assert.ok(logs.length > 0, "should log to console.error");
+      const parsed = JSON.parse(logs[0]!);
+      assert.equal(parsed.type, "unhandled_error");
+      assert.equal(parsed.path, "/throw-forensics");
+      assert.equal(parsed.error, "forensics test");
+    } finally {
+      console.error = origError;
+    }
+  });
+
+  it("masks ZzapiMesHttpError status — unhandled 422 becomes generic 500", async () => {
+    const throwApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    throwApp.get("/throw-http-error", () => {
+      throw new ZzapiMesHttpError(422, "SAP business rule violation");
+    });
+    const res = await throwApp.fetch(new Request("http://localhost/throw-http-error"));
+    assert.equal(res.status, 500, "ZzapiMesHttpError should be masked as 500 by global handler");
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Internal Server Error", "original error message should be masked");
   });
 });

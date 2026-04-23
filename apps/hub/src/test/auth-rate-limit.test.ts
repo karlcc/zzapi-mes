@@ -100,4 +100,43 @@ describe("Auth rate-limit idle eviction", () => {
     const n = Number(retryAfter);
     assert.ok(Number.isFinite(n) && n > 0, `retry-after should be positive number, got ${retryAfter}`);
   });
+
+  it("handles IPv6 address as bucket key", async () => {
+    const result = createApp(new MockSapClient() as unknown as SapClient, { db });
+    const app = result.app;
+    testHelpers = result as typeof testHelpers;
+
+    const headers = { "content-type": "application/json", "x-real-ip": "::1" };
+    const body = JSON.stringify({ api_key: "wrong.key" });
+
+    // Make a request with IPv6 loopback — should not crash
+    const req = new Request("http://localhost/auth/token", { method: "POST", headers, body });
+    const res = await app.fetch(req);
+    assert.equal(res.status, 401, "IPv6 bucket should work like IPv4");
+  });
+
+  it("concurrent same-IP requests each decrement the bucket", async () => {
+    const result = createApp(new MockSapClient() as unknown as SapClient, { db });
+    const app = result.app;
+    testHelpers = result as typeof testHelpers;
+
+    const headers = { "content-type": "application/json", "x-real-ip": "10.0.0.77" };
+    const body = JSON.stringify({ api_key: "wrong.key" });
+
+    // Fire 10 concurrent requests — all should get processed (each decrements bucket)
+    const requests = Array.from({ length: 10 }, () =>
+      app.fetch(new Request("http://localhost/auth/token", { method: "POST", headers, body }))
+    );
+    const results = await Promise.all(requests);
+    const statuses = results.map(r => r.status);
+
+    // All 10 should succeed (401 from bad key, not 429 from rate limit)
+    for (const s of statuses) {
+      assert.equal(s, 401, `each concurrent request should get 401 (bad key), not 429 (rate limit)`);
+    }
+
+    // 11th should be rate-limited
+    const res11 = await app.fetch(new Request("http://localhost/auth/token", { method: "POST", headers, body }));
+    assert.equal(res11.status, 429, "11th request should be rate limited");
+  });
 });

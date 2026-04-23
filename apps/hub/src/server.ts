@@ -71,8 +71,10 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   _clearAuthBucketsForTest: () => void;
 } {
   const jwtSecret = requireEnvMin("HUB_JWT_SECRET", 16);
-  const jwtTtl = Number(process.env.HUB_JWT_TTL_SECONDS) || 900;
-  if (jwtTtl <= 60) {
+  const jwtTtl = process.env.HUB_JWT_TTL_SECONDS !== undefined && process.env.HUB_JWT_TTL_SECONDS !== ""
+    ? Number(process.env.HUB_JWT_TTL_SECONDS)
+    : 900;
+  if (!Number.isFinite(jwtTtl) || jwtTtl <= 60) {
     console.error(`HUB_JWT_TTL_SECONDS must be > 60 (got ${jwtTtl}). HubClient rejects tokens with expires_in <= 60.`);
     process.exit(1);
   }
@@ -81,8 +83,8 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   // caller provides one, e.g. in tests)
   const client = sap ?? (() => {
     const sapClientNum = Number(requireEnv("SAP_CLIENT"));
-    if (!Number.isInteger(sapClientNum) || sapClientNum <= 0) {
-      console.error("SAP_CLIENT must be a positive integer");
+    if (!Number.isFinite(sapClientNum) || !Number.isInteger(sapClientNum) || sapClientNum <= 0) {
+      console.error(`SAP_CLIENT must be a positive integer (got ${process.env.SAP_CLIENT})`);
       process.exit(1);
     }
     return new SapClient({
@@ -90,7 +92,18 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
       client: sapClientNum,
       user: requireEnv("SAP_USER"),
       password: requireEnv("SAP_PASS"),
-      timeout: Number(process.env.SAP_TIMEOUT) || undefined,
+      timeout: (() => {
+        const t = process.env.SAP_TIMEOUT;
+        if (t !== undefined && t !== "") {
+          const n = Number(t);
+          if (!Number.isFinite(n) || n <= 0) {
+            console.error(`SAP_TIMEOUT must be a positive integer (got ${t})`);
+            process.exit(1);
+          }
+          return n;
+        }
+        return undefined;
+      })(),
     });
   })();
 
@@ -322,6 +335,13 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   app.route("/", createConfirmationRouter(client));  // POST /confirmation
   app.route("/", createGoodsReceiptRouter(client));  // POST /goods-receipt
   app.route("/", createGoodsIssueRouter(client));    // POST /goods-issue
+
+  // Global error handler — ensures unhandled exceptions return ErrorResponse
+  // schema ({ error: string }) rather than Hono's default { message: string }
+  app.onError((err, c) => {
+    console.error(JSON.stringify({ type: "unhandled_error", path: c.req.path, error: err.message }));
+    return c.json({ error: "Internal Server Error" }, 500);
+  });
 
   return {
     app,
