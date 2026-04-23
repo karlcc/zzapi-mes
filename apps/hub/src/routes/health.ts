@@ -13,6 +13,16 @@ export function _resetSapHealthCacheForTest(): void {
   sapCache = null;
 }
 
+/** Set the SAP health cache directly (for test isolation). */
+export function _setSapCacheForTest(cache: { ok: boolean; checkedAt: number; error?: string } | null): void {
+  sapCache = cache;
+}
+
+/** Get the SAP health cache (for test assertions). */
+export function _getSapCacheForTest(): { ok: boolean; checkedAt: number; error?: string } | null {
+  return sapCache;
+}
+
 health.get("/healthz", async (c) => {
   const db = c.get("db");
   if (!db) {
