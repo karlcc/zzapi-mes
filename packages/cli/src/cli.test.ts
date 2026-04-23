@@ -364,4 +364,152 @@ describe("CLI", () => {
       assert.ok(stderr.includes("401") || stderr.includes("Invalid"));
     });
   });
+
+  describe("hub mode write-back optional flags", () => {
+    afterEach(async () => { if (mockServer) await stopMockHub(); });
+
+    it("confirm --scrap flag included in request body", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { orderid: "1000000", operation: "0010", yield: 50, scrap: 5, confNo: "00000100", confCnt: "0001", status: "confirmed" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "confirm", "1000000", "--yield", "50", "--scrap", "5"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.scrap, 5);
+    });
+
+    it("confirm --work-actual flag included in request body", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "confirm", "1000000", "--yield", "50", "--work-actual", "3.5"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.work_actual, 3.5);
+    });
+
+    it("confirm --postg-date flag included in request body", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "confirm", "1000000", "--yield", "50", "--postg-date", "20260424"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.postg_date, "20260424");
+    });
+
+    it("confirm --budat alias included in request body", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "confirm", "1000000", "--yield", "50", "--budat", "20260424"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.postg_date, "20260424");
+    });
+
+    it("confirm --operation defaults to 0010", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "confirm", "1000000", "--yield", "50"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.operation, "0010");
+    });
+
+    it("goods-receipt --ebelp defaults to 00010", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { ebeln: "4500000001", ebelp: "00010", menge: 100, materialDocument: "5000000001", documentYear: "2026", status: "posted" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "goods-receipt", "4500000001", "--menge", "100", "--werks", "1000", "--lgort", "0001"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.ebelp, "00010");
+    });
+
+    it("goods-receipt --charg flag included in request body", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { ebeln: "4500000001", ebelp: "00010", menge: 100, materialDocument: "5000000001", documentYear: "2026", status: "posted" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "goods-receipt", "4500000001", "--menge", "100", "--werks", "1000", "--lgort", "0001", "--charg", "BATCH01"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.charg, "BATCH01");
+    });
+
+    it("goods-issue --charg flag included in request body", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { orderid: "1000000", matnr: "20000001", menge: 50, materialDocument: "5000000002", documentYear: "2026", status: "posted" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "goods-issue", "1000000", "--matnr", "20000001", "--menge", "50", "--werks", "1000", "--lgort", "0001", "--charg", "BATCH02"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.charg, "BATCH02");
+    });
+
+    it("goods-issue --budat flag included in request body", async () => {
+      let capturedBody = "";
+      await startMockHub((url, method, body) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        capturedBody = body;
+        return { status: 201, body: { orderid: "1000000", matnr: "20000001", menge: 50, materialDocument: "5000000002", documentYear: "2026", status: "posted" } };
+      });
+      const { stdout, code } = await run(
+        ["--mode", "hub", "goods-issue", "1000000", "--matnr", "20000001", "--menge", "50", "--werks", "1000", "--lgort", "0001", "--budat", "20260424"],
+        { HUB_URL: `http://localhost:${mockPort}`, HUB_API_KEY: "test.key" },
+      );
+      assert.equal(code, 0);
+      const req = JSON.parse(capturedBody);
+      assert.equal(req.budat, "20260424");
+    });
+  });
 });
