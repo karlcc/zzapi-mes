@@ -268,7 +268,8 @@ export class SapClient {
   }
 
   private async postRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
-    const url = `${this.host}${path}?sap-client=${this.client}`;
+    const query = new URLSearchParams({ "sap-client": String(this.client) });
+    const url = `${this.host}${path}?${query}`;
 
     this.onRequest?.({ url, method: "POST" });
 
