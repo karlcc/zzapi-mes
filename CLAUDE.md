@@ -127,7 +127,7 @@ All 8 read-only hub routes delegate to `withSapCall()` in `routes/sap-call.ts`, 
 - Timing (`sap_duration_ms` metric)
 - Error mapping (any thrown `ZzapiMesHttpError` → appropriate HTTP status; non-ZzapiMesHttpError → 502). `ZzapiMesHttpError` carries `originalStatus` for 409 duplicates.
 - Audit logging (records key_id, path, sap_status, sap_duration_ms)
-- `Retry-After` header capture on 429 responses
+- `Retry-After` header capture on 429 responses (both `SapClient` and `HubClient` extract it from response headers via `parseRetryAfter()`)
 
 ## Phase Roadmap
 
