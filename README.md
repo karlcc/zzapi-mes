@@ -102,7 +102,7 @@ npx zzapi-mes ping
 | Command | Description |
 |---|---|
 | `pnpm build` | Compile all TypeScript packages |
-| `pnpm test` | Run unit tests (499 passing: 113 core + 354 hub + 32 CLI) |
+| `pnpm test` | Run unit tests (505 passing: 113 core + 360 hub + 32 CLI) |
 | `pnpm smoke` | Curl round-trip tests against sapdev |
 | `pnpm spec:gen` | Regenerate `packages/core/src/generated/schemas.ts` from OpenAPI spec |
 
