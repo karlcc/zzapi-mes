@@ -17,7 +17,7 @@ The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go throug
 - `packages/sdk/` — `@zzapi-mes/sdk` — thin re-export of `@zzapi-mes/core`. Back-compat for existing consumers.
 - `packages/cli/` — `@zzapi-mes/cli` — CLI with `--mode direct|hub` flag. Both modes support all commands including write-back (confirm, goods-receipt, goods-issue). Direct mode reads `SAP_*` env or `~/.zzapirc`. Hub mode reads `HUB_URL`/`HUB_API_KEY`.
 - `spec/openapi.yaml` — OpenAPI 3.0 contract for SAP + hub endpoints.
-- `apps/hub/` — `@zzapi-mes/hub` — Hono server. Holds SAP creds server-side, issues JWTs to clients presenting API keys (SQLite-backed, argon2id-hashed). Deploys as systemd unit or Docker container. Admin CLI: `zzapi-mes-hub-admin keys create/list/revoke`.
+- `apps/hub/` — `@zzapi-mes/hub` — Hono server. Holds SAP creds server-side, issues JWTs to clients presenting API keys (SQLite-backed, argon2id-hashed). Deploys as systemd unit or Docker container. Admin CLI: `zzapi-mes-hub-admin keys create/list/revoke`, `audit prune --days N`, `idempotency evict --max-age-seconds N`.
 - `Dockerfile` — Multi-stage build for the hub. Uses `pnpm prune --prod` in builder, copies `node_modules` to slim runtime.
 
 ## Commands

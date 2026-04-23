@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import Database from "better-sqlite3";
-import { runMigrations, findById } from "../db/index.js";
+import { runMigrations, findById, writeAudit, pruneAuditLog, evictIdempotencyKeys } from "../db/index.js";
 
 const CLI = "dist/admin/cli.js";
 
@@ -160,5 +160,71 @@ describe("admin CLI", () => {
     const { stderr, exitCode } = await runCli(["keys", "create", "--scopes", "ping"]);
     assert.notEqual(exitCode, 0);
     assert.match(stderr, /--label/);
+  });
+
+  it("audit prune removes old rows via CLI", async () => {
+    const db = openDb();
+    try {
+      // Insert an old audit row (31 days ago) directly
+      const oldTs = Math.floor(Date.now() / 1000) - 31 * 86400;
+      db.prepare("INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .run("old-req", "-", "GET", "/ping", null, 200, 50, oldTs);
+      // Insert a recent row via the normal function
+      writeAudit(db, { req_id: "new-req", key_id: "-", method: "GET", path: "/ping", body: "", sap_status: 200, sap_duration_ms: 50 });
+    } finally {
+      db.close();
+    }
+
+    const { stdout, exitCode } = await runCli(["audit", "prune", "--days", "30"]);
+    assert.equal(exitCode, 0);
+    assert.match(stdout, /Pruned 1/);
+
+    const db2 = openDb();
+    try {
+      const remaining = db2.prepare("SELECT count(*) AS c FROM audit_log").get() as { c: number };
+      assert.equal(remaining.c, 1, "recent row should remain");
+    } finally {
+      db2.close();
+    }
+  });
+
+  it("audit prune requires --days", async () => {
+    const { stderr, exitCode } = await runCli(["audit", "prune"]);
+    assert.notEqual(exitCode, 0);
+    assert.match(stderr, /--days/);
+  });
+
+  it("idempotency evict removes stale keys via CLI", async () => {
+    const db = openDb();
+    try {
+      // Insert a stale idempotency key (600s ago)
+      const staleTs = Math.floor(Date.now() / 1000) - 600;
+      db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .run("stale-key", "test-key", "/confirmation", 201, "stale-body-hash", staleTs);
+      // Insert a fresh key
+      const freshTs = Math.floor(Date.now() / 1000);
+      db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .run("fresh-key", "test-key", "/confirmation", 0, "fresh-body-hash", freshTs);
+    } finally {
+      db.close();
+    }
+
+    const { stdout, exitCode } = await runCli(["idempotency", "evict", "--max-age-seconds", "300"]);
+    assert.equal(exitCode, 0);
+    assert.match(stdout, /Evicted 1/);
+
+    const db2 = openDb();
+    try {
+      const remaining = db2.prepare("SELECT count(*) AS c FROM idempotency_keys").get() as { c: number };
+      assert.equal(remaining.c, 1, "fresh key should remain");
+    } finally {
+      db2.close();
+    }
+  });
+
+  it("idempotency evict requires --max-age-seconds", async () => {
+    const { stderr, exitCode } = await runCli(["idempotency", "evict"]);
+    assert.notEqual(exitCode, 0);
+    assert.match(stderr, /--max-age-seconds/);
   });
 });

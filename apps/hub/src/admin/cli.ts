@@ -7,7 +7,7 @@
  *   keys list
  *   keys revoke <id>
  */
-import { openDb, runMigrations, insertKey, listKeys, revokeKey } from "../db/index.js";
+import { openDb, runMigrations, insertKey, listKeys, revokeKey, pruneAuditLog, evictIdempotencyKeys } from "../db/index.js";
 import { ALL_SCOPES } from "@zzapi-mes/core";
 import argon2 from "argon2";
 import { randomBytes } from "node:crypto";
@@ -16,7 +16,9 @@ function usage(): never {
   console.error(`Usage:
   zzapi-mes-hub-admin keys create --label <str> [--scopes ping,po] [--rate-limit N]
   zzapi-mes-hub-admin keys list
-  zzapi-mes-hub-admin keys revoke <id>`);
+  zzapi-mes-hub-admin keys revoke <id>
+  zzapi-mes-hub-admin audit prune --days <N>
+  zzapi-mes-hub-admin idempotency evict --max-age-seconds <N>`);
   process.exit(1);
 }
 
@@ -35,7 +37,7 @@ async function main(args: string[]): Promise<void> {
   const command = args[0];
   const subcommand = args[1];
 
-  if (command !== "keys") usage();
+  if (command !== "keys" && command !== "audit" && command !== "idempotency") usage();
 
   const db = openDb(process.env.HUB_DB_PATH || undefined);
   runMigrations(db);
@@ -90,6 +92,24 @@ async function main(args: string[]): Promise<void> {
         console.error(`Key ${id} not found or already revoked.`);
         process.exitCode = 1;
       }
+    } else if (command === "audit" && subcommand === "prune") {
+      const opts = parseArgs(args.slice(2));
+      const days = parseInt(opts["days"] ?? "", 10);
+      if (!days || days <= 0) {
+        console.error("--days must be a positive integer");
+        process.exit(1);
+      }
+      const deleted = pruneAuditLog(db, days);
+      console.log(`Pruned ${deleted} audit log rows older than ${days} days.`);
+    } else if (command === "idempotency" && subcommand === "evict") {
+      const opts = parseArgs(args.slice(2));
+      const maxAge = parseInt(opts["max-age-seconds"] ?? "", 10);
+      if (!maxAge || maxAge <= 0) {
+        console.error("--max-age-seconds must be a positive integer");
+        process.exit(1);
+      }
+      const deleted = evictIdempotencyKeys(db, maxAge);
+      console.log(`Evicted ${deleted} idempotency keys older than ${maxAge}s.`);
     } else {
       usage();
     }
