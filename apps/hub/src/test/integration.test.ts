@@ -1007,4 +1007,82 @@ describe("E2E integration against mock SAP", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.ok(String(body.error).includes("menge"));
   });
+
+  it("POST /confirmation returns 422 when idempotency key reused with different body", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const { app } = createApp(sap, { db });
+
+    const authRes = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    }));
+    const { token } = await authRes.json() as { token: string };
+
+    const headers = {
+      "authorization": `Bearer ${token}`,
+      "content-type": "application/json",
+      "idempotency-key": "mismatch-422-key",
+    };
+
+    // First request with body A
+    const res1 = await app.fetch(new Request("http://localhost/confirmation", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    }));
+    assert.equal(res1.status, 201);
+
+    // Second request with same key but different body → 422
+    const res2 = await app.fetch(new Request("http://localhost/confirmation", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ orderid: "2000000", operation: "0020", yield: 100 }),
+    }));
+    assert.equal(res2.status, 422);
+    const body2 = await res2.json() as Record<string, unknown>;
+    assert.match(String(body2.error), /different request body/i);
+  });
+
+  it("/auth/token returns 429 when per-IP rate limit is exceeded", async () => {
+    const sap = new SapClient({
+      host: `http://127.0.0.1:${sapPort}`,
+      client: 200,
+      user: "test",
+      password: "test",
+    });
+    const { app, _clearAuthBucketsForTest } = createApp(sap, { db });
+    _clearAuthBucketsForTest();
+
+    const headers = {
+      "content-type": "application/json",
+      "x-real-ip": "10.99.99.1",
+    };
+    const body = JSON.stringify({ api_key: testKeyPlaintext });
+
+    // Exhaust the 10-req bucket
+    for (let i = 0; i < 10; i++) {
+      const res = await app.fetch(new Request("http://localhost/auth/token", {
+        method: "POST",
+        headers,
+        body,
+      }));
+      assert.equal(res.status, 200, `request ${i + 1} should succeed`);
+    }
+
+    // 11th should be rate-limited
+    const res = await app.fetch(new Request("http://localhost/auth/token", {
+      method: "POST",
+      headers,
+      body,
+    }));
+    assert.equal(res.status, 429);
+    const retryAfter = res.headers.get("retry-after");
+    assert.ok(retryAfter, "retry-after header should be present");
+  });
 });
