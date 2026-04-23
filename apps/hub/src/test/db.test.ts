@@ -173,6 +173,37 @@ describe("DB layer — audit_log", () => {
     assert.equal(row!.sap_duration_ms, null);
   });
 
+  it("writeAudit does not truncate body at exactly 4096 characters", () => {
+    const body4096 = "x".repeat(4096);
+    writeAudit(db, {
+      req_id: "req-boundary",
+      key_id: "kid1",
+      method: "POST",
+      path: "/confirmation",
+      body: body4096,
+      sap_status: 201,
+    });
+    const row = db.prepare("SELECT body FROM audit_log WHERE req_id = ?").get("req-boundary") as { body: string } | undefined;
+    assert.ok(row);
+    assert.equal(row!.body!.length, 4096, "body at exactly 4096 chars should not be truncated");
+  });
+
+  it("writeAudit truncates body at 4097 characters", () => {
+    const body4097 = "x".repeat(4097);
+    writeAudit(db, {
+      req_id: "req-over",
+      key_id: "kid1",
+      method: "POST",
+      path: "/confirmation",
+      body: body4097,
+      sap_status: 201,
+    });
+    const row = db.prepare("SELECT body FROM audit_log WHERE req_id = ?").get("req-over") as { body: string } | undefined;
+    assert.ok(row);
+    assert.ok(row!.body!.length > 4096, "truncated body should include the suffix marker");
+    assert.ok(row!.body!.includes("[truncated"), "should contain truncation marker");
+  });
+
   it("v2 adds sap_duration_ms column", () => {
     // Insert a row so the SELECT works even with an empty table
     writeAudit(db, { req_id: "v2test", key_id: "k", method: "GET", path: "/t", sap_duration_ms: 42 });
