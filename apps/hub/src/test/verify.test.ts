@@ -123,4 +123,13 @@ describe("verifyApiKey", () => {
     const result = await verifyApiKey(db, "corruptkey.someSecret1234567890123456");
     assert.equal(result, null);
   });
+
+  it("filters empty entries from scopes string", async () => {
+    const plaintext = await seedKey("scopefilter");
+    // Manually update the scopes to include empty entries
+    db.prepare("UPDATE api_keys SET scopes = ? WHERE id = ?").run(",ping,,po,", "scopefilter");
+    const result = await verifyApiKey(db, plaintext);
+    assert.ok(result);
+    assert.deepEqual(result!.scopes, ["ping", "po"]);
+  });
 });

@@ -506,6 +506,28 @@ describe("requireScope with malformed JWT scopes", () => {
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
     assert.equal(res.status, 403);
   });
+
+  it("returns 403 when scopes claim is whitespace-only string", async () => {
+    const token = await sign(
+      { key_id: "testkey1234", scopes: "   ", iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900, rate_limit_per_min: 600 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 403);
+  });
+});
+
+describe("requireJwt whitespace-only key_id", () => {
+  it("rejects JWT with whitespace-only key_id", async () => {
+    const token = await sign(
+      { key_id: "   ", scopes: ["ping"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900, rate_limit_per_min: 600 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("key_id"));
+  });
 });
 
 describe("Rate limiting", () => {
