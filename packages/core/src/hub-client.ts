@@ -115,6 +115,14 @@ export class HubClient {
       throw new ZzapiMesHttpError(res.status, `Hub auth failed: ${body || res.statusText}`);
     }
     const data = (await res.json()) as { token: string; expires_in: number };
+    if (!data.token || typeof data.token !== "string") {
+      throw new ZzapiMesHttpError(502, "Hub auth response missing token");
+    }
+    if (!Number.isFinite(data.expires_in) || data.expires_in <= 60) {
+      // Guard against pathological server responses that would otherwise
+      // cause an immediate re-auth storm (60s refresh window in this client).
+      throw new ZzapiMesHttpError(502, `Hub auth returned invalid expires_in: ${data.expires_in}`);
+    }
     this.tokenCache = {
       token: data.token,
       expiresAt: Date.now() + data.expires_in * 1000,

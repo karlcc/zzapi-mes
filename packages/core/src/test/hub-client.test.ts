@@ -566,3 +566,38 @@ describe("HubClient", () => {
     assert.equal(capturedIdemKeys[1], "idem-retry-key");
   });
 });
+
+describe("HubClient getToken validation", () => {
+  it("rejects auth response with missing token", async () => {
+    globalThis.fetch = mockFetch(() => jsonResponse(200, { expires_in: 900 }));
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), /missing token/);
+  });
+
+  it("rejects auth response with expires_in <= 60 (prevents auth storm)", async () => {
+    globalThis.fetch = mockFetch(() => jsonResponse(200, { token: "jwt-abc", expires_in: 30 }));
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), /invalid expires_in/);
+  });
+
+  it("rejects auth response with non-numeric expires_in", async () => {
+    globalThis.fetch = mockFetch(() => jsonResponse(200, { token: "jwt-abc", expires_in: NaN }));
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), /invalid expires_in/);
+  });
+
+  it("accepts auth response with expires_in > 60", async () => {
+    let authCalled = false;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalled = true;
+        return jsonResponse(200, { token: "jwt-abc", expires_in: 120 });
+      }
+      return jsonResponse(200, { message: "pong", sap_host: "sapdev" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    const result = await client.ping();
+    assert.equal(result.message, "pong");
+    assert.ok(authCalled);
+  });
+});

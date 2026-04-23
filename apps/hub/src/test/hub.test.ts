@@ -1472,6 +1472,42 @@ describe("Auth rate limiting", () => {
     assert.ok(String(data.error).includes("Auth rate limit"));
     assert.ok(res.headers.get("retry-after"));
   });
+
+  it("rejects new IPs when bucket cap is reached", async () => {
+    const testApp = app();
+    const headers = { "content-type": "application/json" };
+    const body = JSON.stringify({ api_key: "wrong.key" });
+
+    async function fetchWithIp(ip: string) {
+      const req = new Request("http://localhost/auth/token", {
+        method: "POST",
+        headers: { ...headers, "x-real-ip": ip },
+        body,
+      });
+      return testApp.fetch(req);
+    }
+
+    // Fill buckets with 1000 unique IPs (the AUTH_BUCKET_CAP)
+    // Each gets 1 token on creation, so all succeed with 401 (wrong key)
+    for (let i = 0; i < 1000; i++) {
+      const res = await fetchWithIp(`10.1.${Math.floor(i / 256)}.${i % 256}`);
+      assert.equal(res.status, 401, `IP ${i} should get 401, not rate-limited`);
+    }
+
+    // Trigger a sweep by making one more request (sweep runs every 60s)
+    // Force the sweep by manipulating the app's internal state isn't possible
+    // from outside, but the next request from a NEW IP will be rejected
+    // because authBuckets.size >= AUTH_BUCKET_CAP.
+    // We need to trigger the periodic sweep — but since we can't advance
+    // the clock, we test the cap by verifying that 1001th unique IP is
+    // rejected. The sweep check uses Date.now() which will fire on the
+    // 1001th request since the first request set authLastSweep.
+    // Actually, the sweep only runs if (now - authLastSweep > 60_000).
+    // So the 1001th new-IP request hits the `authBuckets.size >= AUTH_BUCKET_CAP`
+    // path inside the bucket-creation block.
+    const res = await fetchWithIp("10.2.0.1");
+    assert.equal(res.status, 429);
+  });
 });
 
 describe("Rate limit per min = 0", () => {

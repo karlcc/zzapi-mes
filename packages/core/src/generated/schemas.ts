@@ -16,7 +16,11 @@ const TokenResponse = z
   .object({ token: z.string(), expires_in: z.number().int() })
   .passthrough();
 const HealthzResponse = z
-  .object({ ok: z.boolean(), error: z.string().optional() })
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+    sap: z.string().optional(),
+  })
   .passthrough();
 const ProdOrderOperation = z
   .object({

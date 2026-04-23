@@ -161,19 +161,29 @@ export function createApp(sap?: SapClient, deps?: AppDeps): { app: Hono<{ Variab
   const authBuckets = new Map<string, { tokens: number; lastRefill: number }>();
   const AUTH_RPM = 10; // 10 auth attempts per minute per IP
   const AUTH_IDLE_MS = 5 * 60_000; // Evict buckets idle for 5+ minutes
+  const AUTH_BUCKET_CAP = 1_000; // Hard cap on bucket count to bound memory
   let authLastSweep = Date.now();
   app.use("/auth/token", async (c, next) => {
-    // Periodic eviction of stale auth buckets
     const now = Date.now();
+    // Periodic eviction of stale auth buckets + enforce hard cap
     if (now - authLastSweep > 60_000) {
       authLastSweep = now;
       for (const [ip, b] of authBuckets) {
         if (now - b.lastRefill > AUTH_IDLE_MS) authBuckets.delete(ip);
       }
+      // If still over cap after idle eviction, drop the oldest half
+      if (authBuckets.size > AUTH_BUCKET_CAP) {
+        const entries = [...authBuckets.entries()].sort((a, b) => a[1].lastRefill - b[1].lastRefill);
+        const toRemove = entries.slice(0, Math.ceil(entries.length / 2));
+        for (const [ip] of toRemove) authBuckets.delete(ip);
+      }
     }
     const ip = c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
     let bucket = authBuckets.get(ip);
     if (!bucket) {
+      if (authBuckets.size >= AUTH_BUCKET_CAP) {
+        return c.json({ error: "Auth rate limit exceeded" }, 429);
+      }
       bucket = { tokens: AUTH_RPM, lastRefill: now };
       authBuckets.set(ip, bucket);
     }

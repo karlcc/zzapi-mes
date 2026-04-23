@@ -1665,6 +1665,9 @@ components:
         error:
           type: string
           description: Error message when ok is false (e.g. "database unreachable")
+        sap:
+          type: string
+          description: SAP reachability status when check=sap query param is present (e.g. "reachable")
 
     # -----------------------------------------------------------------
     # Phase 5A schemas

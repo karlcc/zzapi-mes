@@ -277,5 +277,18 @@ const AUDIT_DELETE_OLD = `
 /** Prune audit_log rows older than `maxAgeDays`. Returns number of deleted rows. */
 export function pruneAuditLog(db: Database.Database, maxAgeDays: number): number {
   const cutoff = Math.floor(Date.now() / 1000) - maxAgeDays * 86_400;
-  return db.prepare(AUDIT_DELETE_OLD).run(cutoff).changes;
+  // Batch-delete in chunks so SQLite doesn't hold a long write lock when
+  // the table is large. 10 000 rows per batch keeps each transaction short.
+  const BATCH = 10_000;
+  let total = 0;
+  let deleted: number;
+  do {
+    deleted = db.prepare(
+      `DELETE FROM audit_log WHERE rowid IN (
+        SELECT rowid FROM audit_log WHERE created_at < ? LIMIT ${BATCH}
+      )`,
+    ).run(cutoff).changes;
+    total += deleted;
+  } while (deleted === BATCH);
+  return total;
 }
