@@ -1545,6 +1545,55 @@ describe("Rate limit per min = 0", () => {
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${zeroRpmToken}` } });
     assert.equal(res.status, 403);
   });
+
+  it("rejects request with negative rate_limit_per_min", async () => {
+    const negRpmToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: -1, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${negRpmToken}` } });
+    assert.equal(res.status, 403);
+  });
+});
+
+describe("JWT rate_limit_per_min type validation", () => {
+  it("rejects JWT with string rate_limit_per_min", async () => {
+    const badToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: "10", iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${badToken}` } });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("rate_limit_per_min"));
+  });
+
+  it("rejects JWT with boolean rate_limit_per_min", async () => {
+    const badToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: true, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${badToken}` } });
+    assert.equal(res.status, 401);
+  });
+
+  it("accepts JWT with null rate_limit_per_min (falls back to default)", async () => {
+    const nullRpmToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: null, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${nullRpmToken}` } });
+    assert.equal(res.status, 200);
+  });
+
+  it("accepts JWT without rate_limit_per_min (undefined)", async () => {
+    const noRpmToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${noRpmToken}` } });
+    assert.equal(res.status, 200);
+  });
 });
 
 describe("Empty Idempotency-Key header", () => {

@@ -30,6 +30,13 @@ export const requireJwt = createMiddleware<{ Variables: HubVariables }>(async (c
     if (!payload.key_id || typeof payload.key_id !== "string" || payload.key_id.trim() === "") {
       return c.json({ error: "Invalid token: missing key_id" }, 401);
     }
+    // Validate rate_limit_per_min type — a compromised JWT secret or bug in
+    // token signing could inject non-number values that bypass the ?? fallback
+    // in rate-limit.ts, causing NaN arithmetic (DoS for that key).
+    const rpm = payload.rate_limit_per_min;
+    if (rpm !== undefined && rpm !== null && typeof rpm !== "number") {
+      return c.json({ error: "Invalid token: bad rate_limit_per_min" }, 401);
+    }
     c.set("jwtPayload", payload);
     await next();
   } catch {
