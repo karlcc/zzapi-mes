@@ -66,7 +66,7 @@ export function createConfirmationRouter(sap: SapClient) {
 
     sapDuration.labels({ route: "/confirmation" }).observe(durationMs / 1000);
     c.set("sapStatus", sapStatus);
-    c.set("sapDurationMs", durationMs);
+    c.set("sapDurationMs", Math.round(durationMs));
 
     if (errorMsg !== null) {
       return c.json({ error: errorMsg, orderid: parsed.data.orderid }, clientStatus as 409 | 422 | 502 | 504);

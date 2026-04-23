@@ -66,7 +66,7 @@ export function createGoodsReceiptRouter(sap: SapClient) {
 
     sapDuration.labels({ route: "/goods-receipt" }).observe(durationMs / 1000);
     c.set("sapStatus", sapStatus);
-    c.set("sapDurationMs", durationMs);
+    c.set("sapDurationMs", Math.round(durationMs));
 
     if (errorMsg !== null) {
       return c.json({ error: errorMsg, ebeln: parsed.data.ebeln }, clientStatus as 409 | 422 | 502 | 504);
