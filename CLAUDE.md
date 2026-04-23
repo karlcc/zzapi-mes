@@ -62,7 +62,7 @@ For multi-endpoint routing under one SICF node, dispatch on `server->request->ge
 
 Write-back routes (confirmation, goods-receipt, goods-issue) pass through:
 1. **Method guard** (`middleware/jwt.ts` — `methodGuard()`) — rejects wrong HTTP methods with 405 before JWT/scope/idempotency checks run
-2. **JWT verification** (`middleware/jwt.ts`) — validates Bearer token, extracts scopes
+2. **JWT verification** (`middleware/jwt.ts`) — validates Bearer token, extracts `JwtPayload` (typed in `types.ts`: `key_id`, `scopes`, `iat`, `exp`, `rate_limit_per_min`)
 3. **Scope enforcement** (`middleware/jwt.ts`) — checks required scope (conf/gr/gi)
 4. **Idempotency guard** (`middleware/idempotency.ts`) — requires `Idempotency-Key` header, stores SHA-256 body hash in SQLite. Returns:
    - `409` if same key + same body (true duplicate)
@@ -84,7 +84,7 @@ All responses include `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`
 
 ### Audit Logging
 
-All hub routes (both GET and POST) write to `audit_log` via `writeAudit()` (POST routes) or `withSapCall()` (GET routes). Entries record `req_id`, `key_id`, `method`, `path`, `sap_status`, `sap_duration_ms`, and (for POST routes) a truncated request body (max 4096 chars). Audit write failures on GET routes are silently caught; POST routes log `audit_write_error` but still return the SAP response to prevent duplicate retries.
+All hub routes (both GET and POST) write to `audit_log` via `writeAudit()` (POST routes) or `withSapCall()` (GET routes). Entries record `req_id`, `key_id`, `method`, `path`, `sap_status`, `sap_duration_ms`, and (for POST routes) a truncated request body (max 4096 chars). Audit write failures on both GET and POST routes are silently caught so the SAP response is always returned to the client, preventing duplicate retries.
 
 ### Scope Definitions
 
@@ -104,8 +104,8 @@ All hub routes (both GET and POST) write to `audit_log` via `writeAudit()` (POST
 | 403 | Insufficient scope |
 | 409 | Duplicate idempotency key (same body), or SAP backflush conflict (goods-issue) |
 | 422 | Idempotency key reused with different body, or SAP business rule rejection |
-| 429 | Rate limit exceeded (includes `Retry-After` header) |
-| 502 | SAP upstream error (non-422/409) |
+| 429 | Rate limit exceeded, or SAP upstream 429 rate-limited (includes `Retry-After` header) |
+| 502 | SAP upstream error (non-409/422/429) |
 
 ### Path Parameter Validation
 
