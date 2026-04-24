@@ -262,7 +262,7 @@ export function writeAudit(
 ): void {
   let body = record.body ?? null;
   if (body && body.length > AUDIT_BODY_MAX) {
-    body = body.slice(0, AUDIT_BODY_MAX) + `...[truncated ${body.length - AUDIT_BODY_MAX}]`;
+    body = body.slice(0, AUDIT_BODY_MAX) + `...[truncated from ${body.length}]`;
   }
   db.prepare(AUDIT_INSERT).run(
     record.req_id,
@@ -289,14 +289,15 @@ export function pruneAuditLog(db: Database.Database, maxAgeDays: number): number
   // Batch-delete in chunks so SQLite doesn't hold a long write lock when
   // the table is large. 10 000 rows per batch keeps each transaction short.
   const BATCH = 10_000;
+  const batchDelete = db.prepare(
+    `DELETE FROM audit_log WHERE rowid IN (
+      SELECT rowid FROM audit_log WHERE created_at < ? LIMIT ?
+    )`,
+  );
   let total = 0;
   let deleted: number;
   do {
-    deleted = db.prepare(
-      `DELETE FROM audit_log WHERE rowid IN (
-        SELECT rowid FROM audit_log WHERE created_at < ? LIMIT ${BATCH}
-      )`,
-    ).run(cutoff).changes;
+    deleted = batchDelete.run(cutoff, BATCH).changes;
     total += deleted;
   } while (deleted === BATCH);
   return total;
