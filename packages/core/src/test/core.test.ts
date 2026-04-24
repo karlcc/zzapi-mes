@@ -527,7 +527,7 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
   it("extracts Retry-After header on 429 GET response", async () => {
     globalThis.fetch = async () => new Response(
       JSON.stringify({ error: "Too Many Requests" }),
-      { status: 429, headers: { "retry-after": "30" } },
+      { status: 429, headers: { "retry-after": "30", "content-type": "application/json" } },
     );
     try {
       await new SapClient(CFG).ping();
@@ -542,7 +542,7 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
   it("extracts Retry-After header on 429 POST response", async () => {
     globalThis.fetch = async () => new Response(
       JSON.stringify({ error: "Too Many Requests" }),
-      { status: 429, headers: { "retry-after": "60" } },
+      { status: 429, headers: { "retry-after": "60", "content-type": "application/json" } },
     );
     try {
       await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
@@ -557,7 +557,7 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
   it("does not set retryAfter on non-429 error", async () => {
     globalThis.fetch = async () => new Response(
       JSON.stringify({ error: "Not found" }),
-      { status: 404, headers: { "retry-after": "30" } },
+      { status: 404, headers: { "retry-after": "30", "content-type": "application/json" } },
     );
     try {
       await new SapClient(CFG).ping();
@@ -608,6 +608,83 @@ describe("Zod schema .strict() on write-back requests", () => {
         custom: true,
       }),
       /unrecognized_keys/,
+    );
+  });
+});
+
+describe("SapClient URL encoding", () => {
+  it("does not double-encode raw parameter values", async () => {
+    // URLSearchParams encodes raw values once — values with % should be
+    // percent-encoded, not double-encoded. A raw "100%" becomes "100%25"
+    // (correct single encoding), NOT "100%2525" (double encoding).
+    globalThis.fetch = mockFetch(200, '{"ok":true,"sap_time":"20260422163000"}');
+    const client = new SapClient(CFG);
+    // Use a public method — the param value goes through URLSearchParams once
+    await client.getPo("100%");
+    const url = capturedUrl!;
+    // "100%" should be encoded as "100%25" (single encoding), NOT "100%2525"
+    assert.match(url, /ebeln=100%25/);
+    assert.ok(!url.includes("100%2525"), `double-encoding detected in URL: ${url}`);
+  });
+
+  it("correctly encodes special characters in query params", async () => {
+    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","mtart":"FERT","meins":"EA"}');
+    const client = new SapClient(CFG);
+    await client.getMaterial("10000001", "1 2"); // space in werks
+    const url = capturedUrl!;
+    // Space should be encoded as + or %20 by URLSearchParams
+    assert.ok(url.includes("werks=1+2") || url.includes("werks=1%202"), `expected encoded space in URL: ${url}`);
+  });
+});
+
+describe("SapClient Content-Type validation", () => {
+  it("rejects 200 response with text/html content-type", async () => {
+    globalThis.fetch = async () => new Response(
+      "<html><body>SAP login page</body></html>",
+      { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+    );
+    await assert.rejects(
+      () => new SapClient(CFG).ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 502, "should report 502 for wrong content-type, not 200");
+        assert.match(e.message, /text\/html|content-type/i, `expected content-type hint, got: ${e.message}`);
+        return true;
+      },
+    );
+  });
+
+  it("accepts 200 response with application/json content-type", async () => {
+    globalThis.fetch = async () => new Response(
+      '{"ok":true,"sap_time":"20260422163000"}',
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    const result = await new SapClient(CFG).ping();
+    assert.equal(result.ok, true);
+  });
+
+  it("accepts 200 response with application/json; charset=utf-8", async () => {
+    globalThis.fetch = async () => new Response(
+      '{"ok":true,"sap_time":"20260422163000"}',
+      { status: 200, headers: { "content-type": "application/json; charset=utf-8" } },
+    );
+    const result = await new SapClient(CFG).ping();
+    assert.equal(result.ok, true);
+  });
+
+  it("rejects 200 response with text/plain content-type", async () => {
+    globalThis.fetch = async () => new Response(
+      "Just some plain text",
+      { status: 200, headers: { "content-type": "text/plain" } },
+    );
+    await assert.rejects(
+      () => new SapClient(CFG).ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 502);
+        assert.match(e.message, /text\/plain|content-type/i, `expected content-type hint, got: ${e.message}`);
+        return true;
+      },
     );
   });
 });
