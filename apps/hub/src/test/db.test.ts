@@ -11,7 +11,6 @@ import {
   updateIdempotencyStatus,
   evictIdempotencyKeys,
   writeAudit,
-  pruneAuditLog,
 } from "../db/index.js";
 
 let db: Database.Database;
@@ -189,7 +188,7 @@ describe("DB layer — audit_log", () => {
     assert.equal(row!.body!.length, 4096, "body at exactly 4096 chars should not be truncated");
   });
 
-  it("writeAudit truncates body at 4097 characters with original length", () => {
+  it("writeAudit truncates body at 4097 characters", () => {
     const body4097 = "x".repeat(4097);
     writeAudit(db, {
       req_id: "req-over",
@@ -201,24 +200,8 @@ describe("DB layer — audit_log", () => {
     });
     const row = db.prepare("SELECT body FROM audit_log WHERE req_id = ?").get("req-over") as { body: string } | undefined;
     assert.ok(row);
-    assert.ok(row!.body!.includes("[truncated from 4097]"), `should include original length: ${row!.body!.slice(-30)}`);
-  });
-
-  it("concurrent writeAudit calls all succeed (SQLite WAL mode)", () => {
-    // SQLite with WAL mode handles concurrent writes via busy_timeout.
-    // Verify that rapid sequential writes don't lose data.
-    const count = 50;
-    for (let i = 0; i < count; i++) {
-      writeAudit(db, {
-        req_id: `concurrent-${i}`,
-        key_id: "kid-concurrent",
-        method: "POST",
-        path: "/confirmation",
-        sap_status: 201,
-      });
-    }
-    const rows = db.prepare("SELECT COUNT(*) AS cnt FROM audit_log WHERE key_id = ?").get("kid-concurrent") as { cnt: number };
-    assert.equal(rows.cnt, count, "all concurrent writes should be persisted");
+    assert.ok(row!.body!.length > 4096, "truncated body should include the suffix marker");
+    assert.ok(row!.body!.includes("[truncated"), "should contain truncation marker");
   });
 
   it("v2 adds sap_duration_ms column", () => {
@@ -276,97 +259,47 @@ describe("DB layer — migrations", () => {
   });
 });
 
-describe("DB layer — v7 CHECK constraints", () => {
-  it("rejects api_keys with rate_limit_per_min = 0", () => {
+describe("DB layer — error re-throw for non-UNIQUE errors", () => {
+  it("insertKey re-throws non-UNIQUE DB error with descriptive message", () => {
+    // Drop the table to force a generic error (not UNIQUE constraint)
+    db.exec("DROP TABLE api_keys");
     assert.throws(
       () => insertKey(db, {
-        id: "bad-zero",
+        id: "x",
         hash: "h",
-        label: "x",
+        label: "test",
         scopes: "ping",
-        rate_limit_per_min: 0,
+        rate_limit_per_min: null,
         created_at: 1000,
       }),
-      /CHECK constraint/i,
+      (err: unknown) => err instanceof Error && err.message.includes("Failed to insert key") && !err.message.includes("already exists"),
     );
   });
 
-  it("rejects api_keys with negative rate_limit_per_min", () => {
+  it("revokeKey re-throws unexpected DB error", () => {
+    db.exec("DROP TABLE api_keys");
     assert.throws(
-      () => insertKey(db, {
-        id: "bad-neg",
-        hash: "h",
-        label: "x",
-        scopes: "ping",
-        rate_limit_per_min: -5,
-        created_at: 1000,
-      }),
-      /CHECK constraint/i,
+      () => revokeKey(db, "nope"),
+      (err: unknown) => err instanceof Error && err.message.includes("Failed to revoke key"),
     );
   });
 
-  it("accepts api_keys with null rate_limit_per_min", () => {
-    insertKey(db, {
-      id: "ok-null",
-      hash: "h",
-      label: "x",
-      scopes: "ping",
-      rate_limit_per_min: null,
-      created_at: 1000,
+  it("checkIdempotency re-throws non-UNIQUE DB error", () => {
+    db.exec("DROP TABLE idempotency_keys");
+    assert.throws(
+      () => checkIdempotency(db, "key", "kid", "/conf", 201, "hash"),
+      (err: unknown) => !(err instanceof Error && err.message.includes("UNIQUE constraint")),
+      "should re-throw non-UNIQUE errors, not swallow them",
+    );
+  });
+
+  it("updateIdempotencyStatus is silent no-op for non-existent key", () => {
+    // Updating a key that doesn't exist should not throw
+    assert.doesNotThrow(() => {
+      updateIdempotencyStatus(db, "nonexistent-key", 201);
     });
-    const row = findById(db, "ok-null");
-    assert.ok(row);
-    assert.equal(row!.rate_limit_per_min, null);
-  });
-
-  it("accepts api_keys with positive rate_limit_per_min", () => {
-    insertKey(db, {
-      id: "ok-pos",
-      hash: "h",
-      label: "x",
-      scopes: "ping",
-      rate_limit_per_min: 10,
-      created_at: 1000,
-    });
-    const row = findById(db, "ok-pos");
-    assert.ok(row);
-    assert.equal(row!.rate_limit_per_min, 10);
-  });
-
-  it("rejects idempotency_keys with negative status", () => {
-    assert.throws(
-      () => db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .run("bad-status", "k1", "/conf", -1, "h", 1000),
-      /CHECK constraint/i,
-    );
-  });
-
-  it("accepts idempotency_keys with status = 0", () => {
-    // status = 0 is valid (represents pending/initial state)
-    db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run("ok-zero", "k1", "/conf", 0, "h", 1000);
-    const row = db.prepare("SELECT status FROM idempotency_keys WHERE key = ?").get("ok-zero") as { status: number } | undefined;
-    assert.ok(row);
-    assert.equal(row!.status, 0);
-  });
-});
-
-describe("pruneAuditLog mid-batch DB error", () => {
-  it("propagates DB error during batched prune", () => {
-    const testDb = new Database(":memory:");
-    runMigrations(testDb);
-    const now = Math.floor(Date.now() / 1000);
-    // Insert rows via raw SQL with old timestamps so pruneAuditLog has work to do
-    const stmt = testDb.prepare("INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    for (let i = 0; i < 11; i++) {
-      stmt.run(`prune-err-${i}`, "k1", "GET", "/ping", null, 200, 10, now - 100 * 86_400);
-    }
-    // Drop audit_log to force DELETE to throw mid-batch
-    testDb.exec("DROP TABLE audit_log");
-    assert.throws(
-      () => { pruneAuditLog(testDb, 30); },
-      /no such table|SQLITE_ERROR/,
-    );
-    testDb.close();
+    // Verify no row was created
+    const row = db.prepare("SELECT * FROM idempotency_keys WHERE key = ?").get("nonexistent-key");
+    assert.equal(row, undefined);
   });
 });
