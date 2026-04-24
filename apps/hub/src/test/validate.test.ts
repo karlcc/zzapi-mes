@@ -100,6 +100,36 @@ describe("validateParam", () => {
     assert.equal(res.status, 200);
   });
 
+  it("accepts SAP work-center IDs containing hyphens and underscores", async () => {
+    // SAP work-center (ARBPL) and similar identifiers can contain '-' and '_'
+    // alongside alphanumerics. Reject regex must not block these valid IDs.
+    const sub = new Hono();
+    sub.get("/w/:arbpl", (c) => {
+      const err = validateParam(c, "arbpl", c.req.param("arbpl"), 8);
+      if (err) return err;
+      return c.json({ ok: true });
+    });
+    for (const id of ["TURN-1", "WC_01", "A-B_C"]) {
+      const res = await sub.fetch(new Request(`http://localhost/w/${id}`));
+      assert.equal(res.status, 200, `expected 200 for '${id}', got ${res.status}`);
+    }
+  });
+
+  it("still rejects disallowed punctuation (dot, slash, quote, semicolon)", async () => {
+    const sub = new Hono();
+    sub.get("/w/:arbpl", (c) => {
+      const err = validateParam(c, "arbpl", c.req.param("arbpl"), 8);
+      if (err) return err;
+      return c.json({ ok: true });
+    });
+    for (const id of ["TURN.1", "a;b", "a'b"]) {
+      const res = await sub.fetch(new Request(`http://localhost/w/${encodeURIComponent(id)}`));
+      assert.equal(res.status, 400, `expected 400 for '${id}'`);
+      const body = await res.json() as Record<string, unknown>;
+      assert.ok(String(body.error).includes("invalid characters"));
+    }
+  });
+
   it("accepts alphanumeric-only path param with leading zeros", async () => {
     // Use a value within the test app's maxLength (10)
     const sub = new Hono();

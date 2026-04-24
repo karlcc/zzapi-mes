@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 
-/** SAP identifiers are alphanumeric (plus leading zeros). Reject anything else early. */
-const SAP_ID_RE = /^[A-Za-z0-9]+$/;
+/** SAP identifiers are alphanumeric, hyphens, and underscores (work-center IDs like TURN-1, WC_01). Reject anything else early. */
+const SAP_ID_RE = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Validate a path or query parameter: non-empty, alphanumeric, within maxLength.
@@ -22,7 +22,7 @@ export function validateParam(
     return c.json({ error: `${label} '${name}' exceeds maximum length of ${maxLength}` }, 400);
   }
   if (!SAP_ID_RE.test(value)) {
-    return c.json({ error: `${label} '${name}' contains invalid characters (alphanumeric only)` }, 400);
+    return c.json({ error: `${label} '${name}' contains invalid characters (alphanumeric, hyphen, underscore only)` }, 400);
   }
   return null;
 }

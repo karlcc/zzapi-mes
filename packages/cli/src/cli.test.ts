@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { createServer, type Server } from "node:http";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const CLI = join(__dirname, "..", "dist", "cli.js");
 
@@ -362,6 +364,42 @@ describe("CLI", () => {
       );
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("401") || stderr.includes("Invalid"));
+    });
+  });
+
+  describe(".zzapirc BOM handling", () => {
+    // UTF-8 BOM (\uFEFF) at the start of a JSON file makes JSON.parse throw,
+    // which readRc() silently swallows — causing rc values to be ignored.
+    // Fix: strip BOM before parsing so BOM'd files (often from Notepad on
+    // Windows) are still honored.
+    let tmpHome: string;
+    beforeEach(() => {
+      tmpHome = mkdtempSync(join(tmpdir(), "zzapirc-bom-"));
+    });
+    afterEach(async () => {
+      if (mockServer) await stopMockHub();
+      rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    it("parses .zzapirc written with a UTF-8 BOM", async () => {
+      await startMockHub((url) => {
+        if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
+        return { status: 200, body: { ok: true, sap_time: "20260424143000" } };
+      });
+      const rcJson = JSON.stringify({
+        HUB_URL: `http://localhost:${mockPort}`,
+        HUB_API_KEY: "test.key",
+      });
+      // Prepend UTF-8 BOM
+      writeFileSync(join(tmpHome, ".zzapirc"), "\uFEFF" + rcJson, "utf8");
+      const { stdout, stderr, code } = await run(
+        ["--mode", "hub", "ping"],
+        { HOME: tmpHome, USERPROFILE: tmpHome, HUB_URL: "", HUB_API_KEY: "" },
+      );
+      assert.ok(!stderr.includes("Set HUB_URL"), `rc was ignored: ${stderr}`);
+      assert.equal(code, 0, `expected success, got ${code} stderr=${stderr}`);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.ok, true);
     });
   });
 
