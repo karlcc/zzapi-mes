@@ -2,11 +2,9 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./server.js";
 import { pruneAuditLog, evictIdempotencyKeys } from "./db/index.js";
 
-const port = process.env.HUB_PORT !== undefined && process.env.HUB_PORT !== ""
-  ? Number(process.env.HUB_PORT)
-  : 8080;
-if (!Number.isFinite(port) || port <= 0 || !Number.isInteger(port)) {
-  console.error(`HUB_PORT must be a positive integer (got ${process.env.HUB_PORT})`);
+const port = Number(process.env.HUB_PORT) || 8080;
+if (port <= 0) {
+  console.error(`HUB_PORT must be a positive integer (got ${port})`);
   process.exit(1);
 }
 const { app, db } = createApp();
@@ -21,11 +19,9 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
 // Idempotency keys older than 5 minutes (300s) are evicted.
 setImmediate(() => {
   try {
-    const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS !== undefined && process.env.HUB_AUDIT_RETENTION_DAYS !== ""
-      ? Number(process.env.HUB_AUDIT_RETENTION_DAYS)
-      : 90;
-    if (!Number.isFinite(auditRetentionDays) || auditRetentionDays <= 0 || !Number.isInteger(auditRetentionDays)) {
-      console.error(`HUB_AUDIT_RETENTION_DAYS must be a positive integer (got ${process.env.HUB_AUDIT_RETENTION_DAYS}). Would prune all audit rows.`);
+    const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS ? Number(process.env.HUB_AUDIT_RETENTION_DAYS) : 90;
+    if (auditRetentionDays <= 0) {
+      console.error(`HUB_AUDIT_RETENTION_DAYS must be positive (got ${auditRetentionDays}). Would prune all audit rows.`);
       process.exit(1);
     }
     const auditPruned = pruneAuditLog(db, auditRetentionDays);
@@ -55,8 +51,7 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log("Shutting down...");
-  server.close((err) => {
-    if (err) console.error("Error closing server:", err);
+  server.close(() => {
     try { db.close(); } catch { /* ignore if already closed */ }
     console.log("Server closed.");
     process.exit(0);

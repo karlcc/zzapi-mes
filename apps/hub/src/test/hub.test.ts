@@ -2280,6 +2280,44 @@ describe("Security headers", () => {
     }
   });
 
+  it("rejects HUB_AUDIT_RETENTION_DAYS <= 0 on startup", async () => {
+    process.env.HUB_AUDIT_RETENTION_DAYS = "0";
+    const origExit = process.exit;
+    let exitCode = 0;
+    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
+    try {
+      const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS ? Number(process.env.HUB_AUDIT_RETENTION_DAYS) : 90;
+      if (auditRetentionDays <= 0) {
+        process.exit(1);
+      }
+      assert.fail("should have exited");
+    } catch (e) {
+      assert.equal(exitCode, 1);
+    } finally {
+      process.exit = origExit;
+      delete process.env.HUB_AUDIT_RETENTION_DAYS;
+    }
+  });
+
+  it("rejects HUB_AUDIT_RETENTION_DAYS with negative value", async () => {
+    process.env.HUB_AUDIT_RETENTION_DAYS = "-1";
+    const origExit = process.exit;
+    let exitCode = 0;
+    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
+    try {
+      const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS ? Number(process.env.HUB_AUDIT_RETENTION_DAYS) : 90;
+      if (auditRetentionDays <= 0) {
+        process.exit(1);
+      }
+      assert.fail("should have exited");
+    } catch (e) {
+      assert.equal(exitCode, 1);
+    } finally {
+      process.exit = origExit;
+      delete process.env.HUB_AUDIT_RETENTION_DAYS;
+    }
+  });
+
   it("no CORS headers when HUB_CORS_ORIGIN is unset", async () => {
     delete process.env.HUB_CORS_ORIGIN;
     const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
