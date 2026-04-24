@@ -90,7 +90,7 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
           sap_duration_ms: Math.round(durationMs),
         });
         if (idempotencyKey) {
-          updateIdempotencyStatus(db, idempotencyKey, clientStatus);
+          updateIdempotencyStatus(db, idempotencyKey, keyId, clientStatus);
         }
       });
       finalizeWrite();

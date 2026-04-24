@@ -2912,11 +2912,14 @@ describe("Audit log retention", () => {
 
 describe("Idempotency concurrent-insert race", () => {
   it("UNIQUE constraint catch on concurrent insert reads back status=0 → 409", async () => {
-    // Pre-insert a pending record (status=0) with the correct body hash
+    // Pre-insert a pending record (status=0) with the correct canonical body hash
     // so the hash comparison passes and we reach the status===0 branch.
     const body = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    // Compute canonical hash the same way the middleware does: parse, sort keys, re-stringify
+    const parsed = JSON.parse(body);
+    const canonical = JSON.stringify(parsed, Object.keys(parsed).sort());
     const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(body));
+    const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(canonical));
     const bodyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 
     db.prepare(

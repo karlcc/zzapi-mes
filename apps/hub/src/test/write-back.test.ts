@@ -104,8 +104,7 @@ describe("withWriteBack crash-before-audit: pending idempotency blocks retry", (
     assert.ok(result2, "duplicate should return existing record");
     assert.equal(result2!.status, 0, "pending status should be 0");
 
-    // After a successful completion, status is updated
-    updateIdempotencyStatus(db, "crash-key-001", 201);
+    updateIdempotencyStatus(db, "crash-key-001", "k1", 201);
     const result3 = checkIdempotency(db, "crash-key-001", "k1", "/confirmation", 0, EMPTY_BODY_HASH);
     assert.ok(result3, "should return record after status update");
     assert.equal(result3!.status, 201, "status should be updated to 201");
@@ -113,15 +112,16 @@ describe("withWriteBack crash-before-audit: pending idempotency blocks retry", (
     db.close();
   });
 
-  it("different key_id for same key returns existing record (crash from different client)", () => {
+  it("different key_id for same key does NOT collide — each key_id has its own namespace", () => {
     const db = new Database(":memory:");
     runMigrations(db);
     const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     checkIdempotency(db, "shared-crash-key", "k1", "/confirmation", 0, EMPTY_BODY_HASH);
     const result = checkIdempotency(db, "shared-crash-key", "k2", "/confirmation", 0, EMPTY_BODY_HASH);
-    assert.ok(result, "should return existing record regardless of key_id");
-    assert.equal(result!.status, 0, "pending status preserved");
+    // Different API key (key_id) using the same Idempotency-Key header
+    // should NOT see k1's record — idempotency is scoped per key_id
+    assert.equal(result, null, "different key_id should not see k1's idempotency record");
 
     db.close();
   });

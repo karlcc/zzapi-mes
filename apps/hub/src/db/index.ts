@@ -46,12 +46,13 @@ export function runMigrations(db: Database.Database): void {
     );
 
     CREATE TABLE IF NOT EXISTS idempotency_keys (
-      key        TEXT PRIMARY KEY,
+      key        TEXT NOT NULL,
       key_id     TEXT NOT NULL,
       path       TEXT NOT NULL,
       status     INTEGER NOT NULL CHECK (status >= 0),
       body_hash  TEXT NOT NULL CHECK (body_hash <> ''),
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (key, key_id)
     );
 
     CREATE TABLE IF NOT EXISTS audit_log (
@@ -133,6 +134,29 @@ export function runMigrations(db: Database.Database): void {
   if (v < 7) {
     migrate(7, `SELECT 1`);
   }
+
+  // v8: idempotency_keys PK changed from (key) to (key, key_id) so that
+  // different API keys can use the same Idempotency-Key without collision.
+  // SQLite does not support ALTER TABLE DROP PK / ADD PK, so we recreate.
+  if (v < 8) {
+    migrate(8, `
+      ALTER TABLE idempotency_keys RENAME TO _idempotency_keys_v7;
+      CREATE TABLE idempotency_keys (
+        key        TEXT NOT NULL,
+        key_id     TEXT NOT NULL,
+        path       TEXT NOT NULL,
+        status     INTEGER NOT NULL CHECK (status >= 0),
+        body_hash  TEXT NOT NULL CHECK (body_hash <> ''),
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (key, key_id)
+      );
+      INSERT OR IGNORE INTO idempotency_keys (key, key_id, path, status, body_hash, created_at)
+        SELECT key, key_id, path, status, body_hash, created_at FROM _idempotency_keys_v7;
+      DROP TABLE _idempotency_keys_v7;
+      CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at);
+      CREATE INDEX IF NOT EXISTS idx_idempotency_key_id ON idempotency_keys(key_id);
+    `);
+  }
 }
 
 const FIND_BY_ID = `
@@ -199,7 +223,7 @@ const IDEMP_INSERT = `
   VALUES (?, ?, ?, ?, ?, ?)`;
 
 const IDEMP_FIND = `
-  SELECT key, status, body_hash FROM idempotency_keys WHERE key = ?`;
+  SELECT key, status, body_hash FROM idempotency_keys WHERE key = ? AND key_id = ?`;
 
 const IDEMP_EVICT = `
   DELETE FROM idempotency_keys WHERE created_at < ?`;
@@ -219,7 +243,7 @@ export function checkIdempotency(
   status: number,
   bodyHash: string,
 ): IdempotencyRecord | null {
-  const existing = db.prepare(IDEMP_FIND).get(key) as IdempotencyRecord | undefined;
+  const existing = db.prepare(IDEMP_FIND).get(key, keyId) as IdempotencyRecord | undefined;
   if (existing) return existing;
 
   try {
@@ -228,18 +252,18 @@ export function checkIdempotency(
   } catch (err: unknown) {
     // Race: another request inserted the same key — read it back
     if (err instanceof Error && err.message.includes("UNIQUE constraint")) {
-      return db.prepare(IDEMP_FIND).get(key) as IdempotencyRecord | null;
+      return db.prepare(IDEMP_FIND).get(key, keyId) as IdempotencyRecord | null;
     }
     throw err;
   }
 }
 
 const IDEMP_UPDATE_STATUS = `
-  UPDATE idempotency_keys SET status = ? WHERE key = ?`;
+  UPDATE idempotency_keys SET status = ? WHERE key = ? AND key_id = ?`;
 
 /** Update the stored status after the handler completes. */
-export function updateIdempotencyStatus(db: Database.Database, key: string, status: number): void {
-  db.prepare(IDEMP_UPDATE_STATUS).run(status, key);
+export function updateIdempotencyStatus(db: Database.Database, key: string, keyId: string, status: number): void {
+  db.prepare(IDEMP_UPDATE_STATUS).run(status, key, keyId);
 }
 
 /** Evict idempotency keys older than the given age in seconds. */

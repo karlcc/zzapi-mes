@@ -103,18 +103,24 @@ describe("DB layer — idempotency_keys", () => {
     assert.equal(result, null);
   });
 
-  it("checkIdempotency returns existing record on duplicate", () => {
+  it("checkIdempotency returns existing record on duplicate (same key_id)", () => {
     checkIdempotency(db, "key-1", "kid1", "/conf", 201, "hash1");
-    const result = checkIdempotency(db, "key-1", "kid2", "/conf", 201, "hash1");
+    const result = checkIdempotency(db, "key-1", "kid1", "/conf", 201, "hash1");
     assert.ok(result);
     assert.equal(result!.key, "key-1");
     assert.equal(result!.status, 201);
     assert.equal(result!.body_hash, "hash1");
   });
 
+  it("checkIdempotency does NOT return record for different key_id (scoped namespace)", () => {
+    checkIdempotency(db, "key-1", "kid1", "/conf", 201, "hash1");
+    const result = checkIdempotency(db, "key-1", "kid2", "/conf", 201, "hash1");
+    assert.equal(result, null, "different key_id should not see kid1's record");
+  });
+
   it("updateIdempotencyStatus changes stored status", () => {
     checkIdempotency(db, "key-2", "kid1", "/gr", 201, "hash2");
-    updateIdempotencyStatus(db, "key-2", 500);
+    updateIdempotencyStatus(db, "key-2", "kid1", 500);
     const result = checkIdempotency(db, "key-2", "kid1", "/gr", 201, "hash2");
     assert.ok(result);
     assert.equal(result!.status, 500);
@@ -237,6 +243,8 @@ describe("DB layer — migrations", () => {
   it("v1 creates expected indexes (v6 drops the redundant created_at one)", () => {
     const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'").all() as { name: string }[];
     const names = indexes.map(i => i.name);
+    // idx_idempotency_created_at: created by v1, dropped by v8 table recreate,
+    // then re-created by v8 migration. So it should still exist.
     assert.ok(names.includes("idx_idempotency_created_at"));
     assert.ok(names.includes("idx_audit_log_key_id"));
     // idx_audit_log_created_at was created by v1 but dropped by v6 (redundant
@@ -257,6 +265,12 @@ describe("DB layer — migrations", () => {
     const names = indexes.map(i => i.name);
     assert.ok(names.includes("idx_audit_log_created_at_retention"), "v5 retention index");
     assert.ok(!names.includes("idx_audit_log_created_at"), "v6 dropped redundant index");
+  });
+
+  it("v8 migrates idempotency_keys PK from (key) to (key, key_id)", () => {
+    const tableInfo = db.prepare("PRAGMA table_info(idempotency_keys)").all() as { name: string; pk: number }[];
+    const pkCols = tableInfo.filter(c => c.pk > 0).map(c => c.name);
+    assert.deepStrictEqual(pkCols, ["key", "key_id"], "composite PK should be (key, key_id)");
   });
 });
 
