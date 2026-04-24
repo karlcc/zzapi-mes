@@ -1188,6 +1188,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: SAP rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed (from SAP)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
           content:
@@ -1237,6 +1248,17 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: SAP business rule rejection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: SAP rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed (from SAP)
           content:
             application/json:
               schema:
@@ -1296,6 +1318,17 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: SAP business rule rejection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: SAP rate limit exceeded
+          headers:
+            retry-after:
+              schema:
+                type: integer
+              description: Seconds until next request is allowed (from SAP)
           content:
             application/json:
               schema:
@@ -1667,7 +1700,7 @@ components:
           example: "PO not found"
         original_status:
           type: integer
-          description: Original HTTP status from a prior idempotency-checked request (present on 409 duplicate responses only)
+          description: Original HTTP status from a prior idempotency-checked request (present on 409 duplicate responses only, omitted otherwise)
           example: 201
 
     TokenResponse:
