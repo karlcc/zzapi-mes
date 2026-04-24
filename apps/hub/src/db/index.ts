@@ -33,7 +33,7 @@ export function runMigrations(db: Database.Database): void {
       hash                TEXT NOT NULL,
       label               TEXT,
       scopes              TEXT NOT NULL,
-      rate_limit_per_min  INTEGER,
+      rate_limit_per_min  INTEGER CHECK (rate_limit_per_min IS NULL OR rate_limit_per_min > 0),
       created_at          INTEGER NOT NULL,
       revoked_at          INTEGER
     );
@@ -42,7 +42,7 @@ export function runMigrations(db: Database.Database): void {
       key        TEXT PRIMARY KEY,
       key_id     TEXT NOT NULL,
       path       TEXT NOT NULL,
-      status     INTEGER NOT NULL,
+      status     INTEGER NOT NULL CHECK (status >= 0),
       body_hash  TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
@@ -110,6 +110,14 @@ export function runMigrations(db: Database.Database): void {
     migrate(6, `
       DROP INDEX IF EXISTS idx_audit_log_created_at;
     `);
+  }
+
+  // v7: CHECK constraints added to CREATE TABLE for new databases.
+  // SQLite does not support ALTER TABLE ADD CHECK, so existing databases
+  // rely on application-level validation (admin CLI enforces positive
+  // rate_limit_per_min; idempotency status is set by code).
+  if (v < 7) {
+    migrate(7, `SELECT 1`);
   }
 }
 

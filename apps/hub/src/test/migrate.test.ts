@@ -1,6 +1,10 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
+import { spawn } from "node:child_process";
+import { join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { openDb, runMigrations } from "../db/index.js";
 
 describe("migrate.ts — CLI entry point", () => {
@@ -20,7 +24,7 @@ describe("migrate.ts — CLI entry point", () => {
     }
   });
 
-  it("runMigrations on fresh DB creates all tables and reaches v6", () => {
+  it("runMigrations on fresh DB creates all tables and reaches v7", () => {
     const db = new Database(":memory:");
     try {
       runMigrations(db);
@@ -32,7 +36,7 @@ describe("migrate.ts — CLI entry point", () => {
       assert.ok(names.includes("audit_log"));
 
       const row = db.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number | null };
-      assert.equal(row?.v, 6, "should reach migration v6");
+      assert.equal(row?.v, 7, "should reach migration v7");
     } finally {
       db.close();
     }
@@ -103,7 +107,7 @@ describe("migrate.ts — CLI entry point", () => {
       runMigrations(db);
 
       const after = (db.prepare("SELECT COUNT(*) AS cnt FROM _migrations").get() as { cnt: number }).cnt;
-      assert.equal(after, 6, "should add v4, v5, v6 but not re-add v1–v3");
+      assert.equal(after, 7, "should add v4, v5, v6, v7 but not re-add v1–v3");
 
       // v6 should have dropped idx_audit_log_created_at (the redundant v1 index)
       const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_audit_log_created_at'").get();
@@ -111,5 +115,21 @@ describe("migrate.ts — CLI entry point", () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe("migrate.ts — script error paths", () => {
+  const ENTRY = join(__dirname, "..", "scripts", "migrate.js");
+
+  it("exits 1 when DB path is unwritable", async () => {
+    const proc = spawn("node", [ENTRY], {
+      env: { ...process.env, HUB_DB_PATH: "/nonexistent/dir/hub.db" },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const code = await new Promise<number>((resolve) => {
+      const timer = setTimeout(() => { proc.kill("SIGKILL"); resolve(-1); }, 10_000);
+      proc.on("close", (c) => { clearTimeout(timer); resolve(c ?? 1); });
+    });
+    assert.notEqual(code, 0, "should exit non-zero for unwritable DB path");
   });
 });

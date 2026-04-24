@@ -277,6 +277,81 @@ describe("DB layer — migrations", () => {
   });
 });
 
+describe("DB layer — v7 CHECK constraints", () => {
+  it("rejects api_keys with rate_limit_per_min = 0", () => {
+    assert.throws(
+      () => insertKey(db, {
+        id: "bad-zero",
+        hash: "h",
+        label: "x",
+        scopes: "ping",
+        rate_limit_per_min: 0,
+        created_at: 1000,
+      }),
+      /CHECK constraint/i,
+    );
+  });
+
+  it("rejects api_keys with negative rate_limit_per_min", () => {
+    assert.throws(
+      () => insertKey(db, {
+        id: "bad-neg",
+        hash: "h",
+        label: "x",
+        scopes: "ping",
+        rate_limit_per_min: -5,
+        created_at: 1000,
+      }),
+      /CHECK constraint/i,
+    );
+  });
+
+  it("accepts api_keys with null rate_limit_per_min", () => {
+    insertKey(db, {
+      id: "ok-null",
+      hash: "h",
+      label: "x",
+      scopes: "ping",
+      rate_limit_per_min: null,
+      created_at: 1000,
+    });
+    const row = findById(db, "ok-null");
+    assert.ok(row);
+    assert.equal(row!.rate_limit_per_min, null);
+  });
+
+  it("accepts api_keys with positive rate_limit_per_min", () => {
+    insertKey(db, {
+      id: "ok-pos",
+      hash: "h",
+      label: "x",
+      scopes: "ping",
+      rate_limit_per_min: 10,
+      created_at: 1000,
+    });
+    const row = findById(db, "ok-pos");
+    assert.ok(row);
+    assert.equal(row!.rate_limit_per_min, 10);
+  });
+
+  it("rejects idempotency_keys with negative status", () => {
+    assert.throws(
+      () => db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .run("bad-status", "k1", "/conf", -1, "h", 1000),
+      /CHECK constraint/i,
+    );
+  });
+
+  it("accepts idempotency_keys with status = 0", () => {
+    // status = 0 is valid (represents pending/initial state)
+    db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("ok-zero", "k1", "/conf", 0, "h", 1000);
+    const row = db.prepare("SELECT status FROM idempotency_keys WHERE key = ?").get("ok-zero") as { status: number } | undefined;
+    assert.ok(row);
+    assert.equal(row!.status, 0);
+  });
+});
+
 describe("pruneAuditLog mid-batch DB error", () => {
   it("propagates DB error during batched prune", () => {
     const testDb = new Database(":memory:");

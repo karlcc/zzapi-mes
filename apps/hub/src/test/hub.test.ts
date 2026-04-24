@@ -2768,6 +2768,26 @@ describe("GET route SAP 429 Retry-After on non-ping routes", () => {
   });
 });
 
+describe("GET route SAP 5xx error sanitization", () => {
+  it("sanitizes SAP 500 to generic message on /ping", async () => {
+    mockPingError = new ZzapiMesHttpError(500, "Internal SAP short dump in table T001");
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error", "5xx message should be sanitized");
+  });
+
+  it("sanitizes SAP 500 to generic message on /po/:ebeln", async () => {
+    mockPoError = new ZzapiMesHttpError(500, "SAP ABAP dump: LOAD_PROGRAM_NOT_FOUND");
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/po/4500000001", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+  });
+});
+
 describe("POST route SAP timeout handling", () => {
   async function writeBack(token: string, path: string, body: Record<string, unknown>, idemKey: string) {
     return fetchApi(path, {
