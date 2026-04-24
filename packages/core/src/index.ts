@@ -121,6 +121,19 @@ export class ZzapiMesHttpError extends Error {
     this.retryAfter = retryAfter;
     this.originalStatus = originalStatus;
   }
+
+  /** JSON serialization — Error properties are non-enumerable by default,
+   *  so JSON.stringify(err) produces {}. Include status/retryAfter so
+   *  log shippers and CLI error output get useful structured data. */
+  toJSON(): { name: string; status: number; message: string; retryAfter?: number; originalStatus?: number } {
+    return {
+      name: this.name,
+      status: this.status,
+      message: this.message,
+      ...(this.retryAfter !== undefined && { retryAfter: this.retryAfter }),
+      ...(this.originalStatus !== undefined && { originalStatus: this.originalStatus }),
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -186,17 +199,25 @@ export async function readResponseBody(res: Response, maxBytes: number = SAP_RES
 
 /** Prepends http:// if the host string has no scheme. */
 export function ensureProtocol(host: string): string {
-  if (/^https?:\/\//i.test(host)) return host;
+  if (!host || !host.trim()) {
+    throw new Error("Host must be a non-empty string");
+  }
+  const trimmed = host.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
   // Reject non-HTTP schemes outright (ftp://, javascript:, data:, etc.)
   // The scheme portion per RFC 3986 is [a-z][a-z0-9+.-]* — but dots and
   // hyphens in the scheme part are rare (e.g. "vnd.api+json") and we never
   // use them. Restrict to [a-z][a-z0-9+]* to avoid false-positive matches
   // on hostnames like "sapdev.test:8000" where "sapdev.test:" looks like a
   // scheme:sep pair to the naive regex.
-  if (/^[a-z][a-z0-9+]*:\/\//i.test(host) || /^[a-z][a-z0-9+]*:(?!\/\/)/i.test(host)) {
+  // Reject protocol-relative URLs (//host) — they produce malformed http:////host
+  if (/^\/\//.test(trimmed)) {
+    throw new Error(`Protocol-relative URL "${host}" is not supported — use http:// or https://`);
+  }
+  if (/^[a-z][a-z0-9+]*:\/\//i.test(trimmed) || /^[a-z][a-z0-9+]*:(?!\/\/)/i.test(trimmed)) {
     throw new Error(`Unsupported URL scheme in "${host}" — only http and https are allowed`);
   }
-  return `http://${host}`;
+  return `http://${trimmed}`;
 }
 
 /** Parse a Retry-After header value (seconds) into a number, or undefined. */

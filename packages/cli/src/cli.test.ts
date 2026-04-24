@@ -833,5 +833,59 @@ describe("CLI", () => {
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("--menge") && stderr.includes("number"), `stderr should mention --menge: ${stderr}`);
     });
+
+    it("rejects non-numeric --work-actual value", async () => {
+      const { stderr, code } = await run(["--mode", "direct", "confirm", "1000000", "--yield", "50", "--work-actual", "NaN"], {
+        SAP_HOST: "sap.test:8000",
+        SAP_CLIENT: "200",
+        SAP_USER: "test",
+        SAP_PASS: "test",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--work-actual"), `stderr should mention --work-actual: ${stderr}`);
+    });
+
+    it("rejects negative --work-actual value", async () => {
+      const { stderr, code } = await run(["--mode", "direct", "confirm", "1000000", "--yield", "50", "--work-actual", "-5"], {
+        SAP_HOST: "sap.test:8000",
+        SAP_CLIENT: "200",
+        SAP_USER: "test",
+        SAP_PASS: "test",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--work-actual"), `stderr should mention --work-actual: ${stderr}`);
+    });
+  });
+
+  describe("--mode flag edge cases", () => {
+    it("rejects duplicate --mode flags", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "--mode=direct", "ping"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("Duplicate --mode"));
+    });
+
+    it("rejects --mode without value", async () => {
+      const { stderr, code } = await run(["--mode"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--mode") && stderr.includes("value"));
+    });
+  });
+
+  describe("whitespace-only credential rejection", () => {
+    it("rejects whitespace-only SAP_USER", async () => {
+      const { stderr, code } = await run(["ping"], {
+        SAP_USER: "   ", SAP_PASS: "p",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("SAP_USER") || stderr.includes("SAP_PASS"));
+    });
+
+    it("rejects whitespace-only SAP_PASS", async () => {
+      const { stderr, code } = await run(["ping"], {
+        SAP_USER: "u", SAP_PASS: "   ",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("SAP_USER") || stderr.includes("SAP_PASS"));
+    });
   });
 });
