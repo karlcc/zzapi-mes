@@ -19,7 +19,13 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
 // not blocked by potentially slow DELETE scans on large audit tables.
 // HUB_AUDIT_RETENTION_DAYS (default 90) controls audit pruning.
 // Idempotency keys older than 5 minutes (300s) are evicted.
+// Guard: if SIGTERM arrives during setImmediate maintenance, the DB close
+// in shutdown() races with the in-flight pruneAuditLog/evictIdempotencyKeys.
+// Set maintenanceInProgress so shutdown() waits for completion before closing DB.
+let maintenanceInProgress = false;
+
 setImmediate(() => {
+  maintenanceInProgress = true;
   try {
     const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS !== undefined && process.env.HUB_AUDIT_RETENTION_DAYS !== ""
       ? Number(process.env.HUB_AUDIT_RETENTION_DAYS)
@@ -33,6 +39,8 @@ setImmediate(() => {
     console.log(`Startup maintenance: pruned ${auditPruned} audit rows (>${auditRetentionDays}d), evicted ${idemEvicted} idempotency keys (>300s)`);
   } catch (err) {
     console.error("Startup maintenance failed:", err);
+  } finally {
+    maintenanceInProgress = false;
   }
 });
 
@@ -55,10 +63,27 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log("Shutting down...");
-  server.close(() => {
+  // If startup maintenance is in progress, defer DB close until it finishes
+  // to avoid WAL corruption from a mid-write DB.close().
+  const closeDb = () => {
     try { db.close(); } catch { /* ignore if already closed */ }
     console.log("Server closed.");
     process.exit(0);
+  };
+  server.close(() => {
+    if (maintenanceInProgress) {
+      // Poll briefly — maintenance is fast (single DELETE statement)
+      const check = setInterval(() => {
+        if (!maintenanceInProgress) {
+          clearInterval(check);
+          closeDb();
+        }
+      }, 50);
+      // Safety: don't wait longer than 5s for maintenance
+      setTimeout(() => { clearInterval(check); closeDb(); }, 5_000).unref();
+    } else {
+      closeDb();
+    }
   });
   setTimeout(() => process.exit(1), 10_000).unref();
 }

@@ -311,6 +311,17 @@ describe("ensureProtocol", () => {
   it("keeps existing https://", () => {
     assert.equal(ensureProtocol("https://sapprd.test:443"), "https://sapprd.test:443");
   });
+
+  it("rejects URL with query string — not a bare host", () => {
+    // ensureProtocol is meant for host-only input. A query string would
+    // cause path interpolation in HubClient/SapClient to produce a
+    // malformed URL like "http://host?x=1/ping".
+    assert.throws(() => ensureProtocol("hub.example.com?foo=bar"), /query string/);
+  });
+
+  it("rejects URL with hash fragment", () => {
+    assert.throws(() => ensureProtocol("hub.example.com#section"), /fragment/);
+  });
 });
 
 describe("Zod schemas", () => {
