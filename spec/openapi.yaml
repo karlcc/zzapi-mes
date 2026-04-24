@@ -173,6 +173,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthzResponse"
+        "500":
+          description: Internal server error (unhandled exception)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -953,6 +959,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error (unhandled exception)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -1115,6 +1127,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "504":
           description: SAP request timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error (unhandled exception)
           content:
             application/json:
               schema:
