@@ -16,8 +16,10 @@ export const securityHeaders: MiddlewareHandler = async (c, next) => {
   if (process.env.HUB_HSTS === "1") {
     c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
   }
-  // Cache-Control: no-store on /auth/token to prevent token caching
-  if (c.req.path === "/auth/token") {
+  // Cache-Control: no-store on all authenticated routes to prevent
+  // intermediary caching of sensitive data (tokens, SAP business data).
+  // Unauthenticated routes (/healthz, /metrics) don't need this.
+  if (c.req.path === "/auth/token" || c.get("jwtPayload")) {
     c.header("Cache-Control", "no-store");
   }
 };
