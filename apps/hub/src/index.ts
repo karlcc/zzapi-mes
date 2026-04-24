@@ -5,7 +5,7 @@ import { pruneAuditLog, evictIdempotencyKeys } from "./db/index.js";
 const port = process.env.HUB_PORT !== undefined && process.env.HUB_PORT !== ""
   ? Number(process.env.HUB_PORT)
   : 8080;
-if (!Number.isFinite(port) || port <= 0) {
+if (!Number.isFinite(port) || port <= 0 || !Number.isInteger(port)) {
   console.error(`HUB_PORT must be a positive integer (got ${process.env.HUB_PORT})`);
   process.exit(1);
 }
@@ -24,7 +24,7 @@ setImmediate(() => {
     const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS !== undefined && process.env.HUB_AUDIT_RETENTION_DAYS !== ""
       ? Number(process.env.HUB_AUDIT_RETENTION_DAYS)
       : 90;
-    if (!Number.isFinite(auditRetentionDays) || auditRetentionDays <= 0) {
+    if (!Number.isFinite(auditRetentionDays) || auditRetentionDays <= 0 || !Number.isInteger(auditRetentionDays)) {
       console.error(`HUB_AUDIT_RETENTION_DAYS must be a positive integer (got ${process.env.HUB_AUDIT_RETENTION_DAYS}). Would prune all audit rows.`);
       process.exit(1);
     }

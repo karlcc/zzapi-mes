@@ -8,8 +8,8 @@
 # Env overrides: HUB_DB, HUB_BACKUP_DIR, HUB_BACKUP_RETAIN_DAYS.
 set -euo pipefail
 
-DB="${HUB_DB:-/var/zzapi-mes-hub/hub.db}"
-BACKUP_DIR="${HUB_BACKUP_DIR:-/var/zzapi-mes-hub/backups}"
+DB="${HUB_DB:-/var/lib/zzapi-mes-hub/hub.db}"
+BACKUP_DIR="${HUB_BACKUP_DIR:-/var/lib/zzapi-mes-hub/backups}"
 RETAIN_DAYS="${HUB_BACKUP_RETAIN_DAYS:-30}"
 
 # Validate RETAIN_DAYS is a positive integer — non-numeric values (e.g. "abc")

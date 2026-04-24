@@ -3433,3 +3433,13 @@ describe("Hono global error handler", () => {
     assert.equal(body.error, "Internal Server Error", "original error message should be masked");
   });
 });
+
+describe("app.notFound() returns ErrorResponse schema", () => {
+  it("unmatched route returns { error } not { message }", async () => {
+    const res = await fetchApi("/nonexistent-route");
+    assert.equal(res.status, 404);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Not Found", "should return ErrorResponse schema with 'error' key");
+    assert.equal("message" in body, false, "should NOT have Hono's default 'message' key");
+  });
+});

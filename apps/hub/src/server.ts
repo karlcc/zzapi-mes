@@ -74,7 +74,7 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   const jwtTtl = process.env.HUB_JWT_TTL_SECONDS !== undefined && process.env.HUB_JWT_TTL_SECONDS !== ""
     ? Number(process.env.HUB_JWT_TTL_SECONDS)
     : 900;
-  if (!Number.isFinite(jwtTtl) || jwtTtl <= 60) {
+  if (!Number.isFinite(jwtTtl) || !Number.isInteger(jwtTtl) || jwtTtl <= 60) {
     console.error(`HUB_JWT_TTL_SECONDS must be > 60 (got ${jwtTtl}). HubClient rejects tokens with expires_in <= 60.`);
     process.exit(1);
   }
@@ -338,6 +338,10 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   app.route("/", createConfirmationRouter(client));  // POST /confirmation
   app.route("/", createGoodsReceiptRouter(client));  // POST /goods-receipt
   app.route("/", createGoodsIssueRouter(client));    // POST /goods-issue
+
+  // 404 handler — unmatched routes return ErrorResponse schema ({ error })
+  // instead of Hono's default { message: "Not Found" }
+  app.notFound((c) => c.json({ error: "Not Found" }, 404));
 
   // Global error handler — ensures unhandled exceptions return ErrorResponse
   // schema ({ error: string }) rather than Hono's default { message: string }

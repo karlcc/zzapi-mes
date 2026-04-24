@@ -33,9 +33,18 @@ describe("mapSapError all-branches unit test", () => {
     assert.equal(result.errorMsg, "SAP upstream error");
   });
 
-  it("other 4xx (e.g. 400) → clientStatus 502, message rewritten", () => {
+  it("400 → clientStatus 502, message 'SAP rejected request'", () => {
+    // SAP 400 is a client error from SAP's perspective, not ours.
+    // A specific message avoids misleading "SAP upstream error" phrasing.
     const result = mapSapError(new ZzapiMesHttpError(400, "Bad request"));
     assert.equal(result.sapStatus, 400);
+    assert.equal(result.clientStatus, 502);
+    assert.equal(result.errorMsg, "SAP rejected request");
+  });
+
+  it("other 4xx (e.g. 403) → clientStatus 502, message rewritten", () => {
+    const result = mapSapError(new ZzapiMesHttpError(403, "Forbidden"));
+    assert.equal(result.sapStatus, 403);
     assert.equal(result.clientStatus, 502);
     assert.equal(result.errorMsg, "SAP upstream error");
   });
@@ -61,5 +70,14 @@ describe("mapSapError all-branches unit test", () => {
     assert.equal(result.sapStatus, 404);
     assert.equal(result.clientStatus, 502);
     assert.equal(result.errorMsg, "SAP endpoint not found");
+  });
+
+  it("400 → clientStatus 502, message 'SAP rejected request'", () => {
+    // SAP 400 is a client error from SAP's perspective, not ours.
+    // A specific message avoids misleading "SAP upstream error" phrasing.
+    const result = mapSapError(new ZzapiMesHttpError(400, "Bad request"));
+    assert.equal(result.sapStatus, 400);
+    assert.equal(result.clientStatus, 502);
+    assert.equal(result.errorMsg, "SAP rejected request");
   });
 });
