@@ -153,6 +153,13 @@ export class HubClient {
       const retryRes = await this.fetchWithTimeout(url, {
         headers: { authorization: `Bearer ${newToken}` },
       }, "Hub request");
+      // If retry also returns 401, add hint so the caller knows a retry was
+      // attempted (otherwise looks like a single unexplained auth failure).
+      if (retryRes.status === 401) {
+        const body = await retryRes.text().catch(() => "");
+        const msg = body || retryRes.statusText;
+        throw new ZzapiMesHttpError(401, `Hub auth retried, still 401: ${msg}`);
+      }
       return this.parseResponse<T>(retryRes);
     }
 
@@ -187,6 +194,13 @@ export class HubClient {
         body: JSON.stringify(body),
       };
       const retryRes = await this.fetchWithTimeout(url, retryInit, "Hub request");
+      // If retry also returns 401, add hint so the caller knows a retry was
+      // attempted (otherwise looks like a single unexplained auth failure).
+      if (retryRes.status === 401) {
+        const retryBody = await retryRes.text().catch(() => "");
+        const msg = retryBody || retryRes.statusText;
+        throw new ZzapiMesHttpError(401, `Hub auth retried, still 401: ${msg}`);
+      }
       return this.parseResponse<Res>(retryRes);
     }
 
