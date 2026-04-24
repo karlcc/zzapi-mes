@@ -97,6 +97,10 @@ sudo ln -sf "$INSTALL_DIR/dist/admin/cli.js" /usr/local/bin/zzapi-mes-hub-admin
 sudo chmod +x "$INSTALL_DIR/dist/admin/cli.js"
 
 # --- 7. Systemd unit ---
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "Error: systemctl not found. This script requires systemd. Install via your package manager or use Docker instead." >&2
+  exit 1
+fi
 echo "Installing systemd unit..."
 sudo cp "$SCRIPT_DIR/zzapi-mes-hub.service" /etc/systemd/system/
 sudo systemctl daemon-reload
