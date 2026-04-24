@@ -826,3 +826,57 @@ describe("HubClient getToken validation", () => {
     assert.equal(capturedIdemKeys[1], "idem-post-retry");
   });
 });
+
+describe("HubClient fetchWithTimeout error wrapping", () => {
+  it("wraps timeout abort in ZzapiMesHttpError(408)", async () => {
+    globalThis.fetch = async () => { throw new DOMException("The operation was aborted", "AbortError"); };
+    const client = new HubClient({ url: BASE, apiKey: API_KEY, timeout: 1 });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 408 && e.message.includes("timeout"),
+    );
+  });
+
+  it("wraps TypeError (network failure) in ZzapiMesHttpError(502)", async () => {
+    globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 502 && e.message.includes("network error"),
+    );
+  });
+});
+
+describe("HubClient parseResponse edge cases", () => {
+  it("throws ZzapiMesHttpError on non-JSON body", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return new Response("not json", { status: 200, headers: { "content-type": "text/plain" } });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.message.includes("Non-JSON"),
+    );
+  });
+
+  it("extracts Retry-After on 429 response", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return new Response(
+        JSON.stringify({ error: "Too Many Requests" }),
+        { status: 429, headers: { "content-type": "application/json", "retry-after": "45" } },
+      );
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 429);
+        assert.equal(e.retryAfter, 45);
+        return true;
+      },
+    );
+  });
+});
