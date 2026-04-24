@@ -193,4 +193,36 @@ describe("validateParam", () => {
     const res = await sub.fetch(new Request("http://localhost/q?arbpl=TURN-1"));
     assert.equal(res.status, 200);
   });
+
+  it("normalizes NFD input to NFC before validation", async () => {
+    // NFD (decomposed) é = e + combining accent (2 codepoints)
+    // NFC (composed) é = single codepoint (1 codepoint)
+    // SAP IDs are ASCII-only, but NFC normalization ensures NFD-vs-NFC
+    // mismatch cannot bypass or reject valid identifiers.
+    const sub = new Hono();
+    sub.get("/x/:id", (c) => {
+      const err = validateParam(c, "id", c.req.param("id"), 18);
+      if (err) return err;
+      return c.json({ ok: true });
+    });
+    // NFD-encoded "cafe\u0301" — the combining accent makes it non-ASCII
+    // so it should be rejected by the alphanumeric regex regardless of NFC normalization.
+    const nfdValue = "cafe\u0301";
+    const res = await sub.fetch(new Request(`http://localhost/x/${encodeURIComponent(nfdValue)}`));
+    assert.equal(res.status, 400, "NFD non-ASCII should be rejected by alphanumeric check");
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("invalid characters"));
+  });
+
+  it("NFC normalization does not alter valid ASCII identifiers", async () => {
+    // Ensure NFC normalization doesn't accidentally break valid SAP IDs
+    const sub = new Hono();
+    sub.get("/x/:id", (c) => {
+      const err = validateParam(c, "id", c.req.param("id"), 18);
+      if (err) return err;
+      return c.json({ ok: true });
+    });
+    const res = await sub.fetch(new Request("http://localhost/x/3010000608"));
+    assert.equal(res.status, 200);
+  });
 });

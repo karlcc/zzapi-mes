@@ -295,17 +295,17 @@ export class SapClient {
 
   /** Post a production order confirmation. */
   async postConfirmation(data: ConfirmationRequest): Promise<ConfirmationResponse> {
-    return this.postRequest<ConfirmationResponse>("/sap/bc/zzapi/mes/conf", data);
+    return this.postRequest<ConfirmationResponse>("/sap/bc/zzapi/mes/conf", ConfirmationRequestSchema.parse(data));
   }
 
   /** Post a goods receipt against a purchase order. */
   async postGoodsReceipt(data: GoodsReceiptRequest): Promise<GoodsReceiptResponse> {
-    return this.postRequest<GoodsReceiptResponse>("/sap/bc/zzapi/mes/gr", data);
+    return this.postRequest<GoodsReceiptResponse>("/sap/bc/zzapi/mes/gr", GoodsReceiptRequestSchema.parse(data));
   }
 
   /** Post a goods issue for a production order. */
   async postGoodsIssue(data: GoodsIssueRequest): Promise<GoodsIssueResponse> {
-    return this.postRequest<GoodsIssueResponse>("/sap/bc/zzapi/mes/gi", data);
+    return this.postRequest<GoodsIssueResponse>("/sap/bc/zzapi/mes/gi", GoodsIssueRequestSchema.parse(data));
   }
 
   private async request<T>(opts: { path: string; params?: Record<string, string> }): Promise<T> {
