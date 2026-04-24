@@ -87,10 +87,26 @@ ssh $HOST "powershell -Command \"Remove-Item -Recurse -Force '$REMOTE_DIR' -Erro
 
 echo "=== Copying repo to $HOST ==="
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-# Use trailing slash carefully: scp -r <src>/ <dest> copies contents;
-# without trailing slash, copies the directory itself. Use the explicit
-# form to avoid ambiguity across OpenSSH versions.
-scp -r "$REPO_ROOT" "$HOST:$REMOTE_DIR"
+# Use rsync with --exclude to avoid copying .git, node_modules, and other
+# non-essential files that bloat transfer, leak git history, or may copy
+# .env with secrets. Falls back to scp if rsync unavailable.
+if command -v rsync >/dev/null 2>&1; then
+  rsync -az --delete \
+    --exclude '.git' \
+    --exclude 'node_modules' \
+    --exclude 'dist' \
+    --exclude '.env' \
+    --exclude '.env.local' \
+    --exclude '.DS_Store' \
+    --exclude '*.db' \
+    --exclude '*.db-wal' \
+    --exclude '*.db-shm' \
+    --exclude '.claude' \
+    "$REPO_ROOT/" "$HOST:$REMOTE_DIR/"
+else
+  echo "Warning: rsync not found, falling back to scp (copies .git, node_modules)" >&2
+  scp -r "$REPO_ROOT" "$HOST:$REMOTE_DIR"
+fi
 
 echo "=== Installing dependencies and building on $HOST ==="
 ssh $HOST "powershell -Command \"\$env:CI='true'; Set-Location '$REMOTE_DIR'; pnpm install 2>&1 | Select-Object -Last 3; pnpm build 2>&1 | Select-Object -Last 3\""

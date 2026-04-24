@@ -205,6 +205,33 @@ describe("POST /auth/token", () => {
     assert.equal(body.expires_in, 900);
   });
 
+  it("includes jti claim in issued JWT", async () => {
+    const res = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    // Decode JWT payload (without verification) to check jti
+    const parts = (body.token as string).split(".");
+    assert.equal(parts.length, 3, "JWT should have 3 parts");
+    const payload = JSON.parse(atob(parts[1]!));
+    assert.ok(payload.jti, "JWT should include jti claim");
+    assert.ok(typeof payload.jti === "string", "jti should be a string");
+    assert.ok(payload.jti.length >= 16, "jti should be at least 16 chars (8 bytes hex)");
+    // Second token should have different jti
+    const res2 = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    });
+    const body2 = await res2.json() as Record<string, unknown>;
+    const parts2 = (body2.token as string).split(".");
+    const payload2 = JSON.parse(atob(parts2[1]!));
+    assert.notEqual(payload.jti, payload2.jti, "each token should have unique jti");
+  });
+
   it("rejects invalid API key with 401", async () => {
     const res = await fetchApi("/auth/token", {
       method: "POST",
