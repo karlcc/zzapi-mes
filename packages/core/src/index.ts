@@ -140,10 +140,15 @@ export class ZzapiMesHttpError extends Error {
 // Utility
 // ---------------------------------------------------------------------------
 
-/** Prepends http:// if the host string has no scheme. */
+/** Prepends http:// if the host string has no scheme. Rejects query strings and fragments
+ *  since this function is for host-only input used in URL interpolation. */
 export function ensureProtocol(host: string): string {
   if (!host || !host.trim()) throw new Error("Host must be a non-empty string");
   const trimmed = host.trim();
+  // Reject query strings and fragments — they would break path interpolation
+  // (e.g. "hub?x=1" + "/ping" → "hub?x=1/ping" is malformed).
+  if (trimmed.includes("?")) throw new Error(`Host must not contain a query string — got "${host}"`);
+  if (trimmed.includes("#")) throw new Error(`Host must not contain a fragment — got "${host}"`);
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   if (/^\/\//.test(trimmed)) throw new Error(`Protocol-relative URL "${host}" is not supported — use http:// or https://`);
   if (/^[a-z][a-z0-9+]*:\/\//i.test(trimmed) || /^[a-z][a-z0-9+]*:(?!\/\/)/i.test(trimmed)) {
