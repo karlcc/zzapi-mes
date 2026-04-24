@@ -121,103 +121,16 @@ export class ZzapiMesHttpError extends Error {
     this.retryAfter = retryAfter;
     this.originalStatus = originalStatus;
   }
-
-  /** JSON serialization — Error properties are non-enumerable by default,
-   *  so JSON.stringify(err) produces {}. Include status/retryAfter so
-   *  log shippers and CLI error output get useful structured data. */
-  toJSON(): { name: string; status: number; message: string; retryAfter?: number; originalStatus?: number } {
-    return {
-      name: this.name,
-      status: this.status,
-      message: this.message,
-      ...(this.retryAfter !== undefined && { retryAfter: this.retryAfter }),
-      ...(this.originalStatus !== undefined && { originalStatus: this.originalStatus }),
-    };
-  }
 }
 
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 
-/** Maximum SAP response body size in bytes (1 MB). Prevents OOM from
- *  unbounded res.text() if SAP returns an unexpectedly large payload. */
-export const SAP_RESPONSE_MAX_BYTES = 1_048_576;
-
-/** Read a Response body with a size limit. Throws if the body exceeds maxBytes.
- *  Uses Content-Length as a fast path when available, otherwise streams and
- *  counts bytes. This avoids loading an entire oversized response into memory. */
-export async function readResponseBody(res: Response, maxBytes: number = SAP_RESPONSE_MAX_BYTES): Promise<string> {
-  const contentLength = res.headers.get("content-length");
-  if (contentLength !== null) {
-    const declared = Number(contentLength);
-    if (Number.isFinite(declared) && declared > maxBytes) {
-      throw new ZzapiMesHttpError(502, `SAP response too large (${declared} bytes, limit ${maxBytes})`);
-    }
-  }
-  // Stream the body, counting bytes to avoid loading an oversized payload
-  const reader = res.body?.getReader();
-  if (!reader) {
-    // No body stream — fall back to text() (e.g. null body on some responses)
-    const text = await res.text();
-    if (text.length > maxBytes) {
-      throw new ZzapiMesHttpError(502, `SAP response too large (${text.length} bytes, limit ${maxBytes})`);
-    }
-    return text;
-  }
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
-        reader.cancel().catch(() => {});
-        throw new ZzapiMesHttpError(502, `SAP response too large (>${maxBytes} bytes)`);
-      }
-      chunks.push(value);
-    }
-  } catch (e) {
-    if (e instanceof ZzapiMesHttpError) throw e;
-    // Reader errors — fall back to text()
-    const text = await res.text();
-    if (text.length > maxBytes) {
-      throw new ZzapiMesHttpError(502, `SAP response too large (${text.length} bytes, limit ${maxBytes})`);
-    }
-    return text;
-  }
-  // Decode collected chunks
-  const decoder = new TextDecoder();
-  let text = "";
-  for (const chunk of chunks) {
-    text += decoder.decode(chunk, { stream: true });
-  }
-  text += decoder.decode(); // flush
-  return text;
-}
-
 /** Prepends http:// if the host string has no scheme. */
 export function ensureProtocol(host: string): string {
-  if (!host || !host.trim()) {
-    throw new Error("Host must be a non-empty string");
-  }
-  const trimmed = host.trim();
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  // Reject non-HTTP schemes outright (ftp://, javascript:, data:, etc.)
-  // The scheme portion per RFC 3986 is [a-z][a-z0-9+.-]* — but dots and
-  // hyphens in the scheme part are rare (e.g. "vnd.api+json") and we never
-  // use them. Restrict to [a-z][a-z0-9+]* to avoid false-positive matches
-  // on hostnames like "sapdev.test:8000" where "sapdev.test:" looks like a
-  // scheme:sep pair to the naive regex.
-  // Reject protocol-relative URLs (//host) — they produce malformed http:////host
-  if (/^\/\//.test(trimmed)) {
-    throw new Error(`Protocol-relative URL "${host}" is not supported — use http:// or https://`);
-  }
-  if (/^[a-z][a-z0-9+]*:\/\//i.test(trimmed) || /^[a-z][a-z0-9+]*:(?!\/\/)/i.test(trimmed)) {
-    throw new Error(`Unsupported URL scheme in "${host}" — only http and https are allowed`);
-  }
-  return `http://${trimmed}`;
+  if (/^https?:\/\//.test(host)) return host;
+  return `http://${host}`;
 }
 
 /** Parse a Retry-After header value (seconds) into a number, or undefined. */
@@ -240,21 +153,9 @@ export class SapClient {
   private onResponse?: SapClientConfig["onResponse"];
 
   constructor(config: SapClientConfig) {
-    if (!config.host || !config.host.trim()) {
-      throw new Error("SapClient config.host must be a non-empty string");
-    }
-    if (!config.user || !config.user.trim() || !config.password || !config.password.trim()) {
-      throw new Error("SapClient config.user and config.password must be non-empty strings");
-    }
     this.host = ensureProtocol(config.host).replace(/\/+$/, "");
-    if (!Number.isFinite(config.client) || !Number.isInteger(config.client) || config.client <= 0) {
-      throw new Error(`SapClient config.client must be a positive integer (got ${config.client})`);
-    }
     this.client = config.client;
-    this.auth = btoa(`${config.user.trim()}:${config.password.trim()}`);
-    if (config.timeout !== undefined && (!Number.isFinite(config.timeout) || config.timeout <= 0)) {
-      throw new Error(`SapClient config.timeout must be a positive number (got ${config.timeout})`);
-    }
+    this.auth = btoa(`${config.user}:${config.password}`);
     this.timeout = config.timeout ?? 30_000;
     this.onRequest = config.onRequest;
     this.onResponse = config.onResponse;
@@ -335,7 +236,6 @@ export class SapClient {
       res = await fetch(url, {
         headers: { Authorization: `Basic ${this.auth}` },
         signal: controller.signal,
-        redirect: "manual",
       });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
@@ -351,28 +251,31 @@ export class SapClient {
 
     this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
 
-    const bodyText = await readResponseBody(res);
+    const body = await res.text();
     let json: Record<string, unknown>;
     try {
-      json = JSON.parse(bodyText);
+      json = JSON.parse(body);
     } catch {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
 
-    if (res.status >= 400 && "error" in json) {
+    if ("error" in json) {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
     }
-    if (res.status >= 400 && "errors" in json) {
+    // ABAP 422 uses "errors" (plural array) instead of "error" (singular string).
+    if ("errors" in json) {
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       const arr = json.errors;
       const errorMsg = Array.isArray(arr)
         ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
         : String(arr);
-      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
     }
+    // Safety net: any 4xx/5xx without recognized error field is still an error.
     if (res.status >= 400) {
-      throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`, retryAfter);
     }
 
     return json as T;
@@ -398,7 +301,6 @@ export class SapClient {
         },
         body: JSON.stringify(body),
         signal: controller.signal,
-        redirect: "manual",
       });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
@@ -414,7 +316,7 @@ export class SapClient {
 
     this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
 
-    const text = await readResponseBody(res);
+    const text = await res.text();
     let json: Record<string, unknown>;
     try {
       json = JSON.parse(text);
@@ -422,20 +324,21 @@ export class SapClient {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
 
-    if (res.status >= 400 && "error" in json) {
+    if ("error" in json) {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
     }
-    if (res.status >= 400 && "errors" in json) {
+    if ("errors" in json) {
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       const arr = json.errors;
       const errorMsg = Array.isArray(arr)
         ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
         : String(arr);
-      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
     }
     if (res.status >= 400) {
-      throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`);
+      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
+      throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`, retryAfter);
     }
 
     return json as T;

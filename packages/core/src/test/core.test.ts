@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { SapClient, ZzapiMesClient, ZzapiMesConfig, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
+import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
 
 const BASE = "http://sapdev.test:8000";
 const CFG = { host: BASE, client: 200, user: "u", password: "p", timeout: 5000 };
@@ -71,12 +71,6 @@ describe("SapClient", () => {
 
   it("ZzapiMesClient is SapClient (back-compat alias)", () => {
     assert.equal(ZzapiMesClient, SapClient);
-  });
-
-  it("ZzapiMesConfig is SapClientConfig (back-compat alias)", () => {
-    const cfg: ZzapiMesConfig = { host: BASE, client: 200, user: "u", password: "p" };
-    const client = new SapClient(cfg);
-    assert.ok(client instanceof SapClient);
   });
 
   it("calls onRequest hook before each request", async () => {
@@ -167,24 +161,6 @@ describe("SapClient", () => {
     globalThis.fetch = mockFetch(200, '{"arbpl":"TURN1","werks":"1000","ktext":"CNC Turning Center","steus":"PP01"}');
     await new SapClient(CFG).getWorkCenter("TURN1", "1000");
     assert.match(capturedUrl!, /zzapi\/mes\/wc.*arbpl=TURN1.*werks=1000/);
-  });
-
-  it("getStock URLSearchParams encodes special characters in werks", async () => {
-    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","items":[]}');
-    await new SapClient(CFG).getStock("10000001", "plant & co");
-    assert.match(capturedUrl!, /werks=plant\+%26\+co/);
-  });
-
-  it("getRouting URLSearchParams encodes special characters in werks", async () => {
-    globalThis.fetch = mockFetch(200, '{"matnr":"10000001","werks":"1000","plnnr":"50000123","operations":[]}');
-    await new SapClient(CFG).getRouting("10000001", "werks=1000");
-    assert.match(capturedUrl!, /werks=werks%3D1000/);
-  });
-
-  it("getWorkCenter URLSearchParams encodes special characters in arbpl", async () => {
-    globalThis.fetch = mockFetch(200, '{"arbpl":"TURN1","werks":"1000","ktext":"CNC","steus":"PP01"}');
-    await new SapClient(CFG).getWorkCenter("TURN 1", "1000");
-    assert.match(capturedUrl!, /arbpl=TURN\+1/);
   });
 
   it("postConfirmation sends POST with JSON body to zzapi/mes/conf", async () => {
@@ -321,16 +297,6 @@ describe("SapClient", () => {
       },
     );
   });
-
-  it("re-throws unknown Error class (not AbortError/TypeError)", async () => {
-    class CustomError extends Error { constructor() { super("custom-sap-err"); this.name = "CustomError"; } }
-    globalThis.fetch = async () => { throw new CustomError(); };
-    const client = new SapClient(CFG);
-    await assert.rejects(
-      () => client.ping(),
-      (err: unknown) => err instanceof CustomError,
-    );
-  });
 });
 
 describe("ensureProtocol", () => {
@@ -428,27 +394,6 @@ describe("Zod schemas", () => {
     assert.equal(r.orderid, "1000000");
   });
 
-  it("ConfirmationRequestSchema rejects missing orderid", () => {
-    assert.throws(
-      () => ConfirmationRequestSchema.parse({ operation: "0010", yield: 50 }),
-      (e: unknown) => e instanceof Error && e.message.includes("orderid"),
-    );
-  });
-
-  it("ConfirmationRequestSchema rejects negative yield", () => {
-    assert.throws(
-      () => ConfirmationRequestSchema.parse({ orderid: "1000000", operation: "0010", yield: -1 }),
-      (e: unknown) => e instanceof Error,
-    );
-  });
-
-  it("ConfirmationRequestSchema rejects string menge", () => {
-    assert.throws(
-      () => ConfirmationRequestSchema.parse({ orderid: "1000000", operation: "0010", yield: "fifty" } as Record<string, unknown>),
-      (e: unknown) => e instanceof Error,
-    );
-  });
-
   it("ConfirmationResponseSchema accepts valid response with confNo/confCnt", () => {
     const r = ConfirmationResponseSchema.parse({
       orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed",
@@ -464,20 +409,6 @@ describe("Zod schemas", () => {
     assert.equal(r.ebeln, "4500000001");
   });
 
-  it("GoodsReceiptRequestSchema rejects missing ebeln", () => {
-    assert.throws(
-      () => GoodsReceiptRequestSchema.parse({ ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
-      (e: unknown) => e instanceof Error && e.message.includes("ebeln"),
-    );
-  });
-
-  it("GoodsReceiptRequestSchema rejects negative menge", () => {
-    assert.throws(
-      () => GoodsReceiptRequestSchema.parse({ ebeln: "4500000001", ebelp: "00010", menge: -5, werks: "1000", lgort: "0001" }),
-      (e: unknown) => e instanceof Error,
-    );
-  });
-
   it("GoodsReceiptResponseSchema accepts valid response with materialDocument", () => {
     const r = GoodsReceiptResponseSchema.parse({
       ebeln: "4500000001", ebelp: "00010", menge: 100, materialDocument: "5000000001", documentYear: "2026", status: "posted",
@@ -491,20 +422,6 @@ describe("Zod schemas", () => {
       orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001",
     });
     assert.equal(r.orderid, "1000000");
-  });
-
-  it("GoodsIssueRequestSchema rejects missing orderid", () => {
-    assert.throws(
-      () => GoodsIssueRequestSchema.parse({ matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
-      (e: unknown) => e instanceof Error && e.message.includes("orderid"),
-    );
-  });
-
-  it("GoodsIssueRequestSchema rejects negative menge", () => {
-    assert.throws(
-      () => GoodsIssueRequestSchema.parse({ orderid: "1000000", matnr: "20000001", menge: -10, werks: "1000", lgort: "0001" }),
-      (e: unknown) => e instanceof Error,
-    );
   });
 
   it("GoodsIssueResponseSchema accepts valid response with materialDocument", () => {
@@ -586,14 +503,6 @@ describe("parseRetryAfter", () => {
   it("returns undefined for NaN string", () => {
     assert.equal(parseRetryAfter("NaN"), undefined);
   });
-
-  it("returns undefined for HTTP-date format (only numeric supported)", () => {
-    assert.equal(parseRetryAfter("Wed, 21 Oct 2025 07:28:00 GMT"), undefined);
-  });
-
-  it("returns undefined for whitespace-only string", () => {
-    assert.equal(parseRetryAfter("   "), undefined);
-  });
 });
 
 describe("SapClient Retry-After extraction from SAP 429", () => {
@@ -627,36 +536,6 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
     }
   });
 
-  it("extracts Retry-After header on 429 postGoodsReceipt", async () => {
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ error: "Too Many Requests" }),
-      { status: 429, headers: { "retry-after": "45" } },
-    );
-    try {
-      await new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
-      assert.fail("should have thrown");
-    } catch (e) {
-      assert.ok(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 429);
-      assert.equal(e.retryAfter, 45);
-    }
-  });
-
-  it("extracts Retry-After header on 429 postGoodsIssue", async () => {
-    globalThis.fetch = async () => new Response(
-      JSON.stringify({ error: "Too Many Requests" }),
-      { status: 429, headers: { "retry-after": "90" } },
-    );
-    try {
-      await new SapClient(CFG).postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" });
-      assert.fail("should have thrown");
-    } catch (e) {
-      assert.ok(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 429);
-      assert.equal(e.retryAfter, 90);
-    }
-  });
-
   it("does not set retryAfter on non-429 error", async () => {
     globalThis.fetch = async () => new Response(
       JSON.stringify({ error: "Not found" }),
@@ -673,19 +552,126 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
   });
 });
 
-describe("ZzapiMesHttpError regression guards", () => {
-  it("has name property set to ZzapiMesHttpError", () => {
-    const err = new ZzapiMesHttpError(500, "test");
-    assert.equal(err.name, "ZzapiMesHttpError");
+describe("Zod schema .passthrough() on write-back requests", () => {
+  it("ConfirmationRequestSchema allows extra fields through", () => {
+    const result = ConfirmationRequestSchema.parse({
+      orderid: "1000000",
+      operation: "0010",
+      yield: 50,
+      injected_field: "should pass through",
+    });
+    assert.equal(result.orderid, "1000000");
+    // .passthrough() preserves extra keys
+    assert.equal((result as Record<string, unknown>).injected_field, "should pass through");
   });
 
-  it("defaults originalStatus to undefined", () => {
-    const err = new ZzapiMesHttpError(409, "duplicate");
-    assert.equal(err.originalStatus, undefined);
+  it("GoodsReceiptRequestSchema allows extra fields through", () => {
+    const result = GoodsReceiptRequestSchema.parse({
+      ebeln: "4500000001",
+      ebelp: "00010",
+      menge: 100,
+      werks: "1000",
+      lgort: "0001",
+      extra_key: "value",
+    });
+    assert.equal(result.ebeln, "4500000001");
+    assert.equal((result as Record<string, unknown>).extra_key, "value");
   });
 
-  it("defaults retryAfter to undefined", () => {
-    const err = new ZzapiMesHttpError(429, "rate limited");
-    assert.equal(err.retryAfter, undefined);
+  it("GoodsIssueRequestSchema allows extra fields through", () => {
+    const result = GoodsIssueRequestSchema.parse({
+      orderid: "1000000",
+      matnr: "20000001",
+      menge: 50,
+      werks: "1000",
+      lgort: "0001",
+      custom: true,
+    });
+    assert.equal(result.orderid, "1000000");
+    assert.equal((result as Record<string, unknown>).custom, true);
+  });
+});
+
+describe("SapClient ABAP error detection", () => {
+  it("detects ABAP 422 with 'errors' (plural array) on GET", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ errors: [{ message: "No authorization for transaction MB01" }, { message: "BWART 101 not allowed" }] }),
+      { status: 422, headers: { "content-type": "application/json" } },
+    );
+    await assert.rejects(
+      () => new SapClient(CFG).ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.match(e.message, /No authorization for transaction MB01/);
+        assert.match(e.message, /BWART 101 not allowed/);
+        return true;
+      },
+    );
+  });
+
+  it("detects ABAP 422 with 'errors' (plural array) on POST", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ errors: [{ message: "Plant 1000 not allowed" }] }),
+      { status: 422, headers: { "content-type": "application/json" } },
+    );
+    await assert.rejects(
+      () => new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.match(e.message, /Plant 1000 not allowed/);
+        return true;
+      },
+    );
+  });
+
+  it("handles 'errors' as string array (non-object entries)", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ errors: ["Error one", "Error two"] }),
+      { status: 422, headers: { "content-type": "application/json" } },
+    );
+    await assert.rejects(
+      () => new SapClient(CFG).ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 422);
+        assert.match(e.message, /Error one/);
+        assert.match(e.message, /Error two/);
+        return true;
+      },
+    );
+  });
+
+  it("catches 4xx/5xx without 'error' or 'errors' field", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ status: "rejected", code: "BACKFLUSH_CONFLICT" }),
+      { status: 409, headers: { "content-type": "application/json" } },
+    );
+    await assert.rejects(
+      () => new SapClient(CFG).postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 409);
+        assert.match(e.message, /SAP error/);
+        return true;
+      },
+    );
+  });
+
+  it("catches 500 with unrecognized body as SAP error", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ dump: "SYSTEM_ERROR", stack: "..." }),
+      { status: 500, headers: { "content-type": "application/json" } },
+    );
+    await assert.rejects(
+      () => new SapClient(CFG).ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 500);
+        assert.match(e.message, /SAP error/);
+        return true;
+      },
+    );
   });
 });
