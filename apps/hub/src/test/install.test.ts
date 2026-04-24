@@ -31,10 +31,21 @@ describe("install.sh Node version guard", () => {
 
 describe("install.sh pnpm pre-flight check", () => {
   it("exits with error when pnpm is not in PATH", async () => {
-    // Include node's bin dir so Node version guard passes, but exclude /opt/homebrew/bin where pnpm lives
+    // Create a minimal PATH that has node (so version guard passes) but NOT pnpm.
+    // On CI (ubuntu), pnpm is a corepack shim in the same dir as node, so we
+    // must explicitly exclude it by using a temp dir with a node symlink only.
     const nodeBin = require("node:path").dirname(require("node:child_process").execSync("which node").toString().trim());
-    const { stderr, code } = await runInstall({ PATH: `${nodeBin}:/bin:/usr/bin` });
-    assert.notEqual(code, 0, "should fail when pnpm not found");
-    assert.ok(stderr.includes("pnpm"), `should mention pnpm: ${stderr}`);
+    const fs = require("node:fs");
+    const os = require("node:os");
+    const tmpDir = fs.mkdtempSync(require("node:path").join(os.tmpdir(), "install-test-"));
+    // Symlink node only (no pnpm shim)
+    fs.symlinkSync(require("node:path").join(nodeBin, "node"), require("node:path").join(tmpDir, "node"));
+    const { stderr, code } = await runInstall({ PATH: `${tmpDir}:/bin:/usr/bin` });
+    try {
+      assert.notEqual(code, 0, "should fail when pnpm not found");
+      assert.ok(stderr.includes("pnpm"), `should mention pnpm: ${stderr}`);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
