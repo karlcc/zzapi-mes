@@ -23,14 +23,24 @@ function readRc(): RcFile {
     // Strip UTF-8 BOM if present (common from Notepad on Windows)
     if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
     return JSON.parse(text);
-  } catch {
+  } catch (e) {
+    // Warn on parse errors (malformed JSON) but not on file-not-found
+    if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code === "ENOENT") return {};
+    if (e instanceof SyntaxError) {
+      console.error(`Warning: ~/.zzapirc contains invalid JSON — ${e.message}`);
+    }
     return {};
   }
 }
 
 function readConfig() {
   const rc = readRc();
-  const host = ensureProtocol(process.env.SAP_HOST || rc.SAP_HOST || "sapdev.fastcell.hk:8000");
+  const hostRaw = process.env.SAP_HOST || rc.SAP_HOST || "sapdev.fastcell.hk:8000";
+  if (typeof hostRaw !== "string") {
+    console.error(`SAP_HOST must be a string (got ${typeof hostRaw}: ${hostRaw})`);
+    process.exit(1);
+  }
+  const host = ensureProtocol(hostRaw);
   const clientRaw = process.env.SAP_CLIENT || rc.SAP_CLIENT;
   const client = clientRaw !== undefined && clientRaw !== "" ? Number(clientRaw) : 200;
   if (!Number.isFinite(client) || !Number.isInteger(client) || client <= 0) {

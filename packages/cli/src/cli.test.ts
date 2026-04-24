@@ -375,6 +375,58 @@ describe("CLI", () => {
     });
   });
 
+  describe(".zzapirc invalid JSON warning", () => {
+    let tmpHome: string;
+    beforeEach(() => {
+      tmpHome = mkdtempSync(join(tmpdir(), "zzapirc-invalid-"));
+    });
+    afterEach(() => {
+      rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    it("warns on stderr when .zzapirc contains invalid JSON", async () => {
+      writeFileSync(join(tmpHome, ".zzapirc"), "{ bad json !!!", "utf8");
+      // Run ping in direct mode — will fail on SAP creds but should warn about rc first
+      const { stderr } = await run(
+        ["ping"],
+        { HOME: tmpHome, USERPROFILE: tmpHome, SAP_USER: "u", SAP_PASS: "p" },
+      );
+      assert.ok(stderr.includes("zzapirc"), `should mention .zzapirc, got: ${stderr}`);
+    });
+  });
+
+  describe(".zzapirc type-mismatch values", () => {
+    let tmpHome: string;
+    beforeEach(() => {
+      tmpHome = mkdtempSync(join(tmpdir(), "zzapirc-type-"));
+    });
+    afterEach(() => {
+      rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    it("rejects non-numeric SAP_CLIENT in .zzapirc", async () => {
+      const rcJson = JSON.stringify({ SAP_CLIENT: "abc", SAP_USER: "u", SAP_PASS: "p" });
+      writeFileSync(join(tmpHome, ".zzapirc"), rcJson, "utf8");
+      const { stderr, code } = await run(
+        ["ping"],
+        { HOME: tmpHome, USERPROFILE: tmpHome, SAP_HOST: "sapdev.fastcell.hk:8000" },
+      );
+      assert.notEqual(code, 0, "should exit non-zero for non-numeric SAP_CLIENT");
+      assert.ok(stderr.includes("SAP_CLIENT"), `should mention SAP_CLIENT, got: ${stderr}`);
+    });
+
+    it("rejects numeric SAP_HOST in .zzapirc", async () => {
+      const rcJson = JSON.stringify({ SAP_HOST: 123, SAP_USER: "u", SAP_PASS: "p" });
+      writeFileSync(join(tmpHome, ".zzapirc"), rcJson, "utf8");
+      const { stderr, code } = await run(
+        ["ping"],
+        { HOME: tmpHome, USERPROFILE: tmpHome },
+      );
+      assert.notEqual(code, 0, "should exit non-zero for numeric SAP_HOST");
+      assert.ok(stderr.includes("SAP_HOST"), `should mention SAP_HOST, got: ${stderr}`);
+    });
+  });
+
   describe(".zzapirc BOM handling", () => {
     // UTF-8 BOM (\uFEFF) at the start of a JSON file makes JSON.parse throw,
     // which readRc() silently swallows — causing rc values to be ignored.
