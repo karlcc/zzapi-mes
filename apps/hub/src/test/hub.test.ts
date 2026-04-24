@@ -265,7 +265,31 @@ describe("POST /auth/token", () => {
     });
     assert.equal(res.status, 400);
     const body = await res.json() as Record<string, unknown>;
-    assert.ok(body.error?.toString().includes("JSON"));
+    assert.ok(body.error?.toString().includes("JSON") || body.error?.toString().includes("Content-Type"),
+      `expected JSON or Content-Type error hint, got: ${body.error}`);
+  });
+
+  it("rejects empty POST body with 400", async () => {
+    const res = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json", "content-length": "0" },
+      body: "",
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("JSON"), `expected JSON error hint, got: ${body.error}`);
+  });
+
+  it("rejects text/plain Content-Type with valid JSON body", async () => {
+    const res = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("Content-Type") || body.error?.toString().includes("JSON"),
+      `expected Content-Type or JSON error hint, got: ${body.error}`);
   });
 });
 
