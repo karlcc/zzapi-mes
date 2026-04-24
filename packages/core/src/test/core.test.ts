@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
+import type { PingResponse } from "../index.js";
 
 const BASE = "http://sapdev.test:8000";
 const CFG = { host: BASE, client: 200, user: "u", password: "p", timeout: 5000 };
@@ -879,6 +880,34 @@ describe("SapClient empty-string host validation", () => {
       /non-empty|host/i,
       `"https://" should be rejected as an invalid host`,
     );
+  });
+});
+
+describe("SapClient 2xx non-200 status handling", () => {
+  it("returns empty object for 204 No Content", async () => {
+    // 204 has no body and typically no Content-Type — must not throw
+    globalThis.fetch = async () => new Response(null, {
+      status: 204,
+      headers: { "content-type": "application/json" },
+    });
+    const result = await new SapClient(CFG).ping();
+    assert.deepStrictEqual(result, {} as PingResponse);
+  });
+
+  it("parses JSON body for 206 Partial Content", async () => {
+    globalThis.fetch = async () => new Response('{"ok":true,"sap_time":"20260422163000"}', {
+      status: 206,
+      headers: { "content-type": "application/json" },
+    });
+    const result = await new SapClient(CFG).ping();
+    assert.equal((result as { ok: boolean }).ok, true);
+  });
+
+  it("returns empty object for 204 even without Content-Type header", async () => {
+    // Some servers omit Content-Type on 204 No Content
+    globalThis.fetch = async () => new Response(null, { status: 204 });
+    const result = await new SapClient(CFG).ping();
+    assert.deepStrictEqual(result, {} as PingResponse);
   });
 });
 
