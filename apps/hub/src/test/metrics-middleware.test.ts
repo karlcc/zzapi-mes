@@ -52,7 +52,7 @@ describe("metrics middleware route normalization", () => {
     { path: "/confirmation", expected: "/confirmation" },
     { path: "/goods-receipt", expected: "/goods-receipt" },
     { path: "/goods-issue", expected: "/goods-issue" },
-    { path: "/unknown", expected: "/unknown" }, // fallback to raw
+    { path: "/unknown", expected: "unknown" }, // fallback bounded label
   ];
 
   for (const { path, expected } of cases) {
@@ -96,9 +96,9 @@ describe("normalizeRoute", () => {
     assert.equal(normalizeRoute("/goods-issue"), "/goods-issue");
   });
 
-  it("returns unknown paths verbatim", () => {
-    assert.equal(normalizeRoute("/some/unknown/path"), "/some/unknown/path");
-    assert.equal(normalizeRoute("/"), "/");
+  it("returns bounded 'unknown' for unrecognized paths", () => {
+    assert.equal(normalizeRoute("/some/unknown/path"), "unknown");
+    assert.equal(normalizeRoute("/"), "unknown");
   });
 
   it("prefers /po/:ebeln/items over /po/:ebeln (rule ordering)", () => {

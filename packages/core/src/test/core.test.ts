@@ -357,6 +357,41 @@ describe("ensureProtocol", () => {
   it("keeps existing https://", () => {
     assert.equal(ensureProtocol("https://sapprd.test:443"), "https://sapprd.test:443");
   });
+
+  it("rejects ftp:// scheme", () => {
+    assert.throws(
+      () => ensureProtocol("ftp://files.example.com"),
+      /Unsupported URL scheme/,
+    );
+  });
+
+  it("rejects data: scheme", () => {
+    assert.throws(
+      () => ensureProtocol("data:text/html,<h1>hi</h1>"),
+      /Unsupported URL scheme/,
+    );
+  });
+
+  it("rejects javascript: scheme", () => {
+    assert.throws(
+      () => ensureProtocol("javascript:alert(1)"),
+      /Unsupported URL scheme/,
+    );
+  });
+
+  it("rejects file:// scheme", () => {
+    assert.throws(
+      () => ensureProtocol("file:///etc/passwd"),
+      /Unsupported URL scheme/,
+    );
+  });
+
+  it("case-insensitive scheme rejection (FTP://)", () => {
+    assert.throws(
+      () => ensureProtocol("FTP://files.example.com"),
+      /Unsupported URL scheme/,
+    );
+  });
 });
 
 describe("Zod schemas", () => {

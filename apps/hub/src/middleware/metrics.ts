@@ -28,7 +28,7 @@ export function normalizeRoute(path: string): string {
   for (const rule of ROUTE_RULES) {
     if (rule.match(path)) return rule.label;
   }
-  return path;
+  return "unknown";
 }
 
 /** Middleware that records request metrics after the handler runs. */

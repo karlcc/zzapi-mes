@@ -129,7 +129,16 @@ export class ZzapiMesHttpError extends Error {
 
 /** Prepends http:// if the host string has no scheme. */
 export function ensureProtocol(host: string): string {
-  if (/^https?:\/\//.test(host)) return host;
+  if (/^https?:\/\//i.test(host)) return host;
+  // Reject non-HTTP schemes outright (ftp://, javascript:, data:, etc.)
+  // The scheme portion per RFC 3986 is [a-z][a-z0-9+.-]* — but dots and
+  // hyphens in the scheme part are rare (e.g. "vnd.api+json") and we never
+  // use them. Restrict to [a-z][a-z0-9+]* to avoid false-positive matches
+  // on hostnames like "sapdev.test:8000" where "sapdev.test:" looks like a
+  // scheme:sep pair to the naive regex.
+  if (/^[a-z][a-z0-9+]*:\/\//i.test(host) || /^[a-z][a-z0-9+]*:(?!\/\/)/i.test(host)) {
+    throw new Error(`Unsupported URL scheme in "${host}" — only http and https are allowed`);
+  }
   return `http://${host}`;
 }
 
