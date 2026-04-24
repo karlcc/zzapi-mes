@@ -275,6 +275,22 @@ describe("Protected routes without JWT", () => {
     const res = await fetchApi("/po/123");
     assert.equal(res.status, 401);
   });
+
+  it("rejects Basic auth scheme (not Bearer)", async () => {
+    const res = await fetchApi("/ping", {
+      headers: { authorization: "Basic dXNlcjpwYXNz" },
+    });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("Authorization"));
+  });
+
+  it("rejects malformed Bearer header with no space", async () => {
+    const res = await fetchApi("/ping", {
+      headers: { authorization: "Bearerabc123" },
+    });
+    assert.equal(res.status, 401);
+  });
 });
 
 describe("Protected routes with valid JWT", () => {
@@ -1882,6 +1898,30 @@ describe("JWT rate_limit_per_min type validation", () => {
   });
 });
 
+describe("Rate limit rpm <= 0", () => {
+  it("returns 403 when rate_limit_per_min is 0", async () => {
+    _resetBucketsForTest();
+    const zeroRpmToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: 0, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${zeroRpmToken}` } });
+    assert.equal(res.status, 403);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("Rate limit disabled"));
+  });
+
+  it("returns 403 when rate_limit_per_min is negative", async () => {
+    _resetBucketsForTest();
+    const negRpmToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], rate_limit_per_min: -5, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${negRpmToken}` } });
+    assert.equal(res.status, 403);
+  });
+});
+
 describe("Idempotency guard DB read failure", () => {
   it("proceeds without idempotency protection when checkIdempotency throws", async () => {
     // Drop idempotency_keys table to force checkIdempotency to throw
@@ -1949,6 +1989,20 @@ describe("Empty Idempotency-Key header", () => {
     assert.equal(res.status, 400);
     const body = await res.json() as Record<string, unknown>;
     assert.ok(String(body.error).includes("128"));
+  });
+
+  it("accepts idempotency-key at exactly 128 characters", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "y".repeat(128),
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 201);
   });
 });
 
