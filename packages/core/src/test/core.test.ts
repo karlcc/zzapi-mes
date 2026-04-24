@@ -500,6 +500,27 @@ describe("Zod schemas", () => {
     assert.equal(r.orderid, "1000000");
   });
 
+  it("ConfirmationRequestSchema rejects missing orderid", () => {
+    assert.throws(
+      () => ConfirmationRequestSchema.parse({ operation: "0010", yield: 50 }),
+      (e: unknown) => e instanceof Error && e.message.includes("orderid"),
+    );
+  });
+
+  it("ConfirmationRequestSchema rejects negative yield", () => {
+    assert.throws(
+      () => ConfirmationRequestSchema.parse({ orderid: "1000000", operation: "0010", yield: -1 }),
+      (e: unknown) => e instanceof Error,
+    );
+  });
+
+  it("ConfirmationRequestSchema rejects string menge", () => {
+    assert.throws(
+      () => ConfirmationRequestSchema.parse({ orderid: "1000000", operation: "0010", yield: "fifty" } as Record<string, unknown>),
+      (e: unknown) => e instanceof Error,
+    );
+  });
+
   it("ConfirmationResponseSchema accepts valid response with confNo/confCnt", () => {
     const r = ConfirmationResponseSchema.parse({
       orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed",
@@ -515,6 +536,20 @@ describe("Zod schemas", () => {
     assert.equal(r.ebeln, "4500000001");
   });
 
+  it("GoodsReceiptRequestSchema rejects missing ebeln", () => {
+    assert.throws(
+      () => GoodsReceiptRequestSchema.parse({ ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" }),
+      (e: unknown) => e instanceof Error && e.message.includes("ebeln"),
+    );
+  });
+
+  it("GoodsReceiptRequestSchema rejects negative menge", () => {
+    assert.throws(
+      () => GoodsReceiptRequestSchema.parse({ ebeln: "4500000001", ebelp: "00010", menge: -5, werks: "1000", lgort: "0001" }),
+      (e: unknown) => e instanceof Error,
+    );
+  });
+
   it("GoodsReceiptResponseSchema accepts valid response with materialDocument", () => {
     const r = GoodsReceiptResponseSchema.parse({
       ebeln: "4500000001", ebelp: "00010", menge: 100, materialDocument: "5000000001", documentYear: "2026", status: "posted",
@@ -528,6 +563,20 @@ describe("Zod schemas", () => {
       orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001",
     });
     assert.equal(r.orderid, "1000000");
+  });
+
+  it("GoodsIssueRequestSchema rejects missing orderid", () => {
+    assert.throws(
+      () => GoodsIssueRequestSchema.parse({ matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" }),
+      (e: unknown) => e instanceof Error && e.message.includes("orderid"),
+    );
+  });
+
+  it("GoodsIssueRequestSchema rejects negative menge", () => {
+    assert.throws(
+      () => GoodsIssueRequestSchema.parse({ orderid: "1000000", matnr: "20000001", menge: -10, werks: "1000", lgort: "0001" }),
+      (e: unknown) => e instanceof Error,
+    );
   });
 
   it("GoodsIssueResponseSchema accepts valid response with materialDocument", () => {

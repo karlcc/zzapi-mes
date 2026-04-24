@@ -222,7 +222,7 @@ export class HubClient {
     }
     if (res.status >= 400 && "error" in json) {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
-      const originalStatus = res.status === 409 && typeof json.original_status === "number" ? json.original_status : undefined;
+      const originalStatus = res.status === 409 && typeof json.original_status === "number" && json.original_status > 0 ? json.original_status : undefined;
       throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter, originalStatus);
     }
     if (res.status >= 400 && "errors" in json) {

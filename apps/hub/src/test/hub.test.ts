@@ -2187,6 +2187,9 @@ describe("Security headers", () => {
     assert.equal(res.status, 204);
     const methods = res.headers.get("access-control-allow-methods");
     assert.ok(methods, "should have allow-methods header");
+    const exposeHeaders = res.headers.get("access-control-expose-headers");
+    assert.ok(exposeHeaders?.includes("X-Request-ID"), "expose-headers should include X-Request-ID");
+    assert.ok(exposeHeaders?.includes("Retry-After"), "expose-headers should include Retry-After");
     delete process.env.HUB_CORS_ORIGIN;
   });
 
@@ -2431,6 +2434,58 @@ describe("GET route SAP error handling", () => {
     });
     assert.equal(res.status, 502);
     MockSapClient.prototype.ping = origPing;
+  });
+
+  it("returns 502 on non-ZzapiMesHttpError from /material", async () => {
+    const orig = MockSapClient.prototype.getMaterial;
+    MockSapClient.prototype.getMaterial = async () => { throw new Error("Network failure"); };
+    const token = await validToken(["material"]);
+    const res = await fetchApi("/material/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+    MockSapClient.prototype.getMaterial = orig;
+  });
+
+  it("returns 502 on non-ZzapiMesHttpError from /stock", async () => {
+    const orig = MockSapClient.prototype.getStock;
+    MockSapClient.prototype.getStock = async () => { throw new Error("Network failure"); };
+    const token = await validToken(["stock"]);
+    const res = await fetchApi("/stock/10000001?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+    MockSapClient.prototype.getStock = orig;
+  });
+
+  it("returns 502 on non-ZzapiMesHttpError from /routing", async () => {
+    const orig = MockSapClient.prototype.getRouting;
+    MockSapClient.prototype.getRouting = async () => { throw new Error("Network failure"); };
+    const token = await validToken(["routing"]);
+    const res = await fetchApi("/routing/10000001?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+    MockSapClient.prototype.getRouting = orig;
+  });
+
+  it("returns 502 on non-ZzapiMesHttpError from /work-center", async () => {
+    const orig = MockSapClient.prototype.getWorkCenter;
+    MockSapClient.prototype.getWorkCenter = async () => { throw new Error("Network failure"); };
+    const token = await validToken(["work_center"]);
+    const res = await fetchApi("/work-center/1000?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+    MockSapClient.prototype.getWorkCenter = orig;
   });
 
   it("forwards Retry-After header from SAP 429 on GET routes", async () => {
