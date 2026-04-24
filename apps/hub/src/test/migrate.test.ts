@@ -55,6 +55,16 @@ describe("migrate.ts — CLI entry point", () => {
     }
   });
 
+  it("openDb enables foreign_keys pragma", () => {
+    const db = openDb(":memory:");
+    try {
+      const fk = db.pragma("foreign_keys", { simple: true }) as number;
+      assert.equal(fk, 1, "foreign_keys should be ON (1)");
+    } finally {
+      db.close();
+    }
+  });
+
   it("openDb sets busy_timeout to 5000ms", () => {
     const db = openDb(":memory:");
     try {
