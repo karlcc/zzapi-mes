@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
+import { SapClient, ZzapiMesClient, ZzapiMesConfig, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
 
 const BASE = "http://sapdev.test:8000";
 const CFG = { host: BASE, client: 200, user: "u", password: "p", timeout: 5000 };
@@ -71,6 +71,12 @@ describe("SapClient", () => {
 
   it("ZzapiMesClient is SapClient (back-compat alias)", () => {
     assert.equal(ZzapiMesClient, SapClient);
+  });
+
+  it("ZzapiMesConfig is SapClientConfig (back-compat alias)", () => {
+    const cfg: ZzapiMesConfig = { host: BASE, client: 200, user: "u", password: "p" };
+    const client = new SapClient(cfg);
+    assert.ok(client instanceof SapClient);
   });
 
   it("calls onRequest hook before each request", async () => {
@@ -295,6 +301,16 @@ describe("SapClient", () => {
         assert.match(e.message, /Network error/);
         return true;
       },
+    );
+  });
+
+  it("re-throws unknown Error class (not AbortError/TypeError)", async () => {
+    class CustomError extends Error { constructor() { super("custom-sap-err"); this.name = "CustomError"; } }
+    globalThis.fetch = async () => { throw new CustomError(); };
+    const client = new SapClient(CFG);
+    await assert.rejects(
+      () => client.ping(),
+      (err: unknown) => err instanceof CustomError,
     );
   });
 });
@@ -552,6 +568,14 @@ describe("parseRetryAfter", () => {
   it("returns undefined for NaN string", () => {
     assert.equal(parseRetryAfter("NaN"), undefined);
   });
+
+  it("returns undefined for HTTP-date format (only numeric supported)", () => {
+    assert.equal(parseRetryAfter("Wed, 21 Oct 2025 07:28:00 GMT"), undefined);
+  });
+
+  it("returns undefined for whitespace-only string", () => {
+    assert.equal(parseRetryAfter("   "), undefined);
+  });
 });
 
 describe("SapClient Retry-After extraction from SAP 429", () => {
@@ -582,6 +606,36 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
       assert.ok(e instanceof ZzapiMesHttpError);
       assert.equal(e.status, 429);
       assert.equal(e.retryAfter, 60);
+    }
+  });
+
+  it("extracts Retry-After header on 429 postGoodsReceipt", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: "Too Many Requests" }),
+      { status: 429, headers: { "retry-after": "45" } },
+    );
+    try {
+      await new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 429);
+      assert.equal(e.retryAfter, 45);
+    }
+  });
+
+  it("extracts Retry-After header on 429 postGoodsIssue", async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: "Too Many Requests" }),
+      { status: 429, headers: { "retry-after": "90" } },
+    );
+    try {
+      await new SapClient(CFG).postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.ok(e instanceof ZzapiMesHttpError);
+      assert.equal(e.status, 429);
+      assert.equal(e.retryAfter, 90);
     }
   });
 

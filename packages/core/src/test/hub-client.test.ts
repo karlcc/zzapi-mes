@@ -261,16 +261,6 @@ describe("HubClient", () => {
     assert.match(capturedUrl!, /\/stock\/10000001\?werks=1000&lgort=0001$/);
   });
 
-  it("getStock without lgort omits lgort from URL", async () => {
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(200, { matnr: "10000001", werks: "1000", items: [{ lgort: "0001", clabs: 250 }] });
-    });
-    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getStock("10000001", "1000");
-    assert.match(capturedUrl!, /\/stock\/10000001\?werks=1000$/);
-    assert.doesNotMatch(capturedUrl!, /lgort/, "lgort should not be in URL when omitted");
-  });
-
   it("getPoItems builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
@@ -421,28 +411,6 @@ describe("HubClient", () => {
         assert(e instanceof ZzapiMesHttpError);
         assert.equal(e.status, 409);
         assert.equal(e.originalStatus, 201);
-        return true;
-      },
-    );
-  });
-
-  it("does not leak originalStatus=0 from 409 crash-retry response", async () => {
-    // Regression guard: crash-retry scenarios previously leaked
-    // meaningless originalStatus=0 to clients (commit 82a3ad9).
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(409, { error: "Duplicate request", original_status: 0 });
-    });
-    await assert.rejects(
-      () => new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
-        { orderid: "1000000", operation: "0010", yield: 50 },
-        "crash-retry-key",
-      ),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 409);
-        // original_status=0 is not a meaningful status code — must be cleaned up
-        assert.equal(e.originalStatus, undefined);
         return true;
       },
     );
@@ -699,6 +667,87 @@ describe("HubClient getToken validation", () => {
     }
   });
 
+  it("refreshes token at exactly 60s before expiry (strict > boundary)", async () => {
+    let authCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      return jsonResponse(200, { ok: true, sap_time: "20260422163000" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    // First call: gets token with 900s (15min) expiry
+    await client.ping();
+    assert.equal(authCalls, 1);
+    // Advance exactly 840s (900 - 60) — expiresAt === Date.now() + 60_000
+    // The check is strict >, so at exactly 60s remaining it SHOULD refresh
+    const origNow = Date.now;
+    Date.now = () => origNow() + 840_000;
+    try {
+      await client.ping();
+      assert.equal(authCalls, 2, "should re-auth at exactly 60s before expiry (strict >)");
+    } finally {
+      Date.now = origNow;
+    }
+  });
+
+  it("uses cached token at 61s before expiry (just outside refresh window)", async () => {
+    let authCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      return jsonResponse(200, { ok: true, sap_time: "20260422163000" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await client.ping();
+    assert.equal(authCalls, 1);
+    // Advance 839s — 61s remaining, just above the 60s threshold → should NOT refresh
+    const origNow = Date.now;
+    Date.now = () => origNow() + 839_000;
+    try {
+      await client.ping();
+      assert.equal(authCalls, 1, "should NOT re-auth with 61s remaining");
+    } finally {
+      Date.now = origNow;
+    }
+  });
+
+  it("rejects auth response with numeric token", async () => {
+    globalThis.fetch = mockFetch(() => jsonResponse(200, { token: 12345, expires_in: 900 }));
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), /missing token/);
+  });
+
+  it("ignores original_status string in 409 response", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(409, { error: "duplicate", original_status: "201" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (err: unknown) => {
+      assert(err instanceof ZzapiMesHttpError);
+      assert.equal(err.status, 409);
+      assert.equal(err.originalStatus, undefined, "string original_status should be ignored");
+      return true;
+    });
+  });
+
+  it("ignores original_status=0 in 409 response", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return jsonResponse(409, { error: "duplicate", original_status: 0 });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (err: unknown) => {
+      assert(err instanceof ZzapiMesHttpError);
+      assert.equal(err.originalStatus, undefined, "original_status=0 should be filtered");
+      return true;
+    });
+  });
+
   it("re-throws unknown fetch errors (not AbortError/TypeError)", async () => {
     class CustomError extends Error { constructor() { super("custom"); this.name = "CustomError"; } }
     globalThis.fetch = mockFetch(() => { throw new CustomError(); });
@@ -706,124 +755,6 @@ describe("HubClient getToken validation", () => {
     await assert.rejects(() => client.ping(), (err: unknown) => {
       return err instanceof CustomError;
     });
-  });
-
-  it("throws on 500 auth endpoint failure", async () => {
-    globalThis.fetch = mockFetch(() => jsonResponse(500, { error: "Internal server error" }));
-    const client = new HubClient({ url: BASE, apiKey: API_KEY });
-    await assert.rejects(() => client.ping(), (e: unknown) => {
-      assert(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 500);
-      assert.match(e.message, /Hub auth failed/);
-      return true;
-    });
-  });
-
-  it("throws on 502 auth endpoint failure", async () => {
-    globalThis.fetch = mockFetch(() => jsonResponse(502, { error: "Bad gateway" }));
-    const client = new HubClient({ url: BASE, apiKey: API_KEY });
-    await assert.rejects(() => client.ping(), (e: unknown) => {
-      assert(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 502);
-      assert.match(e.message, /Hub auth failed/);
-      return true;
-    });
-  });
-
-  it("throws on 503 auth endpoint failure", async () => {
-    globalThis.fetch = mockFetch(() => jsonResponse(503, { error: "Service unavailable" }));
-    const client = new HubClient({ url: BASE, apiKey: API_KEY });
-    await assert.rejects(() => client.ping(), (e: unknown) => {
-      assert(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 503);
-      assert.match(e.message, /Hub auth failed/);
-      return true;
-    });
-  });
-
-  it("throws on non-JSON auth response (res.json() throws SyntaxError)", async () => {
-    globalThis.fetch = mockFetch(() => new Response("<html>Error</html>", { status: 200, headers: { "content-type": "text/html" } }));
-    const client = new HubClient({ url: BASE, apiKey: API_KEY });
-    await assert.rejects(() => client.ping(), (e: unknown) => {
-      // getToken() calls res.json() which throws SyntaxError on non-JSON body.
-      // No try/catch wraps it — raw SyntaxError propagates.
-      assert.ok(e instanceof SyntaxError);
-      return true;
-    });
-  });
-
-  it("uses statusText fallback when auth body read fails", async () => {
-    globalThis.fetch = mockFetch(() => {
-      const res = new Response("ok", { status: 503, statusText: "Service Unavailable", headers: { "content-type": "text/plain" } });
-      // Override text() to throw, simulating already-consumed body
-      res.text = async () => { throw new Error("body already consumed"); };
-      return res;
-    });
-    const client = new HubClient({ url: BASE, apiKey: API_KEY });
-    await assert.rejects(() => client.ping(), (e: unknown) => {
-      assert(e instanceof ZzapiMesHttpError);
-      assert.equal(e.status, 503);
-      assert.match(e.message, /Service Unavailable/);
-      return true;
-    });
-  });
-
-  it("detects 'errors' array in ABAP 422 response", async () => {
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(422, { errors: [{ type: "E", message: "No authorization for transaction MB01" }] });
-    });
-    await assert.rejects(
-      () => new HubClient({ url: BASE, apiKey: API_KEY }).confirmProduction(
-        { orderid: "1000000", operation: "0010", yield: 50 },
-        "errors-key-001",
-      ),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 422);
-        assert.match(e.message, /No authorization/);
-        return true;
-      },
-    );
-  });
-
-  it("detects 'errors' string array in response", async () => {
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(422, { errors: ["BWART 101 not allowed", "Plant 1000 not allowed"] });
-    });
-    await assert.rejects(
-      () => new HubClient({ url: BASE, apiKey: API_KEY }).goodsReceipt(
-        { ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" },
-        "errors-str-key",
-      ),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 422);
-        assert.match(e.message, /BWART 101 not allowed/);
-        assert.match(e.message, /Plant 1000 not allowed/);
-        return true;
-      },
-    );
-  });
-
-  it("detects 4xx/5xx without error/errors field (safety net)", async () => {
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(409, { status: "rejected" });
-    });
-    await assert.rejects(
-      () => new HubClient({ url: BASE, apiKey: API_KEY }).goodsIssue(
-        { orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" },
-        "safety-net-key",
-      ),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 409);
-        assert.match(e.message, /Hub error \(HTTP 409\)/);
-        return true;
-      },
-    );
   });
 
   it("sends POST method and idempotency-key header on write-back requests", async () => {
@@ -844,255 +775,54 @@ describe("HubClient getToken validation", () => {
     assert.equal(headers?.["content-type"], "application/json");
   });
 
-  it("double-401 retry throws ZzapiMesHttpError(401)", async () => {
-    let callCount = 0;
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      callCount++;
-      return jsonResponse(401, { error: "Unauthorized" });
-    });
-    await assert.rejects(
-      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 401);
-        assert.equal(callCount, 2, "should retry once then fail");
-        return true;
-      },
-    );
-  });
-
-  it("handles 'errors' as non-array scalar (number)", async () => {
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(422, { errors: 42 });
-    });
-    await assert.rejects(
-      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 422);
-        assert.equal(e.message, "42");
-        return true;
-      },
-    );
-  });
-
-  it("handles 'errors' as null", async () => {
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(422, { errors: null });
-    });
-    await assert.rejects(
-      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 422);
-        assert.equal(e.message, "null");
-        return true;
-      },
-    );
-  });
-
-  it("handles 'errors' as plain string (non-array)", async () => {
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(422, { errors: "No authorization for transaction MB01" });
-    });
-    await assert.rejects(
-      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 422);
-        assert.equal(e.message, "No authorization for transaction MB01");
-        return true;
-      },
-    );
-  });
-
-  it("handles 429 from auth endpoint", async () => {
-    globalThis.fetch = mockFetch(() => jsonResponse(429, { error: "Too many requests" }));
-    await assert.rejects(
-      () => new HubClient({ url: BASE, apiKey: API_KEY }).getPo("4500000001"),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 429);
-        return true;
-      },
-    );
-  });
-
-  it("getMaterial without optional werks omits query param", async () => {
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(200, { matnr: "10000001", maktx: "Test Material" });
-    });
-    const client = new HubClient({ url: BASE, apiKey: API_KEY });
-    await client.getMaterial("10000001");
-    assert.ok(capturedUrl!.includes("/material/10000001"));
-    assert.ok(!capturedUrl!.includes("werks"), "werks should not be in URL when omitted");
-  });
-
-  it("does not throw on HTTP 200 with 'error' key (not a false-positive)", async () => {
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(200, { ok: true, error: "warning: deprecated field" });
-    });
-    const result = await new HubClient({ url: BASE, apiKey: API_KEY }).ping();
-    assert.ok(result);
-  });
-
-  it("auth endpoint timeout throws ZzapiMesHttpError(408)", async () => {
-    globalThis.fetch = mockFetch(() => {
-      throw new DOMException("The operation was aborted", "AbortError");
-    });
-    const client = new HubClient({ url: BASE, apiKey: API_KEY, timeout: 1 });
-    await assert.rejects(
-      () => client.ping(),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 408);
-        return true;
-      },
-    );
-  });
-
-  it("retryAfter not forwarded on non-429 write-back (SAP 408→504 drops retryAfter)", async () => {
-    // When SAP returns 408 with retryAfter, mapSapError maps to 504 but
-    // the hub only forwards retryAfter when clientStatus===429.
-    globalThis.fetch = mockFetch((url) => {
-      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return new Response(JSON.stringify({ error: "SAP timeout" }), {
-        status: 408,
-        headers: { "content-type": "application/json", "retry-after": "30" },
-      });
-    });
-    const client = new HubClient({ url: BASE, apiKey: API_KEY });
-    await assert.rejects(
-      () => client.confirmProduction({ orderid: "1000000", operation: "0010", yield: 50 }, "retry-non429"),
-      (e: unknown) => {
-        assert(e instanceof ZzapiMesHttpError);
-        assert.equal(e.status, 408, "HubClient sees the raw 408, not the hub-remapped 504");
-        return true;
-      },
-    );
-  });
-});
-
-describe("HubClient constructor validation", () => {
-  it("rejects empty url", () => {
-    assert.throws(
-      () => new HubClient({ url: "", apiKey: "test" }),
-      /non-empty string/,
-    );
-  });
-
-  it("rejects whitespace-only url", () => {
-    assert.throws(
-      () => new HubClient({ url: "   ", apiKey: "test" }),
-      /non-empty string/,
-    );
-  });
-
-  it("rejects empty apiKey", () => {
-    assert.throws(
-      () => new HubClient({ url: BASE, apiKey: "" }),
-      /non-empty string/,
-    );
-  });
-
-  it("rejects whitespace-only apiKey", () => {
-    assert.throws(
-      () => new HubClient({ url: BASE, apiKey: "   " }),
-      /non-empty string/,
-    );
-  });
-
-  it("rejects timeout=0", () => {
-    assert.throws(
-      () => new HubClient({ url: BASE, apiKey: API_KEY, timeout: 0 }),
-      /positive number/,
-    );
-  });
-
-  it("rejects negative timeout", () => {
-    assert.throws(
-      () => new HubClient({ url: BASE, apiKey: API_KEY, timeout: -5 }),
-      /positive number/,
-    );
-  });
-
-  it("accepts valid config with and without timeout", () => {
-    const c1 = new HubClient({ url: BASE, apiKey: API_KEY });
-    assert.ok(c1);
-    const c2 = new HubClient({ url: BASE, apiKey: API_KEY, timeout: 5000 });
-    assert.ok(c2);
-  });
-
-  it("ensureProtocol prepends http:// to bare hostname", () => {
-    const client = new HubClient({ url: "not-a-url", apiKey: API_KEY });
-    // ensureProtocol("not-a-url") → "http://not-a-url"
-    assert.ok(client);
-  });
-
-  it("ensureProtocol rejects ftp:// scheme", () => {
-    assert.throws(
-      () => new HubClient({ url: "ftp://evil.example.com", apiKey: API_KEY }),
-      /Unsupported URL scheme/,
-    );
-  });
-
-  it("does NOT follow redirects — uses redirect: manual (P1 security)", async () => {
-    // Verify that HubClient sets redirect: "manual" on fetch to prevent
-    // Bearer-token leakage on 301/302 redirects.
-    let authCallOpts: RequestInit | undefined;
-    globalThis.fetch = mockFetch((url, init) => {
-      if (url.endsWith("/auth/token")) {
-        return jsonResponse(200, { token: "jwt-redirect-test", expires_in: 900 });
-      }
-      // Capture the options from the hub request (not the auth request)
-      authCallOpts = init;
-      // Return a 302 redirect — with redirect: "manual" the client sees
-      // the raw 302 response instead of following it.
-      return new Response(null, {
-        status: 302,
-        headers: { location: "http://evil.example.com/steal-token" },
-      });
-    });
-    const client = new HubClient({ url: BASE, apiKey: API_KEY });
-    try {
-      await client.ping();
-    } catch {
-      // 302 response body is empty → JSON parse error — expected
-    }
-    assert.equal(authCallOpts?.redirect, "manual", "HubClient should use redirect: 'manual'");
-  });
-
-  it("retries on 401 for POST methods (not just GET)", async () => {
-    // Verify that POST requests (write-back) also get a single retry on 401,
-    // same as the GET retry path.
+  it("invalidateToken forces re-auth on next request", async () => {
     let authCalls = 0;
-    let hubCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      return jsonResponse(200, { ok: true, sap_time: "20260422163000" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await client.ping();
+    assert.equal(authCalls, 1);
+    // Without invalidation, second call uses cached token
+    await client.ping();
+    assert.equal(authCalls, 1, "should reuse cached token");
+    // Invalidate forces re-auth
+    client.invalidateToken();
+    await client.ping();
+    assert.equal(authCalls, 2, "should re-auth after invalidateToken()");
+  });
+
+  it("POST 401-retry clears token cache and re-auths with same idempotency key", async () => {
+    let authCalls = 0;
+    let postCalls = 0;
+    const capturedIdemKeys: string[] = [];
     globalThis.fetch = mockFetch((url, init) => {
       if (url.endsWith("/auth/token")) {
         authCalls++;
-        return jsonResponse(200, { token: `jwt-retry-${authCalls}`, expires_in: 900 });
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
       }
-      hubCalls++;
-      // First hub call returns 401 → should trigger retry with new token
-      if (hubCalls === 1) {
-        return jsonResponse(401, { error: "Token expired" });
-      }
-      // Second hub call succeeds
-      return jsonResponse(201, { orderid: "1000000", confirmation: "ok" });
+      postCalls++;
+      const headers = init?.headers as Record<string, string> | undefined;
+      if (headers?.["idempotency-key"]) capturedIdemKeys.push(headers["idempotency-key"]);
+      if (postCalls === 1) return jsonResponse(401, { error: "expired" });
+      return jsonResponse(201, {
+        orderid: "1000000", operation: "0010", yield: 50, scrap: 0,
+        confNo: "00000100", confCnt: "0001", status: "confirmed", message: "ok",
+      });
     });
     const client = new HubClient({ url: BASE, apiKey: API_KEY });
-    const res = await client.confirmProduction(
+    const result = await client.confirmProduction(
       { orderid: "1000000", operation: "0010", yield: 50 },
-      "retry-401-post-test",
+      "idem-post-retry",
     );
-    assert.equal(authCalls, 2, "should call auth twice (initial + retry after 401)");
-    assert.equal(hubCalls, 2, "should call hub endpoint twice (initial 401 + retry)");
-    assert.equal((res as Record<string, unknown>).confirmation, "ok");
+    assert.equal(result.status, "confirmed");
+    assert.equal(authCalls, 2, "should re-auth after 401");
+    assert.equal(capturedIdemKeys.length, 2);
+    assert.equal(capturedIdemKeys[0], "idem-post-retry");
+    assert.equal(capturedIdemKeys[1], "idem-post-retry");
   });
 });

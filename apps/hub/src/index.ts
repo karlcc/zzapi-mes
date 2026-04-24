@@ -21,7 +21,9 @@ const server = serve({ fetch: app.fetch, port }, (info) => {
 // Idempotency keys older than 5 minutes (300s) are evicted.
 setImmediate(() => {
   try {
-    const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS ? Number(process.env.HUB_AUDIT_RETENTION_DAYS) : 90;
+    const auditRetentionDays = process.env.HUB_AUDIT_RETENTION_DAYS !== undefined && process.env.HUB_AUDIT_RETENTION_DAYS !== ""
+      ? Number(process.env.HUB_AUDIT_RETENTION_DAYS)
+      : 90;
     if (auditRetentionDays <= 0) {
       console.error(`HUB_AUDIT_RETENTION_DAYS must be positive (got ${auditRetentionDays}). Would prune all audit rows.`);
       process.exit(1);

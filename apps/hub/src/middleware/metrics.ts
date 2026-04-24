@@ -25,10 +25,13 @@ const ROUTE_RULES: Array<{ match: (path: string) => boolean; label: string }> = 
 
 /** Normalize a request path to a low-cardinality metric label. Exported for tests. */
 export function normalizeRoute(path: string): string {
+  // Strip query string and trailing slash before matching
+  let clean: string = path.split("?")[0]!;
+  if (clean.length > 1 && clean.endsWith("/")) clean = clean.slice(0, -1);
   for (const rule of ROUTE_RULES) {
-    if (rule.match(path)) return rule.label;
+    if (rule.match(clean)) return rule.label;
   }
-  return "unknown";
+  return clean;
 }
 
 /** Middleware that records request metrics after the handler runs. */

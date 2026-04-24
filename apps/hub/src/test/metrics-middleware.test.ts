@@ -105,4 +105,18 @@ describe("normalizeRoute", () => {
     // Regression guard: if rule ordering breaks, /po/X/items would match /po/:ebeln first
     assert.equal(normalizeRoute("/po/4500000001/items"), "/po/:ebeln/items");
   });
+
+  it("strips query strings before matching", () => {
+    assert.equal(normalizeRoute("/po/3010000608?foo=bar"), "/po/:ebeln");
+    assert.equal(normalizeRoute("/auth/token?unused=1"), "/auth/token");
+  });
+
+  it("strips trailing slashes before matching", () => {
+    assert.equal(normalizeRoute("/metrics/"), "/metrics");
+    assert.equal(normalizeRoute("/po/3010000608/"), "/po/:ebeln");
+  });
+
+  it("strips both query string and trailing slash", () => {
+    assert.equal(normalizeRoute("/healthz/?format=json"), "/healthz");
+  });
 });
