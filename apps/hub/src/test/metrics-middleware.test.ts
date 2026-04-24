@@ -133,6 +133,15 @@ describe("histogram bucket configuration", () => {
     const histObj = sapDuration as unknown as { buckets: number[] };
     assert.ok(histObj.buckets.includes(0.005), `expected 0.005 bucket, got [${histObj.buckets}]`);
   });
+
+  it("sapDuration includes 15/20/30s buckets for long SAP calls", () => {
+    // SAP calls can take up to 30s; without these buckets they fall into +Inf
+    // with no percentile info.
+    const histObj = sapDuration as unknown as { buckets: number[] };
+    assert.ok(histObj.buckets.includes(15), `expected 15 bucket, got [${histObj.buckets}]`);
+    assert.ok(histObj.buckets.includes(20), `expected 20 bucket, got [${histObj.buckets}]`);
+    assert.ok(histObj.buckets.includes(30), `expected 30 bucket, got [${histObj.buckets}]`);
+  });
 });
 
 describe("registry isolation between test suites", () => {

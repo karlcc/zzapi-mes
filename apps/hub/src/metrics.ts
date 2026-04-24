@@ -23,7 +23,7 @@ export const sapDuration = new promClient.Histogram({
   name: "zzapi_hub_sap_duration_seconds",
   help: "SAP backend call duration in seconds",
   labelNames: ["route"],
-  buckets: [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  buckets: [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 20, 30],
   registers: [register],
 });
 
