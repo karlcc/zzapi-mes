@@ -163,6 +163,15 @@ export function runMigrations(db: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_idempotency_key_id ON idempotency_keys(key_id);
     `);
   }
+
+  // v9: drop redundant idx_audit_log_key_id — v4's composite
+  // idx_audit_log_key_created(key_id, created_at) subsumes it (SQLite uses
+  // the leading column of a composite index for single-column lookups).
+  if (v < 9) {
+    migrate(9, `
+      DROP INDEX IF EXISTS idx_audit_log_key_id;
+    `);
+  }
 }
 
 const FIND_BY_ID = `

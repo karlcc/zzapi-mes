@@ -268,6 +268,8 @@ describe("SAP_PING_TIMEOUT_MS configurability", () => {
 
   it("defaults to 5000ms when env var is not set", async () => {
     delete process.env.SAP_PING_TIMEOUT_MS;
+    // Reset module-level write check flag so the fresh DB gets its table created
+    _resetSapHealthCacheForTest();
     // Re-import to pick up the env change — since the module caches at import time,
     // we verify by checking the default behavior (ping timeout results in 503)
     // The default 5s is too slow for a unit test, so we just verify the env

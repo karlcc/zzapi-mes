@@ -18,6 +18,7 @@ const SAP_PING_TIMEOUT_MS = Number.isFinite(Number(process.env.SAP_PING_TIMEOUT_
 export function _resetSapHealthCacheForTest(): void {
   sapCache = null;
   sapPingInFlight = null;
+  writeCheckInitialized = false;
 }
 
 /** Set the SAP health cache directly (for test isolation). */
@@ -29,6 +30,12 @@ export function _setSapCacheForTest(cache: { ok: boolean; checkedAt: number; err
 export function _getSapCacheForTest(): { ok: boolean; checkedAt: number; error?: string } | null {
   return sapCache;
 }
+
+/** Track whether the _healthz_write_check table has been created.
+ *  CREATE TABLE IF NOT EXISTS is a no-op when the table exists, but it
+ *  still acquires a write lock and appends to the WAL on every request.
+ *  After the first successful creation, skip the DDL entirely. */
+let writeCheckInitialized = false;
 
 health.get("/healthz", async (c) => {
   const db = c.get("db");
@@ -44,7 +51,10 @@ health.get("/healthz", async (c) => {
   // Verify DB is writable — a read-only filesystem or full disk would pass
   // the SELECT check above but cause silent failures on write-back routes.
   try {
-    db.prepare("CREATE TABLE IF NOT EXISTS _healthz_write_check (id INTEGER PRIMARY KEY)").run();
+    if (!writeCheckInitialized) {
+      db.prepare("CREATE TABLE IF NOT EXISTS _healthz_write_check (id INTEGER PRIMARY KEY)").run();
+      writeCheckInitialized = true;
+    }
     db.prepare("INSERT OR REPLACE INTO _healthz_write_check (id) VALUES (1)").run();
     db.prepare("DELETE FROM _healthz_write_check WHERE id = 1").run();
   } catch {
