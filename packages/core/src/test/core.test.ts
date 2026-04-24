@@ -637,6 +637,77 @@ describe("SapClient URL encoding", () => {
   });
 });
 
+describe("SapClient POST Zod schema validation", () => {
+  it("postConfirmation rejects extra fields via schema.parse()", async () => {
+    const client = new SapClient(CFG);
+    await assert.rejects(
+      // @ts-expect-error — runtime test: extra field bypasses TS but not Zod
+      () => client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50, injected: true }),
+      (e: unknown) => {
+        assert.ok(e instanceof Error);
+        assert.match(e.message, /unrecognized_keys|Unrecognized keys/);
+        return true;
+      },
+    );
+  });
+
+  it("postConfirmation rejects wrong type for yield", async () => {
+    const client = new SapClient(CFG);
+    await assert.rejects(
+      // @ts-expect-error — runtime test: string yield bypasses TS but not Zod
+      () => client.postConfirmation({ orderid: "1000000", operation: "0010", yield: "fifty" }),
+      (e: unknown) => {
+        assert.ok(e instanceof Error);
+        return true;
+      },
+    );
+  });
+
+  it("postGoodsReceipt rejects extra fields via schema.parse()", async () => {
+    const client = new SapClient(CFG);
+    await assert.rejects(
+      // @ts-expect-error — runtime test
+      () => client.postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001", evil: true }),
+      (e: unknown) => {
+        assert.ok(e instanceof Error);
+        assert.match(e.message, /unrecognized_keys|Unrecognized keys/);
+        return true;
+      },
+    );
+  });
+
+  it("postGoodsIssue rejects extra fields via schema.parse()", async () => {
+    const client = new SapClient(CFG);
+    await assert.rejects(
+      // @ts-expect-error — runtime test
+      () => client.postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001", hack: "yes" }),
+      (e: unknown) => {
+        assert.ok(e instanceof Error);
+        assert.match(e.message, /unrecognized_keys|Unrecognized keys/);
+        return true;
+      },
+    );
+  });
+
+  it("postConfirmation accepts valid data through schema.parse()", async () => {
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}');
+    const result = await new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    assert.equal(result.orderid, "1000000");
+  });
+
+  it("postGoodsReceipt accepts valid data through schema.parse()", async () => {
+    globalThis.fetch = mockFetch(201, '{"ebeln":"4500000001","ebelp":"00010","menge":100,"materialDocument":"5000000001","documentYear":"2026","status":"posted"}');
+    const result = await new SapClient(CFG).postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
+    assert.equal(result.status, "posted");
+  });
+
+  it("postGoodsIssue accepts valid data through schema.parse()", async () => {
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","matnr":"20000001","menge":50,"materialDocument":"5000000002","documentYear":"2026","status":"posted"}');
+    const result = await new SapClient(CFG).postGoodsIssue({ orderid: "1000000", matnr: "20000001", menge: 50, werks: "1000", lgort: "0001" });
+    assert.equal(result.status, "posted");
+  });
+});
+
 describe("SapClient Content-Type validation", () => {
   it("rejects 200 response with text/html content-type", async () => {
     globalThis.fetch = async () => new Response(

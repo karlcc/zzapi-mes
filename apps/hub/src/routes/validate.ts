@@ -18,10 +18,14 @@ export function validateParam(
   if (!value || value.length === 0) {
     return c.json({ error: `${label} '${name}' must not be empty` }, 400);
   }
-  if (value.length > maxLength) {
+  // Normalize to NFC to prevent NFD-vs-NFC mismatch. NFD decomposes
+  // accented characters into base + combining marks, producing different
+  // string lengths and breaking equality checks. NFC is the canonical form.
+  const normalized = value.normalize("NFC");
+  if (normalized.length > maxLength) {
     return c.json({ error: `${label} '${name}' exceeds maximum length of ${maxLength}` }, 400);
   }
-  if (!SAP_ID_RE.test(value)) {
+  if (!SAP_ID_RE.test(normalized)) {
     return c.json({ error: `${label} '${name}' contains invalid characters (alphanumeric, hyphen, underscore only)` }, 400);
   }
   return null;
