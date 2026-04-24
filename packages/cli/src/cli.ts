@@ -16,32 +16,42 @@ interface RcFile {
 }
 
 function readRc(): RcFile {
-  const rcPath = join(homedir(), ".zzapirc");
+  const rcPath = process.env.ZZAPIRC || join(homedir(), ".zzapirc");
   try {
     let text = readFileSync(rcPath, "utf8");
     // Strip UTF-8 BOM if present (common from Notepad on Windows)
     if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
     return JSON.parse(text);
-  } catch {
+  } catch (e) {
+    // Warn on parse errors (malformed JSON) but not on file-not-found
+    if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code === "ENOENT") return {};
+    if (e instanceof SyntaxError) {
+      console.error(`Warning: ${rcPath} contains invalid JSON — ${e.message}`);
+    }
     return {};
   }
 }
 
 function readConfig() {
   const rc = readRc();
-  const host = ensureProtocol(process.env.SAP_HOST || rc.SAP_HOST || "sapdev.fastcell.hk:8000");
+  const hostRaw = process.env.SAP_HOST || rc.SAP_HOST || "sapdev.fastcell.hk:8000";
+  if (typeof hostRaw !== "string") {
+    console.error(`SAP_HOST must be a string (got ${typeof hostRaw}: ${hostRaw})`);
+    process.exit(EXIT_USAGE);
+  }
+  const host = ensureProtocol(hostRaw);
   const clientRaw = process.env.SAP_CLIENT || rc.SAP_CLIENT;
   const client = clientRaw !== undefined && clientRaw !== "" ? Number(clientRaw) : 200;
   if (!Number.isFinite(client) || !Number.isInteger(client) || client <= 0) {
     console.error(`SAP_CLIENT must be a positive integer (got ${clientRaw})`);
-    process.exit(1);
+    process.exit(EXIT_USAGE);
   }
   const user = process.env.SAP_USER || rc.SAP_USER;
   const password = process.env.SAP_PASS || rc.SAP_PASS;
 
   if (!user || !user.trim() || !password || !password.trim()) {
     console.error("Set SAP_USER and SAP_PASS (env or ~/.zzapirc).");
-    process.exit(1);
+    process.exit(EXIT_AUTH);
   }
 
   return { host, client, user, password };
@@ -54,15 +64,20 @@ function readHubConfig() {
 
   if (!url || !apiKey) {
     console.error("Set HUB_URL and HUB_API_KEY (env or ~/.zzapirc) for hub mode.");
-    process.exit(1);
+    process.exit(EXIT_AUTH);
   }
 
   return { url: ensureProtocol(url), apiKey };
 }
 
-function die(msg: string): never {
+// POSIX-inspired exit codes for scripting (sysexits.h convention)
+const EXIT_USAGE = 2;   // command-line usage error
+const EXIT_AUTH = 4;    // missing/invalid credentials
+const EXIT_SAP = 6;     // SAP/network failure
+
+function die(msg: string, code: number = EXIT_USAGE): never {
   console.error(msg);
-  process.exit(1);
+  process.exit(code);
 }
 
 const VERSION = "0.1.0";
@@ -295,7 +310,7 @@ Environment (hub mode):
 
 main().catch((e) => {
   if (e instanceof ZzapiMesHttpError) {
-    die(`HTTP ${e.status}: ${e.message}`);
+    die(`HTTP ${e.status}: ${e.message}`, EXIT_SAP);
   }
   die(e.message);
 });
