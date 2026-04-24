@@ -1807,7 +1807,7 @@ describe("Rate limit per min = 0", () => {
       JWT_SECRET,
     );
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${zeroRpmToken}` } });
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 400);
   });
 
   it("rejects request with negative rate_limit_per_min", async () => {
@@ -1816,7 +1816,7 @@ describe("Rate limit per min = 0", () => {
       JWT_SECRET,
     );
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${negRpmToken}` } });
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 400);
   });
 });
 

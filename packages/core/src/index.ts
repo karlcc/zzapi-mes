@@ -121,6 +121,19 @@ export class ZzapiMesHttpError extends Error {
     this.retryAfter = retryAfter;
     this.originalStatus = originalStatus;
   }
+
+  /** JSON serialization — Error properties are non-enumerable by default,
+   *  so JSON.stringify(err) produces {}. Include status/retryAfter so
+   *  log shippers and CLI error output get useful structured data. */
+  toJSON(): { name: string; status: number; message: string; retryAfter?: number; originalStatus?: number } {
+    return {
+      name: this.name,
+      status: this.status,
+      message: this.message,
+      ...(this.retryAfter !== undefined && { retryAfter: this.retryAfter }),
+      ...(this.originalStatus !== undefined && { originalStatus: this.originalStatus }),
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -129,8 +142,65 @@ export class ZzapiMesHttpError extends Error {
 
 /** Prepends http:// if the host string has no scheme. */
 export function ensureProtocol(host: string): string {
-  if (/^https?:\/\//.test(host)) return host;
-  return `http://${host}`;
+  if (!host || !host.trim()) throw new Error("Host must be a non-empty string");
+  const trimmed = host.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^\/\//.test(trimmed)) throw new Error(`Protocol-relative URL "${host}" is not supported — use http:// or https://`);
+  if (/^[a-z][a-z0-9+]*:\/\//i.test(trimmed) || /^[a-z][a-z0-9+]*:(?!\/\/)/i.test(trimmed)) {
+    throw new Error(`Unsupported URL scheme in "${host}" — only http and https are allowed`);
+  }
+  return `http://${trimmed}`;
+}
+
+/** Maximum SAP response body size in bytes (1 MB). Prevents OOM from
+ *  unbounded res.text() if SAP returns an unexpectedly large payload. */
+export const SAP_RESPONSE_MAX_BYTES = 1_048_576;
+
+/** Read a Response body with a size limit. Throws if the body exceeds maxBytes.
+ *  Uses Content-Length as a fast path when available, otherwise streams and
+ *  counts bytes. This avoids loading an entire oversized response into memory. */
+export async function readResponseBody(res: Response, maxBytes: number = SAP_RESPONSE_MAX_BYTES): Promise<string> {
+  const contentLength = res.headers.get("content-length");
+  if (contentLength !== null) {
+    const declared = Number(contentLength);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      throw new ZzapiMesHttpError(502, `SAP response too large (${declared} bytes, limit ${maxBytes})`);
+    }
+  }
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    if (text.length > maxBytes) {
+      throw new ZzapiMesHttpError(502, `SAP response too large (${text.length} bytes, limit ${maxBytes})`);
+    }
+    return text;
+  }
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        reader.cancel().catch(() => {});
+        throw new ZzapiMesHttpError(502, `SAP response too large (>${maxBytes} bytes)`);
+      }
+      chunks.push(value);
+    }
+  } catch (e) {
+    if (e instanceof ZzapiMesHttpError) throw e;
+    const text = await res.text();
+    if (text.length > maxBytes) {
+      throw new ZzapiMesHttpError(502, `SAP response too large (${text.length} bytes, limit ${maxBytes})`);
+    }
+    return text;
+  }
+  const decoder = new TextDecoder();
+  let text = "";
+  for (const chunk of chunks) { text += decoder.decode(chunk, { stream: true }); }
+  text += decoder.decode();
+  return text;
 }
 
 /** Parse a Retry-After header value (seconds) into a number, or undefined. */
@@ -251,10 +321,10 @@ export class SapClient {
 
     this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
 
-    const body = await res.text();
+    const bodyText = await readResponseBody(res);
     let json: Record<string, unknown>;
     try {
-      json = JSON.parse(body);
+      json = JSON.parse(bodyText);
     } catch {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
@@ -316,10 +386,10 @@ export class SapClient {
 
     this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
 
-    const text = await res.text();
+    const bodyText = await readResponseBody(res);
     let json: Record<string, unknown>;
     try {
-      json = JSON.parse(text);
+      json = JSON.parse(bodyText);
     } catch {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
