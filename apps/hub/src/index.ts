@@ -55,7 +55,8 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log("Shutting down...");
-  server.close(() => {
+  server.close((err) => {
+    if (err) console.error("Error closing server:", err);
     try { db.close(); } catch { /* ignore if already closed */ }
     console.log("Server closed.");
     process.exit(0);

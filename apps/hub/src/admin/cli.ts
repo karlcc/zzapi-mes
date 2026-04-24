@@ -25,8 +25,14 @@ function usage(): never {
 function parseArgs(args: string[]): Record<string, string> {
   const opts: Record<string, string> = {};
   for (let i = 0; i < args.length; i++) {
-    if (args[i]!.startsWith("--")) {
-      const raw = args[i]!.slice(2);
+    const arg = args[i]!;
+    if (arg === "--") break; // POSIX end-of-options marker
+    if (arg.startsWith("--")) {
+      const raw = arg.slice(2);
+      if (!raw) {
+        console.error(`Empty flag name: "${arg}"`);
+        process.exit(1);
+      }
       const eq = raw.indexOf("=");
       if (eq >= 0) {
         opts[raw.slice(0, eq)] = raw.slice(eq + 1);
@@ -112,6 +118,10 @@ async function main(args: string[]): Promise<void> {
       const days = parseInt(opts["days"] ?? "", 10);
       if (!days || days <= 0) {
         console.error("--days must be a positive integer");
+        process.exit(1);
+      }
+      if (days > 3650) {
+        console.error("--days must be ≤ 3650 (10 years)");
         process.exit(1);
       }
       const deleted = pruneAuditLog(db, days);

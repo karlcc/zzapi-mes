@@ -86,6 +86,12 @@ describe("Admin CLI", () => {
       assert.match(stdout, /^[0-9a-f]{12}\./);
     });
 
+    it("rejects bare -- with empty flag name", async () => {
+      const { stderr, code } = await run(["keys", "create", "--", "label", "test-bare"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("Empty flag name") || stderr.includes("Usage"), `should reject bare --: ${stderr}`);
+    });
+
     it("deduplicates --scopes values", async () => {
       const { stdout, code } = await run(["keys", "create", "--label", "dedup-test", "--scopes", "ping,ping,po"]);
       assert.equal(code, 0);
@@ -184,6 +190,12 @@ describe("Admin CLI", () => {
     it("rejects missing --days", async () => {
       const { code } = await run(["audit", "prune"]);
       assert.notEqual(code, 0);
+    });
+
+    it("rejects --days exceeding upper bound (3650)", async () => {
+      const { stderr, code } = await run(["audit", "prune", "--days", "999999"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("3650"), `stderr should mention upper bound: ${stderr}`);
     });
   });
 
