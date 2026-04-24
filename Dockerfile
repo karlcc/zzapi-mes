@@ -2,7 +2,7 @@
 # Builder: install deps, build all packages, prune to prod node_modules
 # Runtime: slim image with only hub dist + production node_modules
 
-FROM node:22-slim AS builder
+FROM node:22-slim@sha256:2fc5ec124496f2fb49b8da251c8b4b674c6b96c1f2176f6c77fa23ec7e9af7d7 AS builder
 
 RUN corepack enable pnpm
 
@@ -33,7 +33,10 @@ RUN pnpm build
 RUN CI=true pnpm prune --prod
 
 # --- Runtime ---
-FROM node:22-slim AS runner
+FROM node:22-slim@sha256:2fc5ec124496f2fb49b8da251c8b4b674c6b96c1f2176f6c77fa23ec7e9af7d7 AS runner
+
+# Install tini as PID 1 init — reaps zombie processes that Node.js cannot
+RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -68,4 +71,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 STOPSIGNAL SIGTERM
 
-CMD ["node", "apps/hub/dist/index.js"]
+CMD ["tini", "--", "node", "apps/hub/dist/index.js"]
