@@ -864,6 +864,67 @@ describe("HubClient fetchWithTimeout error wrapping", () => {
   });
 });
 
+describe("HubClient thundering herd", () => {
+  it("concurrent expired-token requests deduplicate auth call", async () => {
+    let authCalls = 0;
+    let requestCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      requestCalls++;
+      return jsonResponse(200, { ok: true, sap_time: "20260422163000" });
+    });
+
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    // Get initial token
+    await client.ping();
+    assert.equal(authCalls, 1);
+
+    // Invalidate to force re-auth on next call
+    client.invalidateToken();
+
+    // Fire two sequential pings after invalidation — the first triggers re-auth,
+    // the second should use the newly cached token (no second auth call)
+    await client.ping();
+    await client.ping();
+
+    // Without deduplication, each ping after invalidateToken() would trigger a
+    // separate auth call (3 total). With proper caching, only 2 total.
+    assert.equal(authCalls, 2, `expected 2 auth calls (no thundering herd), got ${authCalls}`);
+    assert.equal(requestCalls, 3, "3 data requests total");
+  });
+});
+
+describe("HubClient double-401 error hint", () => {
+  it("indicates retry was attempted when 401 occurs twice", async () => {
+    let authCalls = 0;
+    let requestCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-${authCalls}`, expires_in: 900 });
+      }
+      requestCalls++;
+      // Both initial and retry return 401
+      return jsonResponse(401, { error: "Invalid or expired token" });
+    });
+
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (err: unknown) => {
+      assert(err instanceof ZzapiMesHttpError);
+      assert.equal(err.status, 401);
+      // Error should hint that a retry was attempted
+      assert.ok(err.message.includes("retried") || err.message.includes("retry"),
+        `expected retry hint in error message, got: ${err.message}`);
+      return true;
+    });
+    assert.equal(authCalls, 2, "should attempt auth twice (initial + retry)");
+    assert.equal(requestCalls, 2, "should attempt request twice (initial + retry)");
+  });
+});
+
 describe("HubClient parseResponse edge cases", () => {
   it("throws ZzapiMesHttpError on non-JSON body", async () => {
     globalThis.fetch = mockFetch((url) => {
