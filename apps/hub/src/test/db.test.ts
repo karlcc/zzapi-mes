@@ -39,6 +39,34 @@ describe("DB layer — api_keys", () => {
     assert.equal(record!.revoked_at, null);
   });
 
+  it("insertKey rejects non-positive rate_limit_per_min", () => {
+    assert.throws(
+      () => insertKey(db, {
+        id: "bad-rate",
+        hash: "h",
+        label: "x",
+        scopes: "ping",
+        rate_limit_per_min: 0,
+        created_at: 1000,
+      }),
+      (err: unknown) => err instanceof Error && err.message.includes("must be positive"),
+    );
+  });
+
+  it("insertKey rejects negative rate_limit_per_min", () => {
+    assert.throws(
+      () => insertKey(db, {
+        id: "neg-rate",
+        hash: "h",
+        label: "x",
+        scopes: "ping",
+        rate_limit_per_min: -5,
+        created_at: 1000,
+      }),
+      (err: unknown) => err instanceof Error && err.message.includes("must be positive"),
+    );
+  });
+
   it("insertKey throws on duplicate id", () => {
     insertKey(db, {
       id: "dup",

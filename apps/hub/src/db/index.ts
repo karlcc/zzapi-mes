@@ -22,9 +22,15 @@ export function openDb(path?: string): Database.Database {
   }
   const db = new Database(resolvedPath);
   db.pragma("journal_mode = WAL");
-  db.pragma("synchronous = NORMAL");
+  db.pragma("synchronous = NORMAL");  // NORMAL is safe in WAL mode; power failure may
+  // lose the last few transactions but not corrupt the DB. This trades a
+  // small durability gap for major write throughput gains vs FULL.
   db.pragma("busy_timeout = 5000");
   db.pragma("foreign_keys = ON");
+  // Explicitly set WAL auto-checkpoint to 1000 pages (SQLite default, but
+  // pinning it prevents the WAL file from growing unbounded under write-heavy
+  // load if the default ever changes or if the binary is compiled differently).
+  db.pragma("wal_autocheckpoint = 1000");
   return db;
 }
 
@@ -182,6 +188,12 @@ export function insertKey(
   db: Database.Database,
   record: Omit<ApiKeyRecord, "revoked_at">,
 ): void {
+  // Application-level validation for rate_limit_per_min: SQLite v7 migration
+  // is a no-op (ALTER TABLE ADD CHECK unsupported), so existing DBs lack the
+  // CHECK constraint. Enforce here as a safety net.
+  if (record.rate_limit_per_min !== null && record.rate_limit_per_min <= 0) {
+    throw new Error(`rate_limit_per_min must be positive, got ${record.rate_limit_per_min}`);
+  }
   try {
     db.prepare(INSERT_KEY).run(
       record.id,

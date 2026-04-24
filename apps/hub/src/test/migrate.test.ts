@@ -75,6 +75,26 @@ describe("migrate.ts — CLI entry point", () => {
     }
   });
 
+  it("openDb sets wal_autocheckpoint to 1000", () => {
+    // WAL file grows unbounded without autocheckpoint under write-heavy load.
+    // 1000 is a sensible default — frequent enough to bound WAL size, rare
+    // enough to avoid checkpoint storms on busy systems.
+    const dir = mkdtempSync(join(tmpdir(), "wal-test-"));
+    const dbPath = join(dir, "test.db");
+    try {
+      const db = openDb(dbPath);
+      const checkpoint = db.pragma("wal_autocheckpoint", { simple: true }) as number;
+      assert.equal(checkpoint, 1000, "wal_autocheckpoint should be 1000");
+      db.close();
+    } finally {
+      // cleanup
+      try { require("node:fs").unlinkSync(dbPath); } catch {}
+      try { require("node:fs").unlinkSync(dbPath + "-wal"); } catch {}
+      try { require("node:fs").unlinkSync(dbPath + "-shm"); } catch {}
+      try { require("node:fs").rmdirSync(dir); } catch {}
+    }
+  });
+
   it("openDb sets synchronous=NORMAL", () => {
     const db = openDb(":memory:");
     try {
