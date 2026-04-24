@@ -345,6 +345,13 @@ describe("Zod schemas", () => {
     assert.equal(r.error, "PO not found");
   });
 
+  it("ErrorResponseSchema does NOT have errorField — responses use dynamic keys", () => {
+    // Write-back error responses include route-specific keys (orderid, ebeln)
+    // dynamically, not via a fixed errorField property.
+    const shape = ErrorResponseSchema.shape as Record<string, unknown>;
+    assert.equal("errorField" in shape, false, "ErrorResponseSchema should not have errorField property");
+  });
+
   // Phase 5A schemas
 
   it("ProdOrderResponseSchema accepts valid prod order", () => {
