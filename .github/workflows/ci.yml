@@ -4,9 +4,14 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         node-version: [20, 22, 24]
@@ -26,3 +31,9 @@ jobs:
       - run: pnpm spec:gen
       - run: git diff --exit-code
       - run: pnpm test
+      - name: Validate OpenAPI spec
+        run: npx @redocly/cli lint spec/openapi.yaml --skip-rule security-overwrite-to-more-specific || true
+      - name: Docker build verification
+        run: docker build -t zzapi-mes-hub-ci . --target runner
+      - name: Dependency audit
+        run: pnpm audit --audit-level moderate || true
