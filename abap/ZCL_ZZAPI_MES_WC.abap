@@ -30,10 +30,11 @@ CLASS zcl_zzapi_mes_wc IMPLEMENTATION.
 
         " --- Work center header (CRHD) ---
         DATA: ls_crhd TYPE crhd.
+        " CRHD uses LVORM (deletion indicator), not LOEKZ
         SELECT SINGLE * INTO ls_crhd FROM crhd
           WHERE arbpl = lv_arbpl
             AND werks = lv_werks
-            AND loekz = abap_false.
+            AND lvorm = abap_false.
         IF sy-subrc <> 0.
           server->response->set_status( code = 404 reason = 'Not Found' ).
           server->response->set_content_type( 'application/json' ).
@@ -65,10 +66,10 @@ CLASS zcl_zzapi_mes_wc IMPLEMENTATION.
         " --- Cost center (CRCO) ---
         DATA: lt_crco TYPE TABLE OF crco,
               lv_crco_json TYPE string.
+        " CRCO has no LOEKZ column — filter by objid/werks only
         SELECT * INTO TABLE lt_crco FROM crco
           WHERE objid = ls_crhd-objid
-            AND werks = lv_werks
-            AND loekz = abap_false.
+            AND werks = lv_werks.
         IF lines( lt_crco ) > 0.
           lv_crco_json = zz_cl_json=>serialize(
             data        = lt_crco

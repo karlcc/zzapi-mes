@@ -31,11 +31,12 @@ CLASS zcl_zzapi_mes_stock IMPLEMENTATION.
         ENDIF.
 
         " --- Storage location stock (MARD) ---
-        DATA: lt_mard TYPE TABLE OF mard,
+        DATA: lt_mard      TYPE TABLE OF mard,
+              ls_mard      TYPE mard,
               lv_mard_json TYPE string.
 
         IF lv_lgort IS NOT INITIAL.
-          SELECT SINGLE * INTO DATA(ls_mard) FROM mard
+          SELECT SINGLE * INTO ls_mard FROM mard
             WHERE matnr = lv_matnr
               AND werks = lv_werks
               AND lgort = lv_lgort.

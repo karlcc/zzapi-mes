@@ -50,12 +50,14 @@ CLASS zcl_zzapi_mes_prod_order IMPLEMENTATION.
           compress    = abap_true
           pretty_name = zz_cl_json=>pretty_mode-camel_case ).
 
-        " --- Operations (AFVV via CAUFV join) ---
-        DATA: lt_ops TYPE TABLE OF caufv,
+        " --- Operations (AFVC by AUFPL from AFKO) ---
+        DATA: lt_ops      TYPE TABLE OF afvc,
               lv_ops_json TYPE string.
-        SELECT * INTO TABLE lt_ops FROM caufv
-          WHERE aufnr = lv_aufnr
-          ORDER BY vornr.
+        IF ls_afko-aufpl IS NOT INITIAL.
+          SELECT * INTO TABLE lt_ops FROM afvc
+            WHERE aufpl = ls_afko-aufpl
+            ORDER BY vornr.
+        ENDIF.
         IF lines( lt_ops ) > 0.
           lv_ops_json = zz_cl_json=>serialize(
             data        = lt_ops
