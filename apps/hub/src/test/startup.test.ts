@@ -174,6 +174,24 @@ describe("Hub startup validation", () => {
     assert.notEqual(code, 0);
     assert.ok(stderr.includes("HUB_JWT_SECRET"), `stderr should mention HUB_JWT_SECRET: ${stderr}`);
   });
+
+  it("rejects HUB_PORT=8080.5 (float) with exit 1", async () => {
+    const { stderr, code } = await run({ HUB_PORT: "8080.5" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("HUB_PORT"), `stderr should mention HUB_PORT: ${stderr}`);
+  });
+
+  it("rejects HUB_AUDIT_RETENTION_DAYS=90.7 (float) with exit 1", async () => {
+    const { stderr, code } = await run({ HUB_AUDIT_RETENTION_DAYS: "90.7" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("HUB_AUDIT_RETENTION_DAYS"), `stderr should mention HUB_AUDIT_RETENTION_DAYS: ${stderr}`);
+  });
+
+  it("rejects HUB_JWT_TTL_SECONDS=900.5 (float) with exit 1", async () => {
+    const { stderr, code } = await run({ HUB_JWT_TTL_SECONDS: "900.5" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("HUB_JWT_TTL_SECONDS"), `stderr should mention HUB_JWT_TTL_SECONDS: ${stderr}`);
+  });
 });
 
 describe("Graceful shutdown", () => {
