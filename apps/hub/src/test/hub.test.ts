@@ -1791,6 +1791,23 @@ describe("Request body size limit", () => {
     const data = await res.json() as Record<string, unknown>;
     assert.equal(data.status, "confirmed");
   });
+
+  it("rejects CJK body whose byte length exceeds 1 MB (string length under limit)", async () => {
+    // CJK characters are 3 bytes each in UTF-8. 350_000 × 3 = 1_050_000 bytes
+    // but 350_000 JS string length is well under 1_048_576.
+    const token = await validToken();
+    const cjkBody = "あ".repeat(350_000); // ~1.05 MB in UTF-8, ~350K in JS string length
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "cjk-oversized-001",
+      },
+      body: cjkBody,
+    });
+    assert.equal(res.status, 413, "CJK body >1MB bytes should be rejected even if JS string length <1MB");
+  });
 });
 
 describe("JWT edge cases", () => {
