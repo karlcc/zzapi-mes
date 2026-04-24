@@ -7,6 +7,7 @@ interface Bucket {
 }
 
 const DEFAULT_RPM = 60;
+const BUCKET_CAP = 10_000; // Hard cap on bucket count to bound memory
 const IDLE_TIMEOUT_MS = 10 * 60_000; // Evict buckets idle for 10+ minutes
 // In-memory token buckets — state is lost on process restart, allowing a brief
 // burst of previously-throttled traffic after deployment. This is an accepted
@@ -20,6 +21,10 @@ function getTokens(keyId: string, rpm: number): { allowed: boolean; retryAfter: 
   let bucket = buckets.get(keyId);
 
   if (!bucket) {
+    if (buckets.size >= BUCKET_CAP) {
+      // Over cap — reject request rather than growing the Map unboundedly
+      return { allowed: false, retryAfter: 60 };
+    }
     bucket = { tokens: rpm, lastRefill: now };
     buckets.set(keyId, bucket);
   }
@@ -49,6 +54,12 @@ function sweepIdleBuckets(): void {
     if (now - bucket.lastRefill > IDLE_TIMEOUT_MS) {
       buckets.delete(keyId);
     }
+  }
+  // If still over cap after idle eviction, drop the oldest half
+  if (buckets.size > BUCKET_CAP) {
+    const entries = [...buckets.entries()].sort((a, b) => a[1].lastRefill - b[1].lastRefill);
+    const toRemove = entries.slice(0, Math.ceil(entries.length / 2));
+    for (const [keyId] of toRemove) buckets.delete(keyId);
   }
 }
 
