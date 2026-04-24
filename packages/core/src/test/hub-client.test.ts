@@ -958,3 +958,116 @@ describe("HubClient parseResponse edge cases", () => {
     );
   });
 });
+
+describe("HubClient 401 retry timeout budget", () => {
+  it("retry uses remaining deadline, not full timeout", async () => {
+    const TIMEOUT = 5000;
+    const BASE_TIME = 1_000_000;
+    const ELAPSED_MS = 2000;
+
+    const origSetTimeout = globalThis.setTimeout;
+    const origClearTimeout = globalThis.clearTimeout;
+    const origDateNow = Date.now;
+
+    // Simulate time progression: each Date.now() call advances
+    let nowCalls = 0;
+    const nowSequence = [
+      BASE_TIME,                  // getToken cache check
+      BASE_TIME,                  // request deadline = now + timeout
+      BASE_TIME,                  // fetchWithTimeout remaining = deadline - now = TIMEOUT
+      BASE_TIME + ELAPSED_MS,     // after 401 response — getToken invalidate cache check
+      BASE_TIME + ELAPSED_MS,     // getToken fetchWithTimeout
+      BASE_TIME + ELAPSED_MS,     // retry fetchWithTimeout remaining = deadline - now
+    ];
+    const mockNow = (): number => {
+      const idx = nowCalls < nowSequence.length ? nowCalls : nowSequence.length - 1;
+      const val: number = nowSequence[idx] ?? 0;
+      nowCalls++;
+      return val;
+    };
+    Date.now = mockNow;
+
+    // Track setTimeout durations
+    const durations: number[] = [];
+    globalThis.setTimeout = ((fn: (...args: unknown[]) => unknown, ms?: number) => {
+      durations.push(ms ?? 0);
+      return origSetTimeout(fn, ms);
+    }) as typeof globalThis.setTimeout;
+    globalThis.clearTimeout = origClearTimeout;
+
+    let requestCalls = 0;
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      }
+      requestCalls++;
+      if (requestCalls === 1) return jsonResponse(401, { error: "expired" });
+      return jsonResponse(200, { ok: true });
+    });
+
+    const client = new HubClient({ url: BASE, apiKey: API_KEY, timeout: TIMEOUT });
+    await client.ping();
+
+    // durations: auth(full), original(full), auth-refresh(full), retry(remaining)
+    assert.equal(durations.length, 4, "4 setTimeout calls: auth, original, auth-refresh, retry");
+    assert.equal(durations[0], TIMEOUT, "auth fetch uses full timeout");
+    assert.equal(durations[1], TIMEOUT, "original request uses full timeout");
+    // Auth refresh also uses full timeout (getToken doesn't know about deadline)
+    assert.equal(durations[2], TIMEOUT, "auth refresh uses full timeout");
+    // Retry should use remaining budget = TIMEOUT - ELAPSED_MS = 3000
+    const expectedRemaining = TIMEOUT - ELAPSED_MS;
+    assert.equal(durations[3], expectedRemaining,
+      `retry timeout should be ${expectedRemaining}ms (remaining budget), got ${durations[3]}`);
+
+    globalThis.setTimeout = origSetTimeout;
+    globalThis.clearTimeout = origClearTimeout;
+    Date.now = origDateNow;
+  });
+});
+
+describe("HubClient errors-array originalStatus on 409", () => {
+  it("extracts originalStatus from errors-array 409 response", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return new Response(
+        JSON.stringify({ errors: [{ message: "conflict" }], original_status: 201 }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      );
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 409);
+        assert.equal(e.originalStatus, 201, "errors-array branch should extract originalStatus on 409");
+        return true;
+      },
+    );
+  });
+});
+
+describe("HubClient getToken non-JSON auth response", () => {
+  it("wraps SyntaxError from non-JSON 200 auth response in ZzapiMesHttpError", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        return new Response("<html>login page</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      }
+      return jsonResponse(200, { ok: true });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError, `expected ZzapiMesHttpError, got ${e}`);
+        assert.equal(e.status, 502, "should surface as 502 bad gateway");
+        assert.ok(e.message.includes("token") || e.message.includes("auth"),
+          `error message should reference auth/token: ${e.message}`);
+        return true;
+      },
+    );
+  });
+});

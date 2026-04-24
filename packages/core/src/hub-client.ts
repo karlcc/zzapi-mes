@@ -123,7 +123,12 @@ export class HubClient {
       const body = await res.text().catch(() => "");
       throw new ZzapiMesHttpError(res.status, `Hub auth failed: ${body || res.statusText}`);
     }
-    const data = (await res.json()) as { token: string; expires_in: number };
+    let data: { token: string; expires_in: number };
+    try {
+      data = (await res.json()) as { token: string; expires_in: number };
+    } catch {
+      throw new ZzapiMesHttpError(502, "Hub auth returned non-JSON response");
+    }
     if (!data.token || typeof data.token !== "string") {
       throw new ZzapiMesHttpError(502, "Hub auth response missing token");
     }
@@ -142,9 +147,10 @@ export class HubClient {
   private async request<T>(path: string): Promise<T> {
     const token = await this.getToken();
     const url = `${this.url}${path}`;
+    const deadline = Date.now() + this.timeout;
     const res = await this.fetchWithTimeout(url, {
       headers: { authorization: `Bearer ${token}` },
-    }, "Hub request");
+    }, "Hub request", deadline);
 
     // If 401, token may have expired between cache and request — retry once
     if (res.status === 401) {
@@ -152,7 +158,7 @@ export class HubClient {
       const newToken = await this.getToken();
       const retryRes = await this.fetchWithTimeout(url, {
         headers: { authorization: `Bearer ${newToken}` },
-      }, "Hub request");
+      }, "Hub request", deadline);
       // If retry also returns 401, add hint so the caller knows a retry was
       // attempted (otherwise looks like a single unexplained auth failure).
       if (retryRes.status === 401) {
@@ -169,6 +175,7 @@ export class HubClient {
   private async postRequest<Req, Res>(path: string, body: Req, idempotencyKey: string): Promise<Res> {
     const token = await this.getToken();
     const url = `${this.url}${path}`;
+    const deadline = Date.now() + this.timeout;
     const init: RequestInit = {
       method: "POST",
       headers: {
@@ -178,7 +185,7 @@ export class HubClient {
       },
       body: JSON.stringify(body),
     };
-    const res = await this.fetchWithTimeout(url, init, "Hub request");
+    const res = await this.fetchWithTimeout(url, init, "Hub request", deadline);
 
     // If 401, token may have expired — retry once
     if (res.status === 401) {
@@ -193,7 +200,7 @@ export class HubClient {
         },
         body: JSON.stringify(body),
       };
-      const retryRes = await this.fetchWithTimeout(url, retryInit, "Hub request");
+      const retryRes = await this.fetchWithTimeout(url, retryInit, "Hub request", deadline);
       // If retry also returns 401, add hint so the caller knows a retry was
       // attempted (otherwise looks like a single unexplained auth failure).
       if (retryRes.status === 401) {
@@ -207,15 +214,17 @@ export class HubClient {
     return this.parseResponse<Res>(res);
   }
 
-  /** Shared fetch with timeout and error wrapping. Eliminates duplication between request/postRequest. */
-  private async fetchWithTimeout(url: string, init: RequestInit, label: string): Promise<Response> {
+  /** Shared fetch with timeout and error wrapping. Eliminates duplication between request/postRequest.
+   *  If a deadline is provided, uses remaining time instead of the full timeout. */
+  private async fetchWithTimeout(url: string, init: RequestInit, label: string, deadline?: number): Promise<Response> {
+    const remaining = deadline !== undefined ? Math.max(deadline - Date.now(), 0) : this.timeout;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
+    const timer = setTimeout(() => controller.abort(), remaining);
     try {
       return await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
-        throw new ZzapiMesHttpError(408, `${label} timeout after ${this.timeout}ms`);
+        throw new ZzapiMesHttpError(408, `${label} timeout after ${remaining}ms`);
       }
       if (e instanceof TypeError) {
         throw new ZzapiMesHttpError(502, `Hub network error: ${(e as TypeError).message}`);
@@ -245,7 +254,8 @@ export class HubClient {
         ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
         : String(arr);
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
-      throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
+      const originalStatus = res.status === 409 && typeof json.original_status === "number" && json.original_status > 0 ? json.original_status : undefined;
+      throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter, originalStatus);
     }
     if (res.status >= 400) {
       throw new ZzapiMesHttpError(res.status, `Hub error (HTTP ${res.status})`);
