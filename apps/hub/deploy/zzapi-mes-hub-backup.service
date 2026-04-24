@@ -5,4 +5,6 @@ After=zzapi-mes-hub.service
 [Service]
 Type=oneshot
 User=zzapi-mes
+Group=zzapi-mes
+TimeoutStartSec=300
 ExecStart=/usr/local/bin/zzapi-mes-hub-backup.sh
