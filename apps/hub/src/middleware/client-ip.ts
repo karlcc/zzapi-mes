@@ -48,6 +48,15 @@ export function getClientIp(c: Context): string {
 }
 
 /**
+ * Normalize an IP address by stripping the IPv4-mapped IPv6 prefix.
+ * `::ffff:10.0.0.1` → `10.0.0.1`, plain IPv4 and IPv6 pass through unchanged.
+ */
+function normalizeIp(ip: string): string {
+  if (ip.startsWith("::ffff:")) return ip.slice("::ffff:".length);
+  return ip;
+}
+
+/**
  * Pure resolver used by the production branch of `getClientIp`. Exported for
  * unit testing the trusted-proxy logic without a real TCP socket.
  */
@@ -57,11 +66,18 @@ export function resolveIpWithPeer(
   xRealIp: string | undefined,
   xForwardedFor: string | undefined,
 ): string {
-  if (trusted.length > 0 && peer && trusted.includes(peer)) {
+  const normalizedPeer = normalizeIp(peer);
+  const normalizedTrusted = trusted.map(normalizeIp);
+
+  if (normalizedTrusted.length > 0 && normalizedPeer && normalizedTrusted.includes(normalizedPeer)) {
     if (xRealIp) return xRealIp.trim();
     if (xForwardedFor) {
-      const first = xForwardedFor.split(",")[0]?.trim();
-      if (first) return first;
+      // Use the rightmost (last) X-Forwarded-For entry — it was appended by
+      // the trusted proxy and is unspoofable. Leftmost entries can be injected
+      // by the client.
+      const parts = xForwardedFor.split(",").map(s => s.trim()).filter(Boolean);
+      const last = parts[parts.length - 1];
+      if (last) return last;
     }
   }
   return peer;

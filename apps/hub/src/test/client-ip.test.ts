@@ -121,8 +121,8 @@ describe("resolveIpWithPeer (production branch unit tests)", () => {
     assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], "1.2.3.4", undefined), "1.2.3.4");
   });
 
-  it("returns first x-forwarded-for entry when trusted proxy and no x-real-ip", () => {
-    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], undefined, "1.2.3.4, 5.6.7.8"), "1.2.3.4");
+  it("returns rightmost x-forwarded-for entry when trusted proxy and no x-real-ip", () => {
+    assert.equal(resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], undefined, "1.2.3.4, 5.6.7.8"), "5.6.7.8");
   });
 
   it("prefers x-real-ip over x-forwarded-for when both present", () => {
@@ -141,13 +141,30 @@ describe("resolveIpWithPeer (production branch unit tests)", () => {
     assert.equal(resolveIpWithPeer("", ["10.0.0.1"], "1.2.3.4", undefined), "");
   });
 
-  it("takes leftmost X-Forwarded-For entry which is client-controllable (known limitation)", () => {
+  it("uses rightmost X-Forwarded-For entry when trusted proxy (prevents spoofing)", () => {
     // X-Forwarded-For: spoofed-ip, real-client
-    // resolveIpWithPeer takes xff[0] which the client can set to any value.
-    // This is a known limitation — the rightmost untrusted entry should ideally
-    // be used, but the current implementation takes the leftmost.
+    // When there's a single trusted proxy, it appends the real client IP as the
+    // rightmost entry. Taking the rightmost prevents the client from injecting
+    // fake entries at the front.
     const result = resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], undefined, "spoofed-ip, real-client");
-    assert.equal(result, "spoofed-ip", "known: leftmost XFF entry is client-controllable");
+    assert.equal(result, "real-client", "should take rightmost XFF entry from trusted proxy");
+  });
+
+  it("takes leftmost XFF when only one entry (no spoofing risk)", () => {
+    const result = resolveIpWithPeer("10.0.0.1", ["10.0.0.1"], undefined, "1.2.3.4");
+    assert.equal(result, "1.2.3.4");
+  });
+
+  it("normalizes IPv4-mapped IPv6 peer against trusted list", () => {
+    // ::ffff:10.0.0.1 should match 10.0.0.1 in the trusted list
+    const result = resolveIpWithPeer("::ffff:10.0.0.1", ["10.0.0.1"], "1.2.3.4", undefined);
+    assert.equal(result, "1.2.3.4", "IPv4-mapped peer should match plain IPv4 trusted entry");
+  });
+
+  it("normalizes IPv4-mapped IPv6 in trusted list against plain IPv4 peer", () => {
+    // peer is plain IPv4, trusted list has IPv4-mapped form
+    const result = resolveIpWithPeer("10.0.0.1", ["::ffff:10.0.0.1"], "1.2.3.4", undefined);
+    assert.equal(result, "1.2.3.4", "plain IPv4 peer should match IPv4-mapped trusted entry");
   });
 });
 
