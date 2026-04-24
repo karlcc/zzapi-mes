@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
   hash                TEXT NOT NULL,
   label               TEXT,
   scopes              TEXT NOT NULL,
-  rate_limit_per_min  INTEGER,
+  rate_limit_per_min  INTEGER CHECK (rate_limit_per_min IS NULL OR rate_limit_per_min > 0),
   created_at          INTEGER NOT NULL,
   revoked_at          INTEGER
 );
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   key        TEXT PRIMARY KEY,
   key_id     TEXT NOT NULL,
   path       TEXT NOT NULL,
-  status     INTEGER NOT NULL,
+  status     INTEGER NOT NULL CHECK (status >= 0),
   body_hash  TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
@@ -56,3 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created_at_retention ON audit_log(creat
 
 -- v6: dropped redundant idx_audit_log_created_at (v1 and v5 both indexed
 --      the same column; the v5 retention index is canonical).
+
+-- v7: CHECK constraints to prevent invalid data at the DB level
+-- ALTER TABLE api_keys ADD CHECK (rate_limit_per_min IS NULL OR rate_limit_per_min > 0);
+-- ALTER TABLE idempotency_keys ADD CHECK (status >= 0);

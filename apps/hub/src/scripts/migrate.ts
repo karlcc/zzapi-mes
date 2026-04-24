@@ -5,7 +5,18 @@
  */
 import { openDb, runMigrations } from "../db/index.js";
 
-const db = openDb();
-runMigrations(db);
-db.close();
-console.log("Migration complete.");
+try {
+  const db = openDb();
+  try {
+    runMigrations(db);
+  } catch (err) {
+    console.error(`Migration failed: ${err instanceof Error ? err.message : err}`);
+    try { db.close(); } catch { /* ignore */ }
+    process.exit(1);
+  }
+  db.close();
+  console.log("Migration complete.");
+} catch (err) {
+  console.error(`Failed to open database: ${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+}
