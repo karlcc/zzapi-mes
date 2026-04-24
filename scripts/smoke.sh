@@ -590,6 +590,17 @@ if [[ "$HUB_MODE" == "1" ]]; then
   else
     echo "  SKIP  rate-limit 429 test (admin CLI unavailable or key creation failed)"
   fi
+
+  # CORS preflight — only meaningful when HUB_CORS_ORIGIN is configured
+  if [[ -n "${HUB_CORS_ORIGIN:-}" ]]; then
+    check "CORS preflight returns 204 + Access-Control-Allow-Methods" \
+      "${BASE_URL}${PING_PATH}" \
+      "204" OPTIONS \
+      -H "Origin: ${HUB_CORS_ORIGIN}" \
+      -H "Access-Control-Request-Method: GET"
+  else
+    echo "  SKIP  CORS preflight (HUB_CORS_ORIGIN not set)"
+  fi
 fi
 
 echo ""
