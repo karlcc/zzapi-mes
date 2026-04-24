@@ -159,6 +159,55 @@ describe("health route SAP cache", () => {
   });
 });
 
+describe("health route SAP cache concurrent refresh dedup", () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    runMigrations(db);
+    _resetSapHealthCacheForTest();
+  });
+
+  it("only pings SAP once for concurrent requests past TTL", async () => {
+    // Seed cache past TTL so both requests need a fresh check
+    _setSapCacheForTest({ ok: true, checkedAt: Date.now() - 31_000 });
+
+    let pingCount = 0;
+    let resolvePing: () => void;
+    const pingPromise = new Promise<void>((r) => { resolvePing = r; });
+
+    const mockSap = {
+      ping: async () => {
+        pingCount++;
+        resolvePing();
+        return { ok: true, sap_time: "20260422163000" };
+      },
+    };
+
+    const appWithSap = new Hono<{ Variables: HubVariables }>();
+    appWithSap.use("*", async (c, next) => {
+      c.set("db", db);
+      c.set("sap", mockSap as any);
+      c.set("jwtPayload", { key_id: "test", scopes: ["ping"], iat: 0, exp: 0, rate_limit_per_min: null });
+      await next();
+    });
+    appWithSap.route("/", health);
+
+    // Fire two concurrent requests
+    const [res1, res2] = await Promise.all([
+      appWithSap.request("/healthz?check=sap"),
+      appWithSap.request("/healthz?check=sap"),
+    ]);
+
+    assert.equal(res1.status, 200);
+    assert.equal(res2.status, 200);
+    // Without dedup, pingCount would be 2 (one per concurrent request).
+    // With a mutex/in-flight promise, the second request reuses the first's
+    // pending ping, so pingCount should be 1.
+    assert.equal(pingCount, 1, `expected 1 SAP ping for concurrent requests, got ${pingCount}`);
+  });
+});
+
 describe("healthz SAP timeout", () => {
   let db: Database.Database;
   let app: Hono<{ Variables: HubVariables }>;
