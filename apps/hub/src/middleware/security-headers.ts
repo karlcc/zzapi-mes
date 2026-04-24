@@ -13,6 +13,7 @@ export const securityHeaders: MiddlewareHandler = async (c, next) => {
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-Frame-Options", "DENY");
   c.header("Referrer-Policy", "no-referrer");
+  c.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
   if (process.env.HUB_HSTS === "1") {
     c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
   }
