@@ -18,7 +18,10 @@ interface RcFile {
 function readRc(): RcFile {
   const rcPath = join(homedir(), ".zzapirc");
   try {
-    return JSON.parse(readFileSync(rcPath, "utf8"));
+    let text = readFileSync(rcPath, "utf8");
+    // Strip UTF-8 BOM if present (common from Notepad on Windows)
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    return JSON.parse(text);
   } catch {
     return {};
   }

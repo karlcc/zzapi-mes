@@ -151,7 +151,7 @@ All write-back endpoints require an `Idempotency-Key` header for deduplication. 
 
 ```bash
 pnpm build
-HUB_JWT_SECRET=random-secret \
+HUB_JWT_SECRET=change-me-16chars-min \
   SAP_HOST=sapdev.fastcell.hk:8000 SAP_CLIENT=200 \
   SAP_USER=<your_user> SAP_PASS='<your_password>' \
   pnpm --filter @zzapi-mes/hub start
