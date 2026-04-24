@@ -63,6 +63,10 @@ async function main(args: string[]): Promise<void> {
         console.error("--rate-limit must be a positive integer");
         process.exit(1);
       }
+      if (rateLimit !== null && rateLimit > 10_000) {
+        console.error("--rate-limit must be ≤ 10000 (requests per minute)");
+        process.exit(1);
+      }
 
       // Generate key_id (12 hex chars from 6 random bytes)
       const keyId = randomBytes(6).toString("hex");

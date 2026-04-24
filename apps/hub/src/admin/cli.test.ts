@@ -74,6 +74,12 @@ describe("Admin CLI", () => {
       assert.ok(stderr.includes("positive integer"));
     });
 
+    it("rejects --rate-limit exceeding upper bound (10000)", async () => {
+      const { stderr, code } = await run(["keys", "create", "--label", "rl", "--rate-limit", "99999"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("10000"), `stderr should mention upper bound: ${stderr}`);
+    });
+
     it("handles --key=value syntax correctly", async () => {
       const { stdout, code } = await run(["keys", "create", "--label=test-equals"]);
       assert.equal(code, 0);
