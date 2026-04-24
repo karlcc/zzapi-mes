@@ -2912,6 +2912,28 @@ describe("SAP 5xx error sanitization on write-back", () => {
     assert.equal(body.ebeln, "4500000001", "error response should include ebeln errorField");
   });
 
+  it("error response includes null for missing errorField rather than omitting key", async () => {
+    // If parsed.data doesn't contain the errorField key, the error response
+    // should include the key with value null (not omit it, which would violate
+    // the OpenAPI spec contract).
+    mockGiError = new ZzapiMesHttpError(500, "SAP error");
+    const token = await validToken(["gi"]);
+    const res = await fetchApi("/goods-issue", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": `errorfield-null-${Date.now()}`,
+      },
+      body: JSON.stringify({ orderid: "1000000", matnr: "10000001", menge: 1, werks: "1000", lgort: "0001" }),
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    // "orderid" errorField should be present even though the SAP call failed
+    assert.ok("orderid" in body, "errorField key should be present in error response");
+    assert.equal(body.orderid, "1000000");
+  });
+
   it("preserves upstream message for SAP 409 conflict error", async () => {
     mockGiError = new ZzapiMesHttpError(409, "Backflush conflict: operation locked");
     const token = await validToken(["gi"]);

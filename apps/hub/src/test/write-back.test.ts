@@ -53,4 +53,13 @@ describe("mapSapError all-branches unit test", () => {
     assert.equal(result.clientStatus, 502);
     assert.equal(result.errorMsg, "SAP upstream error");
   });
+
+  it("404 → clientStatus 502, message 'SAP endpoint not found'", () => {
+    // Misconfigured ICF path returns 404 — should give a more specific
+    // message than the generic "SAP upstream error".
+    const result = mapSapError(new ZzapiMesHttpError(404, "Not found"));
+    assert.equal(result.sapStatus, 404);
+    assert.equal(result.clientStatus, 502);
+    assert.equal(result.errorMsg, "SAP endpoint not found");
+  });
 });
