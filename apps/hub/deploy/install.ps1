@@ -24,6 +24,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# --- Enforce TLS 1.2+ for all HTTPS downloads ---
+# PowerShell defaults to TLS 1.0/1.1 which many servers now reject.
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+
 # --- Node version guard ---
 $nodeVersion = $null
 try { $nodeVersion = & node --version 2>$null } catch {}
@@ -103,6 +107,35 @@ $appDir      = Join-Path $repoRoot "apps\hub"
 $dbPath      = Join-Path $DataDir "hub.db"
 $stdoutLog   = Join-Path $DataDir "stdout.log"
 $stderrLog   = Join-Path $DataDir "stderr.log"
+
+# --- 6a. Dedicated service account ---
+# nssm defaults to LocalSystem (SYSTEM) which is excessive for a Node service.
+# Create a minimal-privilege local service account if it doesn't exist.
+$serviceAccount = "zzapi-mes-svc"
+$accountExists = $null
+try { $accountExists = Get-LocalUser -Name $serviceAccount -ErrorAction SilentlyContinue } catch {}
+if (-not $accountExists) {
+    Write-Host "Creating service account $serviceAccount..."
+    $secPassword = (ConvertTo-SecureString -String "Ch4ng3M3!" -AsPlainText -Force)
+    New-LocalUser -Name $serviceAccount -Password $secPassword -Description "zzapi-mes hub service account" -NoPasswordExpiration
+    # Grant log-on-as-service right via nssm (simpler than secedit for a single right)
+    & $nssmPath set $serviceName ObjectName ".\$serviceAccount" "Ch4ng3M3!" 2>$null
+    Write-Host "!! Change the password for .\$serviceAccount before deploying to production !!"
+} else {
+    # Account exists — use it but prompt for password
+    Write-Host "Service account $serviceAccount already exists — setting service logon..."
+    $svcCred = Get-Credential -UserName ".\$serviceAccount" -Message "Enter password for $serviceAccount service account" -ErrorAction SilentlyContinue
+    if ($svcCred) {
+        & $nssmPath set $serviceName ObjectName ".\$serviceAccount" $svcCred.GetNetworkCredential().Password 2>$null
+    }
+}
+
+# Grant service account write access to data directory
+$acl = Get-Acl $DataDir
+$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+    $serviceAccount, "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
+$acl.SetAccessRule($rule)
+Set-Acl $DataDir $acl
 
 # Remove existing service if present
 $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
