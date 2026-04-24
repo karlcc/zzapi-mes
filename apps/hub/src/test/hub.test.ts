@@ -2102,6 +2102,36 @@ describe("Empty Idempotency-Key header", () => {
     assert.ok(!controlCharRegex.test("valid-key-123"), "valid key should not match control char regex");
     assert.ok(!controlCharRegex.test("abc_def-xyz"), "valid alphanumeric+dash+underscore should not match");
   });
+
+  it("trims leading/trailing whitespace from idempotency-key", async () => {
+    // First request with trimmed key "whitespace-key"
+    const token = await validToken();
+    const body1 = JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 });
+    const res1 = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "whitespace-key",
+      },
+      body: body1,
+    });
+    assert.equal(res1.status, 201);
+
+    // Second request with padded key "  whitespace-key  " — should be treated as same key
+    const res2 = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "  whitespace-key  ",
+      },
+      body: body1,
+    });
+    assert.equal(res2.status, 409, "padded key should match trimmed key as duplicate");
+    const parsed = await res2.json() as Record<string, unknown>;
+    assert.equal(parsed.original_status, 201);
+  });
 });
 
 describe("Idempotency body-hash edge case", () => {

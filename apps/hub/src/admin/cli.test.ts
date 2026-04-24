@@ -226,4 +226,24 @@ describe("Admin CLI", () => {
       assert.ok(stderr.includes("positive integer"));
     });
   });
+
+  describe("edge cases", () => {
+    it("handles unknown command", async () => {
+      const { stderr, code } = await run(["bogus"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("Usage"), `should show usage: ${stderr}`);
+    });
+
+    it("handles bare invocation (no args)", async () => {
+      const { stderr, code } = await run([]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("Usage"), `should show usage: ${stderr}`);
+    });
+
+    it("handles empty keys list", async () => {
+      const { stdout, code } = await run(["keys", "list"]);
+      assert.equal(code, 0);
+      assert.equal(stdout, "");
+    });
+  });
 });
