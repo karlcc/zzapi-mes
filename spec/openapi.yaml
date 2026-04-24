@@ -1150,7 +1150,7 @@ paths:
 
   /sap/bc/zzapi/mes/conf:
     post:
-      operationId: sapConf
+      operationId: createConfirmationSap
       summary: Production confirmation (SAP-direct)
       description: SAP ICF handler for production order confirmation via BAPI_PRODORDCONF_CREATE_TT. Requires Basic Auth.
       security:
@@ -1220,7 +1220,7 @@ paths:
 
   /sap/bc/zzapi/mes/gr:
     post:
-      operationId: sapGr
+      operationId: createGoodsReceiptSap
       summary: Goods receipt (SAP-direct)
       description: SAP ICF handler for goods receipt via BAPI_GOODSMVT_CREATE (mvt 101). Requires Basic Auth.
       security:
@@ -1290,7 +1290,7 @@ paths:
 
   /sap/bc/zzapi/mes/gi:
     post:
-      operationId: sapGi
+      operationId: createGoodsIssueSap
       summary: Goods issue (SAP-direct)
       description: SAP ICF handler for goods issue via BAPI_GOODSMVT_CREATE (mvt 261). Includes backflush guard. Requires Basic Auth.
       security:
@@ -1747,6 +1747,9 @@ components:
         error:
           type: string
           example: "PO not found"
+        description:
+          type: string
+          description: Additional context for the error (e.g. SAP message on 422 business rule rejection)
         original_status:
           type: integer
           description: Original HTTP status from a prior idempotency-checked request (present on 409 duplicate responses only, omitted otherwise)
