@@ -1176,6 +1176,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication failed (invalid Basic Auth credentials)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed (only POST)
           content:
@@ -1240,6 +1246,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication failed (invalid Basic Auth credentials)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed (only POST)
           content:
@@ -1300,6 +1312,12 @@ paths:
                 $ref: "#/components/schemas/GoodsIssueResponse"
         "400":
           description: Missing required fields (orderid, matnr, menge, werks, lgort)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication failed (invalid Basic Auth credentials)
           content:
             application/json:
               schema:
@@ -1431,6 +1449,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Service unavailable (database unreachable or not writable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "504":
           description: SAP request timeout
           content:
@@ -1521,6 +1545,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: SAP upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Service unavailable (database unreachable or not writable)
           content:
             application/json:
               schema:
@@ -1619,6 +1649,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Service unavailable (database unreachable or not writable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "504":
           description: SAP request timeout
           content:
@@ -1651,6 +1687,19 @@ components:
         type: integer
         example: 200
       description: SAP client number
+
+    XRequestIdHeader:
+      name: X-Request-ID
+      in: header
+      description: Echoed on every response — UUID v4 auto-generated if not provided, or client-supplied (8-64 alphanumeric/hyphen/underscore chars)
+      schema:
+        type: string
+
+  headers:
+    XRequestId:
+      description: Echoed request identifier — UUID v4 auto-generated if not provided
+      schema:
+        type: string
 
   schemas:
     PingResponse:
