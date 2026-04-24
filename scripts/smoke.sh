@@ -513,6 +513,83 @@ if [[ "$HUB_MODE" == "1" ]]; then
     echo "  SKIP  scope-403 test (admin CLI unavailable or key creation failed)"
   fi
   HUB_TOKEN="$SAVED_TOKEN"
+
+  # Expired JWT test
+  echo ""
+  echo "-- Expired JWT returns 401 (hub) --"
+  # Craft an expired JWT by signing with the hub's secret — we approximate by
+  # using a token that expired 60s ago. Requires HUB_JWT_SECRET to be known.
+  EXPIRED_TOKEN=""
+  EXPIRED_TOKEN=$(node -e "
+    const secret = process.env.HUB_JWT_SECRET || 'test-secret-16ch';
+    const { sign } = require('hono/jwt');
+    sign({ key_id:'smoke-exp', scopes:['ping'], iat: Math.floor(Date.now()/1000)-960, exp: Math.floor(Date.now()/1000)-60, rate_limit_per_min:600 }, secret)
+      .then(t => process.stdout.write(t));
+  " 2>/dev/null) || true
+  if [[ -n "$EXPIRED_TOKEN" ]]; then
+    SAVED_TOKEN="$HUB_TOKEN"
+    HUB_TOKEN="$EXPIRED_TOKEN"
+    check "expired JWT returns 401" \
+      "${BASE_URL}${PING_PATH}" \
+      "401" GET
+    HUB_TOKEN="$SAVED_TOKEN"
+  else
+    echo "  SKIP  expired-JWT test (could not craft expired token)"
+  fi
+
+  # Revoked API key test
+  echo ""
+  echo "-- Revoked API key returns 401 (hub) --"
+  REVOKED_KEY=""
+  REVOKED_KEY=$(node "$(dirname "$0")/../apps/hub/dist/admin/cli.js" keys create --label smoke-revoked --scopes ping 2>/dev/null | grep -oP '[a-zA-Z0-9.]+') || true
+  if [[ -n "$REVOKED_KEY" ]]; then
+    # Revoke it immediately
+    node "$(dirname "$0")/../apps/hub/dist/admin/cli.js" keys revoke "$(echo "$REVOKED_KEY" | cut -d. -f1)" 2>/dev/null || true
+    # Try to authenticate with the revoked key
+    REVOKED_RES=$(curl -s -o /dev/null -w "%{http_code}" "$HUB_URL/auth/token" \
+      -d "{\"api_key\":\"$REVOKED_KEY\"}" \
+      -H 'content-type: application/json')
+    if [[ "$REVOKED_RES" == "401" ]]; then
+      echo "  PASS  revoked key returns 401"
+      ((pass++))
+    else
+      echo "  FAIL  revoked key expected 401, got ${REVOKED_RES}"
+      ((fail++))
+    fi
+  else
+    echo "  SKIP  revoked-key test (admin CLI unavailable or key creation failed)"
+  fi
+
+  # Per-key rate-limit 429 test
+  echo ""
+  echo "-- Per-key rate-limit 429 (hub) --"
+  RATELIMIT_KEY=""
+  RATELIMIT_KEY=$(node "$(dirname "$0")/../apps/hub/dist/admin/cli.js" keys create --label smoke-ratelimit --scopes ping --rate-limit 1 2>/dev/null | grep -oP '[a-zA-Z0-9.]+') || true
+  if [[ -n "$RATELIMIT_KEY" ]]; then
+    RL_TOKEN=$(curl -s "$HUB_URL/auth/token" \
+      -d "{\"api_key\":\"$RATELIMIT_KEY\"}" \
+      -H 'content-type: application/json' \
+      | jq -r .token 2>/dev/null) || true
+    if [[ -n "$RL_TOKEN" && "$RL_TOKEN" != "null" ]]; then
+      SAVED_TOKEN="$HUB_TOKEN"
+      HUB_TOKEN="$RL_TOKEN"
+      # First request should succeed (1 rpm = 1 token)
+      check "rate-limit first request succeeds" \
+        "${BASE_URL}${PING_PATH}" \
+        "200" GET
+      # Second request should be 429
+      check "rate-limit second request returns 429" \
+        "${BASE_URL}${PING_PATH}" \
+        "429" GET
+      HUB_TOKEN="$SAVED_TOKEN"
+    else
+      echo "  SKIP  rate-limit 429 test (could not obtain token)"
+    fi
+    # Revoke the rate-limited key
+    node "$(dirname "$0")/../apps/hub/dist/admin/cli.js" keys revoke "$(echo "$RATELIMIT_KEY" | cut -d. -f1)" 2>/dev/null || true
+  else
+    echo "  SKIP  rate-limit 429 test (admin CLI unavailable or key creation failed)"
+  fi
 fi
 
 echo ""
