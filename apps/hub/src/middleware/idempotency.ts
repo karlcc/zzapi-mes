@@ -39,18 +39,27 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   // a retry with a readable body doesn't false-positive a hash mismatch.
   // The DB schema enforces body_hash <> '' (CHECK constraint), so we use
   // a SHA-256 of the empty string as the sentinel for consumed/empty bodies.
+  //
+  // Canonicalization: parse JSON, then re-serialize with keys sorted. This
+  // prevents false-positive 422 mismatches when semantically identical JSON
+  // arrives with different key ordering (e.g. {"a":1,"b":2} vs {"b":2,"a":1}).
   const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
   let bodyHash = EMPTY_BODY_HASH;
   try {
     const body = await c.req.text();
     if (body.length > 0) {
+      // Canonicalize: parse and re-stringify with sorted keys
+      const parsed = JSON.parse(body);
+      const canonical = JSON.stringify(parsed, Object.keys(parsed).sort());
       const encoder = new TextEncoder();
-      const data = encoder.encode(body);
+      const data = encoder.encode(canonical);
       const hashBuffer = await crypto.subtle.digest("SHA-256", data);
       bodyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
     }
   } catch {
-    // Body already consumed — use sentinel to avoid false 422 on retry
+    // Body already consumed or not valid JSON — use sentinel to avoid false
+    // 422 on retry. Invalid JSON bodies will be rejected by the route handler's
+    // Zod validation, not by the idempotency guard.
     bodyHash = EMPTY_BODY_HASH;
   }
 

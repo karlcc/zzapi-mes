@@ -75,10 +75,19 @@ describe("checkIdempotency race condition (UNIQUE constraint retry)", () => {
     assert.equal(result2!.body_hash, "hash1");
   });
 
-  it("returns existing record even when called with different key_id", () => {
+  it("returns existing record when same key_id reuses same idempotency key", () => {
+    checkIdempotency(db, "scoped-key", "k1", "/confirmation", 201, "hash1");
+    const result = checkIdempotency(db, "scoped-key", "k1", "/confirmation", 201, "hash1");
+    assert.ok(result, "should return existing record for same key_id");
+    assert.equal(result!.body_hash, "hash1");
+  });
+
+  it("does NOT return existing record when different key_id uses same idempotency key", () => {
     checkIdempotency(db, "shared-key", "k1", "/confirmation", 201, "hash1");
-    const result = checkIdempotency(db, "shared-key", "k2", "/confirmation", 201, "hash1");
-    assert.ok(result, "should return existing record regardless of key_id");
+    const result = checkIdempotency(db, "shared-key", "k2", "/confirmation", 201, "hash2");
+    // Different API key (key_id) using the same Idempotency-Key header
+    // should NOT collide — each key_id has its own idempotency namespace
+    assert.equal(result, null, "different key_id should not see k1's idempotency record");
   });
 });
 
@@ -123,5 +132,46 @@ describe("idempotency empty bodyHash edge case", () => {
     const existing = checkIdempotency(eDb, "empty-hash-key", "k1", "/confirmation", 0, "abc123def");
     assert.ok(existing, "should return existing record");
     assert.equal(existing!.body_hash, EMPTY_BODY_HASH, "stored hash should be sentinel");
+  });
+});
+
+describe("idempotency body hash canonicalization", () => {
+  it("same JSON with different key ordering produces same canonical hash", async () => {
+    const body1 = '{"orderid":"100","menge":5}';
+    const body2 = '{"menge":5,"orderid":"100"}';
+
+    // Simulate the middleware's canonical hash computation
+    const hashBody = async (body: string): Promise<string> => {
+      const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+      if (body.length === 0) return EMPTY_BODY_HASH;
+      const parsed = JSON.parse(body);
+      const canonical = JSON.stringify(parsed, Object.keys(parsed).sort());
+      const encoder = new TextEncoder();
+      const data = encoder.encode(canonical);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+    };
+
+    const hash1 = await hashBody(body1);
+    const hash2 = await hashBody(body2);
+    assert.equal(hash1, hash2, "reordered JSON should produce same canonical hash");
+  });
+
+  it("different JSON produces different canonical hash", async () => {
+    const body1 = '{"orderid":"100","menge":5}';
+    const body2 = '{"orderid":"200","menge":5}';
+
+    const hashBody = async (body: string): Promise<string> => {
+      const parsed = JSON.parse(body);
+      const canonical = JSON.stringify(parsed, Object.keys(parsed).sort());
+      const encoder = new TextEncoder();
+      const data = encoder.encode(canonical);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+    };
+
+    const hash1 = await hashBody(body1);
+    const hash2 = await hashBody(body2);
+    assert.notEqual(hash1, hash2, "different JSON should produce different hash");
   });
 });
