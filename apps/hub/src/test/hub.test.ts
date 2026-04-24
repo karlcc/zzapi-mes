@@ -2020,6 +2020,17 @@ describe("JWT key_id type guard", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.ok(body.error?.toString().includes("key_id"));
   });
+
+  it("rejects JWT with empty string key_id", async () => {
+    const badToken = await sign(
+      { key_id: "", scopes: ["ping"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${badToken}` } });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("key_id"));
+  });
 });
 
 describe("Idempotency guard DB read failure", () => {

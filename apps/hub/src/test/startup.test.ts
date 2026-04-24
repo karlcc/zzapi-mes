@@ -223,6 +223,19 @@ describe("Graceful shutdown", () => {
     assert.equal(code, 0, "should exit cleanly after graceful shutdown");
     // Cleanup handled by OS since tmpDir is in /tmp
   });
+
+  it("handles SIGINT (Ctrl+C) gracefully", async () => {
+    const { proc, tmpDir } = await spawnHub();
+    proc.kill("SIGINT");
+    const code = await new Promise<number>((resolve) => {
+      const timer = setTimeout(() => {
+        proc.kill("SIGKILL");
+        resolve(-1);
+      }, 10_000);
+      proc.on("close", (c) => { clearTimeout(timer); resolve(c ?? 1); });
+    });
+    assert.equal(code, 0, "should exit cleanly after SIGINT");
+  });
 });
 
 describe("Boot maintenance", () => {
