@@ -128,6 +128,27 @@ describe("securityHeaders middleware", () => {
     const res = await app.request("/ping");
     assert.equal(res.headers.get("cache-control"), null);
   });
+
+  it("sets Content-Security-Policy: default-src 'none'; frame-ancestors 'none'", async () => {
+    const app = buildApp((a) => a.use("*", securityHeaders));
+    const res = await app.request("/test");
+    const csp = res.headers.get("content-security-policy");
+    assert.ok(csp, "should set CSP header");
+    assert.match(csp!, /default-src 'none'/);
+    assert.match(csp!, /frame-ancestors 'none'/);
+  });
+
+  it("sets Cache-Control: no-store on write-back routes with jwtPayload", async () => {
+    const app = buildApp((a) => {
+      a.use("*", async (c, next) => {
+        c.set("jwtPayload", { key_id: "k", scopes: ["conf"], iat: 0, exp: 0, rate_limit_per_min: null });
+        await next();
+      });
+      a.use("*", securityHeaders);
+    });
+    const res = await app.request("/confirmation");
+    assert.equal(res.headers.get("cache-control"), "no-store");
+  });
 });
 
 // ---------------------------------------------------------------------------
