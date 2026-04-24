@@ -67,9 +67,26 @@ export function resolveIpWithPeer(
   return peer;
 }
 
-/** Loopback check on an arbitrary address string. Exported for unit testing. */
+/**
+ * Loopback check on an arbitrary address string. Exported for unit testing.
+ *
+ * Per RFC 1122 §3.2.1.3, the entire 127.0.0.0/8 block is reserved for
+ * loopback — any address in that range cannot have reached the process
+ * from off-host. The IPv4-mapped IPv6 equivalent (::ffff:127.0.0.0/104)
+ * is treated the same.
+ */
 export function isLoopbackAddr(addr: string): boolean {
-  return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
+  if (!addr) return false;
+  if (addr === "::1") return true;
+  // Strip IPv4-mapped IPv6 prefix if present, then fall through to IPv4 check.
+  const v4 = addr.startsWith("::ffff:") ? addr.slice("::ffff:".length) : addr;
+  // Match 127.x.y.z where each octet is 0-255.
+  const m = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(v4);
+  if (!m) return false;
+  return [m[1], m[2], m[3]].every(s => {
+    const n = Number(s);
+    return n >= 0 && n <= 255;
+  });
 }
 
 /** True if the direct TCP peer is a loopback address. Not spoofable. */
@@ -79,9 +96,11 @@ export function isLoopbackPeer(c: Context): boolean {
     const addr = getConnInfo(c).remote.address ?? "";
     return isLoopbackAddr(addr);
   } catch {
-    // No real socket (test mode) — fall back to header check
+    // No real socket (test mode) — fall back to header check.
+    // Delegate to isLoopbackAddr so test-mode coverage matches production:
+    // 127.0.0.0/8 and ::ffff:127.0.0.0/104 are both recognised.
     const realIp = c.req.header("x-real-ip");
-    if (realIp) return realIp.trim() === "127.0.0.1" || realIp.trim() === "::1";
+    if (realIp) return isLoopbackAddr(realIp.trim());
     return false;
   }
 }

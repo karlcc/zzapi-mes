@@ -83,6 +83,20 @@ describe("isLoopbackPeer", () => {
     assert.equal(isLoopbackPeer(c as any), true);
   });
 
+  it("returns true when x-real-ip is ::ffff:127.0.0.1 in test mode (IPv4-mapped IPv6)", () => {
+    // Consistency with isLoopbackAddr — test-mode fallback previously only
+    // recognised 127.0.0.1 and ::1, so IPv4-mapped IPv6 was rejected.
+    const c = makeContext({ "x-real-ip": "::ffff:127.0.0.1" });
+    assert.equal(isLoopbackPeer(c as any), true);
+  });
+
+  it("returns true when x-real-ip is anywhere in 127.0.0.0/8 in test mode", () => {
+    // RFC 1122 reserves 127.0.0.0/8 for loopback; any address in the block
+    // cannot have reached the process from off-host.
+    const c = makeContext({ "x-real-ip": "127.0.0.5" });
+    assert.equal(isLoopbackPeer(c as any), true);
+  });
+
   it("returns false for non-loopback x-real-ip in test mode", () => {
     const c = makeContext({ "x-real-ip": "10.0.0.1" });
     assert.equal(isLoopbackPeer(c as any), false);
@@ -141,8 +155,17 @@ describe("isLoopbackAddr", () => {
   it("returns true for IPv4 loopback", () => { assert.equal(isLoopbackAddr("127.0.0.1"), true); });
   it("returns true for IPv6 loopback", () => { assert.equal(isLoopbackAddr("::1"), true); });
   it("returns true for IPv4-mapped IPv6 loopback", () => { assert.equal(isLoopbackAddr("::ffff:127.0.0.1"), true); });
+  // RFC 1122: the entire 127.0.0.0/8 block is reserved for loopback; any
+  // address in that block cannot have reached the process from off-host.
+  it("returns true for 127.0.0.2 (RFC 1122 127.0.0.0/8)", () => { assert.equal(isLoopbackAddr("127.0.0.2"), true); });
+  it("returns true for 127.1.2.3 (RFC 1122 127.0.0.0/8)", () => { assert.equal(isLoopbackAddr("127.1.2.3"), true); });
+  it("returns true for 127.255.255.254 (RFC 1122 127.0.0.0/8)", () => { assert.equal(isLoopbackAddr("127.255.255.254"), true); });
+  it("returns true for ::ffff:127.0.0.2 (IPv4-mapped 127.0.0.0/8)", () => { assert.equal(isLoopbackAddr("::ffff:127.0.0.2"), true); });
+  it("returns true for ::ffff:127.1.2.3 (IPv4-mapped 127.0.0.0/8)", () => { assert.equal(isLoopbackAddr("::ffff:127.1.2.3"), true); });
   it("returns false for non-loopback IPv4", () => { assert.equal(isLoopbackAddr("10.0.0.1"), false); });
   it("returns false for non-loopback IPv6", () => { assert.equal(isLoopbackAddr("fe80::1"), false); });
   it("returns false for empty string", () => { assert.equal(isLoopbackAddr(""), false); });
-  it("does not treat 127.0.0.2 as loopback", () => { assert.equal(isLoopbackAddr("127.0.0.2"), false); });
+  it("returns false for ::ffff:128.0.0.1 (outside 127.0.0.0/8)", () => { assert.equal(isLoopbackAddr("::ffff:128.0.0.1"), false); });
+  it("returns false for 128.0.0.1 (just outside 127.0.0.0/8)", () => { assert.equal(isLoopbackAddr("128.0.0.1"), false); });
+  it("returns false for 126.255.255.255 (just below 127.0.0.0/8)", () => { assert.equal(isLoopbackAddr("126.255.255.255"), false); });
 });
