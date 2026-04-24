@@ -203,6 +203,16 @@ describe("accessLog middleware", () => {
     assert.equal(stripAnsi("/clean"), "/clean");
     assert.equal(stripAnsi(""), "");
   });
+
+  it("stripAnsi prevents log injection via crafted ANSI sequences", async () => {
+    const { stripAnsi } = await import("../middleware/log.js");
+    // Crafted path that uses ANSI to hide/overwrite content in terminal
+    const malicious = "/\x1B[2K\x1B[1G[200 OK]/real-path";
+    const cleaned = stripAnsi(malicious);
+    assert.ok(!cleaned.includes("\x1B"), "should contain no escape sequences");
+    assert.ok(!cleaned.includes("[2K"), "should not contain ANSI erase codes");
+    assert.ok(!cleaned.includes("[1G"), "should not contain ANSI cursor codes");
+  });
 });
 
 // ---------------------------------------------------------------------------
