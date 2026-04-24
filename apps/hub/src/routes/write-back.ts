@@ -9,8 +9,8 @@ import { writeAudit, updateIdempotencyStatus } from "../db/index.js";
 export function mapSapError(e: unknown): { sapStatus: number; clientStatus: number; errorMsg: string; retryAfter?: number } {
   if (e instanceof ZzapiMesHttpError) {
     const sapStatus = e.status;
-    const clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : e.status === 429 ? 429 : e.status === 408 ? 504 : 502;
-    const errorMsg = (e.status === 409 || e.status === 422 || e.status === 429) ? e.message : "SAP upstream error";
+    const clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : e.status === 429 ? 429 : e.status === 408 ? 504 : e.status === 404 ? 502 : 502;
+    const errorMsg = (e.status === 409 || e.status === 422 || e.status === 429) ? e.message : e.status === 404 ? "SAP endpoint not found" : "SAP upstream error";
     const retryAfter = e.retryAfter;
     return { sapStatus, clientStatus, errorMsg, retryAfter };
   }
@@ -115,7 +115,7 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
       c.header("retry-after", String(retryAfter));
     }
     return c.json(
-      { error: errorMsg, [errorField]: (parsed.data as Record<string, unknown>)[errorField] },
+      { error: errorMsg, [errorField]: (parsed.data as Record<string, unknown>)[errorField] ?? null },
       clientStatus as 409 | 422 | 429 | 502 | 504,
     );
   }

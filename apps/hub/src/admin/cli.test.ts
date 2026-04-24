@@ -73,6 +73,24 @@ describe("Admin CLI", () => {
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("positive integer"));
     });
+
+    it("handles --key=value syntax correctly", async () => {
+      const { stdout, code } = await run(["keys", "create", "--label=test-equals"]);
+      assert.equal(code, 0);
+      assert.match(stdout, /^[0-9a-f]{12}\./);
+    });
+
+    it("handles --key=value for scopes", async () => {
+      const { stdout, code } = await run(["keys", "create", "--label=test-scopes-eq", "--scopes=ping,po"]);
+      assert.equal(code, 0);
+      assert.match(stdout, /^[0-9a-f]{12}\./);
+    });
+
+    it("handles mixed --key value and --key=value syntax", async () => {
+      const { stdout, code } = await run(["keys", "create", "--label", "mixed-test", "--scopes=ping"]);
+      assert.equal(code, 0);
+      assert.match(stdout, /^[0-9a-f]{12}\./);
+    });
   });
 
   describe("keys list", () => {
