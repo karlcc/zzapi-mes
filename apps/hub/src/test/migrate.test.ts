@@ -208,6 +208,32 @@ describe("migrate.ts — script error paths", () => {
     assert.notEqual(code, 0, "should exit non-zero for unwritable DB path");
   });
 
+  it("migrate script creates _migration_lock table", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "migrate-lock-"));
+    const dbPath = join(dir, "hub.db");
+    const db = openDb(dbPath);
+    runMigrations(db);
+    db.close();
+
+    // Run migrate script — it should create the lock table
+    const proc = spawn("node", [ENTRY], {
+      env: { ...process.env, HUB_DB_PATH: dbPath },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const code = await new Promise<number>((resolve) => {
+      const timer = setTimeout(() => { proc.kill("SIGKILL"); resolve(-1); }, 10_000);
+      proc.on("close", (c) => { clearTimeout(timer); resolve(c ?? 1); });
+    });
+    assert.equal(code, 0, "migration should succeed");
+
+    const db2 = openDb(dbPath);
+    const tables = db2.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='_migration_lock'").get();
+    assert.ok(tables, "migrate script should create _migration_lock table");
+    db2.close();
+
+    try { require("node:fs").rmSync(dir, { recursive: true, force: true }); } catch {}
+  });
+
   it("creates backup file before migration", async () => {
     const dir = mkdtempSync(join(tmpdir(), "migrate-backup-"));
     const dbPath = join(dir, "hub.db");
