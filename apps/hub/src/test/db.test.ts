@@ -189,7 +189,7 @@ describe("DB layer — audit_log", () => {
     assert.equal(row!.body!.length, 4096, "body at exactly 4096 chars should not be truncated");
   });
 
-  it("writeAudit truncates body at 4097 characters", () => {
+  it("writeAudit truncates body at 4097 characters with original length", () => {
     const body4097 = "x".repeat(4097);
     writeAudit(db, {
       req_id: "req-over",
@@ -201,8 +201,7 @@ describe("DB layer — audit_log", () => {
     });
     const row = db.prepare("SELECT body FROM audit_log WHERE req_id = ?").get("req-over") as { body: string } | undefined;
     assert.ok(row);
-    assert.ok(row!.body!.length > 4096, "truncated body should include the suffix marker");
-    assert.ok(row!.body!.includes("[truncated"), "should contain truncation marker");
+    assert.ok(row!.body!.includes("[truncated from 4097]"), `should include original length: ${row!.body!.slice(-30)}`);
   });
 
   it("concurrent writeAudit calls all succeed (SQLite WAL mode)", () => {

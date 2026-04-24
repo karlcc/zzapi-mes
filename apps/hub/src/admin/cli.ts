@@ -52,8 +52,10 @@ async function main(args: string[]): Promise<void> {
       const opts = parseArgs(args.slice(2));
       const label = opts["label"] ?? usage();
       const scopes = opts["scopes"] ?? "ping,po";
+      // Deduplicate scopes — "ping,ping,po" → "ping,po"
+      const uniqueScopes = [...new Set(scopes.split(",").map(s => s.trim()).filter(Boolean))].join(",");
       // Validate scopes against known values
-      const invalidScopes = scopes.split(",").map(s => s.trim()).filter(s => s && !ALL_SCOPES.includes(s as typeof ALL_SCOPES[number]));
+      const invalidScopes = uniqueScopes.split(",").map(s => s.trim()).filter(s => s && !ALL_SCOPES.includes(s as typeof ALL_SCOPES[number]));
       if (invalidScopes.length > 0) {
         console.error(`Unknown scope(s): ${invalidScopes.join(", ")}. Valid scopes: ${ALL_SCOPES.join(", ")}`);
         process.exit(1);
@@ -81,7 +83,7 @@ async function main(args: string[]): Promise<void> {
         id: keyId,
         hash,
         label,
-        scopes,
+        scopes: uniqueScopes,
         rate_limit_per_min: rateLimit,
         created_at: now,
       });

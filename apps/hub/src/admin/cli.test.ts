@@ -86,6 +86,18 @@ describe("Admin CLI", () => {
       assert.match(stdout, /^[0-9a-f]{12}\./);
     });
 
+    it("deduplicates --scopes values", async () => {
+      const { stdout, code } = await run(["keys", "create", "--label", "dedup-test", "--scopes", "ping,ping,po"]);
+      assert.equal(code, 0);
+      const keyId = stdout.split(".")[0]!;
+      // Verify in DB that scopes are deduplicated
+      const db2 = new Database(dbPath);
+      const row = db2.prepare("SELECT scopes FROM api_keys WHERE id = ?").get(keyId) as { scopes: string } | undefined;
+      db2.close();
+      assert.ok(row);
+      assert.equal(row!.scopes, "ping,po", "duplicate scopes should be deduplicated");
+    });
+
     it("handles --key=value for scopes", async () => {
       const { stdout, code } = await run(["keys", "create", "--label=test-scopes-eq", "--scopes=ping,po"]);
       assert.equal(code, 0);
