@@ -6,6 +6,8 @@ import {
   insertKey,
   findById,
   listKeys,
+  listKeysPage,
+  countKeys,
   revokeKey,
   checkIdempotency,
   updateIdempotencyStatus,
@@ -145,6 +147,34 @@ describe("DB layer — api_keys", () => {
     // Most recent first
     assert.equal(keys[0]!.id, "k2");
     assert.equal(keys[1]!.id, "k1");
+  });
+
+  it("countKeys returns total count", () => {
+    insertKey(db, { id: "c1", hash: "h1", label: "a", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
+    insertKey(db, { id: "c2", hash: "h2", label: "b", scopes: "po", rate_limit_per_min: 5, created_at: 2000 });
+    assert.equal(countKeys(db), 2);
+  });
+
+  it("listKeysPage returns paginated results", () => {
+    for (let i = 0; i < 5; i++) {
+      insertKey(db, { id: `p${i}`, hash: `h${i}`, label: `label${i}`, scopes: "ping", rate_limit_per_min: null, created_at: (i + 1) * 1000 });
+    }
+    const page1 = listKeysPage(db, 2, 0);
+    assert.equal(page1.length, 2);
+    assert.equal(page1[0]!.id, "p4"); // most recent first
+    assert.equal(page1[1]!.id, "p3");
+    const page2 = listKeysPage(db, 2, 2);
+    assert.equal(page2.length, 2);
+    assert.equal(page2[0]!.id, "p2");
+    assert.equal(page2[1]!.id, "p1");
+  });
+
+  it("listKeysPage returns fewer items at end", () => {
+    for (let i = 0; i < 3; i++) {
+      insertKey(db, { id: `e${i}`, hash: `h${i}`, label: `l${i}`, scopes: "ping", rate_limit_per_min: null, created_at: (i + 1) * 1000 });
+    }
+    const page = listKeysPage(db, 10, 2);
+    assert.equal(page.length, 1);
   });
 
   it("revokeKey sets revoked_at", () => {

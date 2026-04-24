@@ -7,7 +7,7 @@
  *   keys list
  *   keys revoke <id>
  */
-import { openDb, runMigrations, insertKey, listKeys, revokeKey, pruneAuditLog, evictIdempotencyKeys } from "../db/index.js";
+import { openDb, runMigrations, insertKey, listKeys, listKeysPage, countKeys, revokeKey, pruneAuditLog, evictIdempotencyKeys } from "../db/index.js";
 import { ALL_SCOPES } from "@zzapi-mes/core";
 import argon2 from "argon2";
 import { randomBytes } from "node:crypto";
@@ -15,7 +15,7 @@ import { randomBytes } from "node:crypto";
 function usage(): never {
   console.error(`Usage:
   zzapi-mes-hub-admin keys create --label <str> [--scopes ping,po] [--rate-limit N]
-  zzapi-mes-hub-admin keys list [--format tsv|json]
+  zzapi-mes-hub-admin keys list [--format tsv|json] [--limit N] [--offset N]
   zzapi-mes-hub-admin keys revoke <id>
   zzapi-mes-hub-admin audit prune --days <N>
   zzapi-mes-hub-admin idempotency evict --max-age-seconds <N>`);
@@ -123,19 +123,28 @@ async function main(args: string[]): Promise<void> {
     } else if (subcommand === "list") {
       const opts = parseArgs(args.slice(2));
       const format = opts["format"] ?? "tsv";
-      const keys = listKeys(db);
+      const limit = parseInt(opts["limit"] ?? "0", 10);
+      const offset = parseInt(opts["offset"] ?? "0", 10);
+      const keys = limit > 0 ? listKeysPage(db, limit, offset) : listKeys(db);
+      const total = limit > 0 ? countKeys(db) : keys.length;
       if (format === "json") {
-        console.log(JSON.stringify(keys.map(k => ({
-          id: k.id,
-          status: k.revoked_at !== null ? "REVOKED" : "ACTIVE",
-          label: k.label ?? null,
-          scopes: k.scopes.split(","),
-          rate_limit_per_min: k.rate_limit_per_min,
-          created_at: new Date(k.created_at * 1000).toISOString(),
-          revoked_at: k.revoked_at !== null ? new Date(k.revoked_at * 1000).toISOString() : null,
-        }))));
+        console.log(JSON.stringify({
+          total,
+          offset,
+          limit: limit > 0 ? limit : total,
+          keys: keys.map(k => ({
+            id: k.id,
+            status: k.revoked_at !== null ? "REVOKED" : "ACTIVE",
+            label: k.label ?? null,
+            scopes: k.scopes.split(","),
+            rate_limit_per_min: k.rate_limit_per_min,
+            created_at: new Date(k.created_at * 1000).toISOString(),
+            revoked_at: k.revoked_at !== null ? new Date(k.revoked_at * 1000).toISOString() : null,
+          })),
+        }));
       } else {
         // Print header row for pipe-friendly parsing
+        if (limit > 0) console.log(`Showing ${keys.length} of ${total} (offset ${offset})`);
         console.log("KEY_ID\tSTATUS\tLABEL\tSCOPES\tRATE_LIMIT\tCREATED");
         for (const k of keys) {
           const status = k.revoked_at !== null ? "REVOKED" : "ACTIVE";

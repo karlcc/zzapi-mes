@@ -252,6 +252,12 @@ const LIST_KEYS = `
   SELECT id, hash, label, scopes, rate_limit_per_min, created_at, revoked_at
   FROM api_keys ORDER BY created_at DESC`;
 
+const COUNT_KEYS = `SELECT COUNT(*) AS total FROM api_keys`;
+
+const LIST_KEYS_PAGE = `
+  SELECT id, hash, label, scopes, rate_limit_per_min, created_at, revoked_at
+  FROM api_keys ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+
 const REVOKE_KEY = `
   UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`;
 
@@ -297,6 +303,17 @@ export function insertKey(
 
 export function listKeys(db: Database.Database): ApiKeyRecord[] {
   return db.prepare(LIST_KEYS).all() as ApiKeyRecord[];
+}
+
+/** Count total API keys. */
+export function countKeys(db: Database.Database): number {
+  const row = db.prepare(COUNT_KEYS).get() as { total: number };
+  return row.total;
+}
+
+/** List API keys with pagination. Page is 1-indexed. */
+export function listKeysPage(db: Database.Database, limit: number, offset: number): ApiKeyRecord[] {
+  return db.prepare(LIST_KEYS_PAGE).all(limit, offset) as ApiKeyRecord[];
 }
 
 export function revokeKey(db: Database.Database, id: string): boolean {

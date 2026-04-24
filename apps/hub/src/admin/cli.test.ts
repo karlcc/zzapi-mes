@@ -158,6 +158,19 @@ describe("Admin CLI", () => {
       assert.ok(stdout.includes("ACTIVE"));
     });
 
+    it("supports --limit and --offset for pagination", async () => {
+      for (let i = 0; i < 5; i++) {
+        await run(["keys", "create", "--label", `page${i}`, "--scopes", "ping"]);
+      }
+      const { stdout, code } = await run(["keys", "list", "--limit", "2", "--offset", "0", "--format", "json"]);
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.total, 5, "total should be all keys");
+      assert.equal(parsed.keys.length, 2, "should return limited page");
+      assert.equal(parsed.offset, 0);
+      assert.equal(parsed.limit, 2);
+    });
+
     it("shows REVOKED status for revoked key", async () => {
       const { stdout: plaintext } = await run(["keys", "create", "--label", "revokedlist"]);
       const keyId = plaintext.split(".")[0]!;
@@ -180,9 +193,11 @@ describe("Admin CLI", () => {
       const { stdout, code } = await run(["keys", "list", "--format", "json"]);
       assert.equal(code, 0);
       const parsed = JSON.parse(stdout);
-      assert.ok(Array.isArray(parsed), "should be a JSON array");
-      assert.ok(parsed.length > 0, "should have at least one key");
-      const key = parsed[0]!;
+      assert.ok("total" in parsed, "should have total count");
+      assert.ok("keys" in parsed, "should have keys array");
+      assert.ok(Array.isArray(parsed.keys), "keys should be a JSON array");
+      assert.ok(parsed.keys.length > 0, "should have at least one key");
+      const key = parsed.keys[0]!;
       assert.ok("id" in key, "key object should have id");
       assert.ok("status" in key, "key object should have status");
       assert.ok("label" in key, "key object should have label");
