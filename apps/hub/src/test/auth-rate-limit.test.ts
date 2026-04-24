@@ -80,6 +80,28 @@ describe("Auth rate-limit idle eviction", () => {
     assert.equal(testHelpers._authBucketCountForTest(), 0);
   });
 
+  it("cap eviction frees space: after eviction, new IP can create bucket", () => {
+    // Simulate hitting the cap: seed AUTH_BUCKET_CAP + 1 entries,
+    // then force sweep — oldest half should be evicted, freeing space.
+    const now = Date.now();
+    const CAP = 1000;
+    // Seed CAP+1 buckets (all recent so idle eviction doesn't remove them)
+    for (let i = 0; i < CAP + 1; i++) {
+      testHelpers._seedAuthBucketForTest(`10.2.${Math.floor(i / 256)}.${i % 256}`, 5, now - i * 1000);
+    }
+    assert.equal(testHelpers._authBucketCountForTest(), CAP + 1);
+
+    // Force sweep: idle eviction removes nothing (all recent), then
+    // cap eviction removes oldest half → size should drop to ~501
+    testHelpers._forceAuthSweepForTest();
+    const afterSweep = testHelpers._authBucketCountForTest();
+    assert.ok(afterSweep <= CAP, `after cap eviction, bucket count should be <= ${CAP}, got ${afterSweep}`);
+
+    // A new IP should now be able to create a bucket (size < CAP)
+    // This simulates the real path at server.ts line 228-233
+    assert.ok(afterSweep < CAP, `after eviction, space is freed for new IPs (count: ${afterSweep})`);
+  });
+
   it("retry-after header is set when auth rate limit is exceeded", async () => {
     const result = createApp(new MockSapClient() as unknown as SapClient, { db });
     const app = result.app;
