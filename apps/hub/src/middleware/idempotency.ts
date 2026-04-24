@@ -24,10 +24,13 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   if (!idempotencyKey || idempotencyKey.trim() === "") {
     return c.json({ error: "Missing Idempotency-Key header" }, 400);
   }
-  if (idempotencyKey.length > 128) {
+  // Trim leading/trailing whitespace from idempotency key —
+  // "  my-key  " and "my-key" should be treated as the same key
+  const trimmedKey = idempotencyKey.trim();
+  if (trimmedKey.length > 128) {
     return c.json({ error: "Idempotency-Key header exceeds maximum length of 128" }, 400);
   }
-  if (/[\x00-\x1F\x7F]/.test(idempotencyKey)) {
+  if (/[\x00-\x1F\x7F]/.test(trimmedKey)) {
     return c.json({ error: "Idempotency-Key header contains invalid characters" }, 400);
   }
 
@@ -50,19 +53,19 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   const db = c.get("db");
   if (!db) {
     // No DB available (test scenario without db) — skip check
-    c.set("idempotencyKey", idempotencyKey);
+    c.set("idempotencyKey", trimmedKey);
     await next();
     return;
   }
 
   let existing: IdempotencyRecord | null;
   try {
-    existing = checkIdempotency(db, idempotencyKey, keyId, c.req.path, 0, bodyHash);
+    existing = checkIdempotency(db, trimmedKey, keyId, c.req.path, 0, bodyHash);
   } catch {
     // DB write failure (disk full, I/O error, lock). Proceed without
     // idempotency protection rather than returning an opaque 500 —
     // matches the audit-write failure pattern in sap-call.ts.
-    c.set("idempotencyKey", idempotencyKey);
+    c.set("idempotencyKey", trimmedKey);
     await next();
     return;
   }
@@ -90,6 +93,6 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
     );
   }
 
-  c.set("idempotencyKey", idempotencyKey);
+  c.set("idempotencyKey", trimmedKey);
   await next();
 });
