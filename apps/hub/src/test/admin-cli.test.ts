@@ -96,6 +96,21 @@ describe("admin CLI", () => {
     }
   });
 
+  it("keys create with --scopes and --rate-limit combined", async () => {
+    const { stdout, exitCode } = await runCli(["keys", "create", "--label", "combined", "--scopes", "ping,po,conf,gr,gi", "--rate-limit", "60"]);
+    assert.equal(exitCode, 0);
+    const keyId = stdout.trim().split(".")[0]!;
+    const db = openDb();
+    try {
+      const record = findById(db, keyId);
+      assert.ok(record);
+      assert.equal(record!.scopes, "ping,po,conf,gr,gi");
+      assert.equal(record!.rate_limit_per_min, 60);
+    } finally {
+      db.close();
+    }
+  });
+
   it("keys list outputs key info", async () => {
     const { stdout: createOut } = await runCli(["keys", "create", "--label", "list-test", "--scopes", "ping"]);
     const keyId = createOut.trim().split(".")[0]!;

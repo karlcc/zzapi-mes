@@ -276,6 +276,12 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
 
   // POST /auth/token
   app.post("/auth/token", async (c) => {
+    // Require application/json Content-Type — prevents CORS content-type bypass
+    // and ensures body parsing is unambiguous.
+    const ct = c.req.header("content-type");
+    if (!ct || !ct.toLowerCase().includes("application/json")) {
+      return c.json({ error: "Content-Type must be application/json" }, 400);
+    }
     let body: unknown;
     try {
       body = await c.req.json();
