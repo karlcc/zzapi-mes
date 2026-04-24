@@ -875,4 +875,16 @@ describe("SapClient POST 409 GI backflush — message loss via safety net", () =
     }
     assert.equal(capturedOpts?.redirect, "manual", "SapClient POST should use redirect: 'manual'");
   });
+
+  it("throws ZzapiMesHttpError on HTTP 200 with empty body", async () => {
+    // SAP sometimes returns 200 with an empty body — JSON.parse("") throws.
+    globalThis.fetch = async () => new Response("", { status: 200, headers: { "content-type": "application/json" } });
+    const c = new SapClient(CFG);
+    await assert.rejects(() => c.ping(), (err: unknown) => {
+      assert.ok(err instanceof ZzapiMesHttpError);
+      assert.equal(err.status, 200);
+      assert.match(err.message, /Non-JSON/);
+      return true;
+    });
+  });
 });

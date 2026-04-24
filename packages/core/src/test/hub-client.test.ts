@@ -1043,4 +1043,32 @@ describe("HubClient constructor validation", () => {
     }
     assert.equal(authCallOpts?.redirect, "manual", "HubClient should use redirect: 'manual'");
   });
+
+  it("retries on 401 for POST methods (not just GET)", async () => {
+    // Verify that POST requests (write-back) also get a single retry on 401,
+    // same as the GET retry path.
+    let authCalls = 0;
+    let hubCalls = 0;
+    globalThis.fetch = mockFetch((url, init) => {
+      if (url.endsWith("/auth/token")) {
+        authCalls++;
+        return jsonResponse(200, { token: `jwt-retry-${authCalls}`, expires_in: 900 });
+      }
+      hubCalls++;
+      // First hub call returns 401 → should trigger retry with new token
+      if (hubCalls === 1) {
+        return jsonResponse(401, { error: "Token expired" });
+      }
+      // Second hub call succeeds
+      return jsonResponse(201, { orderid: "1000000", confirmation: "ok" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    const res = await client.confirmProduction(
+      { orderid: "1000000", operation: "0010", yield: 50 },
+      "retry-401-post-test",
+    );
+    assert.equal(authCalls, 2, "should call auth twice (initial + retry after 401)");
+    assert.equal(hubCalls, 2, "should call hub endpoint twice (initial 401 + retry)");
+    assert.equal((res as Record<string, unknown>).confirmation, "ok");
+  });
 });
