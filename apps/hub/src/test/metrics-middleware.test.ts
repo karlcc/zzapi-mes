@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
-import { metricsMiddleware, normalizeRoute } from "../middleware/metrics.js";
+import { metricsMiddleware, normalizeRoute, hashKeyId } from "../middleware/metrics.js";
 import { register, requestsTotal, requestDuration, sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 
@@ -74,6 +74,18 @@ describe("metrics middleware route normalization", () => {
     const values = (counter as { values: Array<{ labels: { key_id?: string } }> }).values;
     assert.ok(values.some((v) => v.labels.key_id === "-"));
   });
+
+  it("hashes key_id to bounded bucket instead of raw value", async () => {
+    const app = buildApp();
+    await app.request("/healthz");
+    const metrics = await register.getMetricsAsJSON();
+    const counter = metrics.find((m) => m.name === "zzapi_hub_requests_total");
+    const values = (counter as { values: Array<{ labels: { key_id?: string } }> }).values;
+    // key_id should be a bucket label like "key-0".."key-63", NOT raw "test-key"
+    const keyIds = values.map((v) => v.labels.key_id ?? "").filter((k) => k !== "-");
+    assert.ok(keyIds.every((k) => /^key-\d+$/.test(k)), `key_id should be hashed bucket, got: ${JSON.stringify(keyIds)}`);
+    assert.ok(!keyIds.includes("test-key"), "raw key_id must not appear in metrics");
+  });
 });
 
 describe("normalizeRoute", () => {
@@ -118,6 +130,36 @@ describe("normalizeRoute", () => {
 
   it("strips both query string and trailing slash", () => {
     assert.equal(normalizeRoute("/healthz/?format=json"), "/healthz");
+  });
+});
+
+describe("hashKeyId", () => {
+  it("returns a bucket label in the form key-N", () => {
+    const result = hashKeyId("abc123");
+    assert.match(result, /^key-\d+$/);
+  });
+
+  it("always returns the same bucket for the same key_id", () => {
+    const a = hashKeyId("consistent-key");
+    const b = hashKeyId("consistent-key");
+    assert.equal(a, b);
+  });
+
+  it("distributes different keys across buckets", () => {
+    const buckets = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      buckets.add(hashKeyId(`key-${i}`));
+    }
+    // With 100 keys and 64 buckets, we should see multiple distinct buckets
+    assert.ok(buckets.size > 1, `expected multiple buckets, got ${buckets.size}`);
+  });
+
+  it("produces at most 64 distinct bucket values", () => {
+    const buckets = new Set<string>();
+    for (let i = 0; i < 500; i++) {
+      buckets.add(hashKeyId(`key-${i}`));
+    }
+    assert.ok(buckets.size <= 64, `expected at most 64 buckets, got ${buckets.size}`);
   });
 });
 

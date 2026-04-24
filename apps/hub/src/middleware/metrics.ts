@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import type { HubVariables } from "../types.js";
 import { requestsTotal, requestDuration } from "../metrics.js";
+import { createHash } from "node:crypto";
 
 /**
  * Route normalizer rules. First matching rule wins, so more specific prefixes
@@ -34,6 +35,20 @@ export function normalizeRoute(path: string): string {
   return "unknown";
 }
 
+// Number of distinct key_id metric labels. Bounds Prometheus time series
+// count: with ~15 routes × ~50 status codes × KEY_ID_BUCKETS, the maximum
+// series is manageable. Real key_id is still available in audit_log for
+// forensics; the Prometheus label is for operational alerting only.
+const KEY_ID_BUCKETS = 64;
+
+/** Hash a key_id to one of KEY_ID_BUCKETS bucket labels. Exported for tests. */
+export function hashKeyId(keyId: string): string {
+  const hex = createHash("sha256").update(keyId).digest("hex");
+  // Take first 8 hex chars (32 bits) and modulo into buckets
+  const bucket = parseInt(hex.slice(0, 8), 16) % KEY_ID_BUCKETS;
+  return `key-${bucket}`;
+}
+
 /** Middleware that records request metrics after the handler runs. */
 export const metricsMiddleware: MiddlewareHandler<{ Variables: HubVariables }> = async (c, next) => {
   const start = performance.now();
@@ -41,7 +56,12 @@ export const metricsMiddleware: MiddlewareHandler<{ Variables: HubVariables }> =
   const duration = (performance.now() - start) / 1000;
   const route = normalizeRoute(c.req.path);
 
-  const keyId = c.get("jwtPayload")?.key_id ?? "-";
+  // Hash key_id to a bounded cardinality label to prevent unbounded
+  // Prometheus time series. Each unique key_id creates a new series;
+  // with many keys this grows without bound. Instead, map key_id to
+  // one of KEY_ID_BUCKETS buckets.
+  const rawKeyId = c.get("jwtPayload")?.key_id;
+  const keyId = rawKeyId ? hashKeyId(rawKeyId) : "-";
   const status = String(c.res.status);
 
   requestsTotal.labels({ route, status, key_id: keyId }).inc();
