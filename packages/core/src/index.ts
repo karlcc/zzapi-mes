@@ -115,7 +115,10 @@ export class ZzapiMesHttpError extends Error {
   /** Original HTTP status from a prior idempotency-checked request (409 duplicate only). */
   readonly originalStatus?: number;
   constructor(status: number, message: string, retryAfter?: number, originalStatus?: number) {
-    super(message);
+    const capped = message.length > ERROR_MESSAGE_MAX_LENGTH
+      ? message.slice(0, ERROR_MESSAGE_MAX_LENGTH) + "…"
+      : message;
+    super(capped);
     this.name = "ZzapiMesHttpError";
     this.status = status;
     this.retryAfter = retryAfter;
@@ -157,7 +160,11 @@ export function ensureProtocol(host: string): string {
   return `http://${trimmed}`;
 }
 
-/** Maximum SAP response body size in bytes (1 MB). Prevents OOM from
+/** Maximum error message length in characters. Prevents unbounded log/response
+ *  size from malicious or misconfigured SAP returning extremely long error strings. */
+export const ERROR_MESSAGE_MAX_LENGTH = 1024;
+
+/** Prepends http:// if the host string has no scheme. Rejects query strings and fragments
  *  unbounded res.text() if SAP returns an unexpectedly large payload. */
 export const SAP_RESPONSE_MAX_BYTES = 1_048_576;
 
@@ -228,7 +235,13 @@ export class SapClient {
   private onResponse?: SapClientConfig["onResponse"];
 
   constructor(config: SapClientConfig) {
-    this.host = ensureProtocol(config.host).replace(/\/+$/, "");
+    const resolved = ensureProtocol(config.host).replace(/\/+$/, "");
+    // Reject scheme-only URLs like "http://" or "https://" that have no authority.
+    // After trim, "http://" becomes "http:" which is not a valid host.
+    if (/^https?:$/.test(resolved) || /^https?:\/\/$/.test(ensureProtocol(config.host))) {
+      throw new Error(`Host must include a hostname — got "${config.host}"`);
+    }
+    this.host = resolved;
     this.client = config.client;
     this.auth = btoa(`${config.user}:${config.password}`);
     this.timeout = config.timeout ?? 30_000;

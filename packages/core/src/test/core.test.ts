@@ -714,3 +714,32 @@ describe("SapClient ABAP error detection", () => {
     );
   });
 });
+
+describe("SapClient empty-string host validation", () => {
+  it("rejects host that is only a scheme with no authority", () => {
+    // "http://" passes ensureProtocol (has scheme) but produces broken URLs
+    assert.throws(
+      () => new SapClient({ host: "http://", client: 200, user: "u", password: "p" }),
+      /non-empty|host/i,
+      `"http://" should be rejected as an invalid host`,
+    );
+  });
+
+  it("rejects host that is https:// with no authority", () => {
+    assert.throws(
+      () => new SapClient({ host: "https://", client: 200, user: "u", password: "p" }),
+      /non-empty|host/i,
+      `"https://" should be rejected as an invalid host`,
+    );
+  });
+});
+
+describe("ZzapiMesHttpError message length cap", () => {
+  it("truncates error messages exceeding max length", () => {
+    const longMsg = "x".repeat(2000);
+    const err = new ZzapiMesHttpError(500, longMsg);
+    assert.ok(err.message.length < 2000, `message length ${err.message.length} should be capped below 2000`);
+    assert.ok(err.message.endsWith("…") || err.message.length <= 1024,
+      `truncated message should end with ellipsis or be within cap`);
+  });
+});

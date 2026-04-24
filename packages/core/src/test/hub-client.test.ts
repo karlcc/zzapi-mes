@@ -957,6 +957,23 @@ describe("HubClient parseResponse edge cases", () => {
       },
     );
   });
+
+  it("throws ZzapiMesHttpError on non-JSON 200 with text/plain content-type", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return new Response("OK", { status: 200, headers: { "content-type": "text/plain" } });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(
+      () => client.ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 200, "should preserve original status on non-JSON success");
+        assert.ok(e.message.includes("Non-JSON"), `should indicate non-JSON: ${e.message}`);
+        return true;
+      },
+    );
+  });
 });
 
 describe("HubClient 401 retry timeout budget", () => {
