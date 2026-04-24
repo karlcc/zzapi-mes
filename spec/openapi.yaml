@@ -1651,6 +1651,10 @@ components:
           type: integer
           description: Original HTTP status from a prior idempotency-checked request (present on 409 duplicate responses only)
           example: 201
+        errorField:
+          type: string
+          nullable: true
+          description: Route-specific field name included on write-back error responses (e.g. "ebeln" for goods-receipt, "orderid" for confirmation/goods-issue)
 
     TokenResponse:
       type: object
