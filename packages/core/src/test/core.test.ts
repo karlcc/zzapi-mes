@@ -544,6 +544,48 @@ describe("parseRetryAfter", () => {
   it("returns undefined for NaN string", () => {
     assert.equal(parseRetryAfter("NaN"), undefined);
   });
+
+  it("computes delta-seconds from HTTP-date format", () => {
+    // RFC 7231: Retry-After can be an HTTP-date like "Fri, 25 Apr 2026 02:00:00 GMT"
+    // Should return the difference in seconds between the date and now
+    const future = new Date(Date.now() + 30_000);
+    const httpDate = future.toUTCString();
+    const result = parseRetryAfter(httpDate);
+    assert.ok(result !== undefined, "should parse HTTP-date");
+    assert.ok(result! > 25 && result! < 35, `expected ~30s, got ${result}`);
+  });
+
+  it("returns undefined for past HTTP-date", () => {
+    const past = new Date(Date.now() - 10_000);
+    const httpDate = past.toUTCString();
+    const result = parseRetryAfter(httpDate);
+    assert.equal(result, undefined, "past date should return undefined");
+  });
+
+  it("caps numeric Retry-After at 3600 seconds", () => {
+    // Absurdly large values like 999999999s would lock clients out for decades
+    const result = parseRetryAfter("999999999");
+    assert.ok(result !== undefined, "should still return a value");
+    assert.ok(result! <= 3600, `expected cap at 3600, got ${result}`);
+  });
+
+  it("capped numeric value equals original when below cap", () => {
+    const result = parseRetryAfter("60");
+    assert.equal(result, 60);
+  });
+
+  it("caps HTTP-date delta at 3600 seconds", () => {
+    const farFuture = new Date(Date.now() + 86400_000); // 1 day ahead
+    const httpDate = farFuture.toUTCString();
+    const result = parseRetryAfter(httpDate);
+    assert.ok(result !== undefined, "should parse HTTP-date");
+    assert.ok(result! <= 3600, `expected cap at 3600, got ${result}`);
+  });
+
+  it("returns undefined for malformed date string", () => {
+    const result = parseRetryAfter("not-a-date");
+    assert.equal(result, undefined);
+  });
 });
 
 describe("SapClient Retry-After extraction from SAP 429", () => {
