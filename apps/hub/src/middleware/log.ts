@@ -7,6 +7,20 @@ export function stripAnsi(str: string): string {
   return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "");
 }
 
+/** Write to stdout, silently catching EPIPE errors. When stdout is piped to
+ *  `head`, `awk`, or a log-rotation tool that exits mid-stream, `write()`
+ *  throws EPIPE. Without this guard, the unhandled exception crashes the hub.
+ */
+export function safeWrite(line: string): void {
+  try {
+    process.stdout.write(line);
+  } catch (e: unknown) {
+    const code = (e as NodeJS.ErrnoException)?.code;
+    if (code !== "EPIPE") throw e;
+    // EPIPE: downstream reader gone — nothing to do, log is dropped.
+  }
+}
+
 /** Structured JSON access-log middleware. Writes one line per request to stdout. */
 export const accessLog: MiddlewareHandler<{ Variables: HubVariables }> = async (c, next) => {
   const start = Date.now();
@@ -25,5 +39,5 @@ export const accessLog: MiddlewareHandler<{ Variables: HubVariables }> = async (
     sap_status: c.get("sapStatus") ?? undefined,
     sap_duration_ms: c.get("sapDurationMs") ?? undefined,
   });
-  process.stdout.write(entry + "\n");
+  safeWrite(entry + "\n");
 };

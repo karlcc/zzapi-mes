@@ -213,6 +213,29 @@ describe("accessLog middleware", () => {
     assert.ok(!cleaned.includes("[2K"), "should not contain ANSI erase codes");
     assert.ok(!cleaned.includes("[1G"), "should not contain ANSI cursor codes");
   });
+
+  it("safeWrite catches EPIPE without crashing", async () => {
+    const { safeWrite } = await import("../middleware/log.js");
+    const origWrite = process.stdout.write;
+    const epipeErr = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+    process.stdout.write = () => { throw epipeErr; };
+
+    // Should NOT throw — EPIPE is silently caught
+    assert.doesNotThrow(() => safeWrite("test\n"));
+
+    process.stdout.write = origWrite;
+  });
+
+  it("safeWrite re-throws non-EPIPE errors", async () => {
+    const { safeWrite } = await import("../middleware/log.js");
+    const origWrite = process.stdout.write;
+    const otherErr = Object.assign(new Error("write ENOMEM"), { code: "ENOMEM" });
+    process.stdout.write = () => { throw otherErr; };
+
+    assert.throws(() => safeWrite("test\n"), /ENOMEM/);
+
+    process.stdout.write = origWrite;
+  });
 });
 
 // ---------------------------------------------------------------------------
