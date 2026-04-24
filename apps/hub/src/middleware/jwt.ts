@@ -37,6 +37,15 @@ export const requireJwt = createMiddleware<{ Variables: HubVariables }>(async (c
     if (rpm !== undefined && rpm !== null && typeof rpm !== "number") {
       return c.json({ error: "Invalid token: bad rate_limit_per_min" }, 401);
     }
+    // Reject tokens minted far in the future — indicates clock skew or
+    // deliberate backdating. hono/jwt verify() rejects future iat already,
+    // but we add an explicit defense-in-depth check with configurable leeway
+    // in case verify()'s behavior changes across Hono versions.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const iatLeeway = 60;
+    if (typeof payload.iat === "number" && payload.iat > nowSec + iatLeeway) {
+      return c.json({ error: "Invalid token: future iat" }, 401);
+    }
     c.set("jwtPayload", payload);
     await next();
   } catch {
