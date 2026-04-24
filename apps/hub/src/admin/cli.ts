@@ -15,7 +15,7 @@ import { randomBytes } from "node:crypto";
 function usage(): never {
   console.error(`Usage:
   zzapi-mes-hub-admin keys create --label <str> [--scopes ping,po] [--rate-limit N]
-  zzapi-mes-hub-admin keys list
+  zzapi-mes-hub-admin keys list [--format tsv|json]
   zzapi-mes-hub-admin keys revoke <id>
   zzapi-mes-hub-admin audit prune --days <N>
   zzapi-mes-hub-admin idempotency evict --max-age-seconds <N>`);
@@ -106,12 +106,30 @@ async function main(args: string[]): Promise<void> {
 
       console.log(plaintext);
     } else if (subcommand === "list") {
+      const opts = parseArgs(args.slice(2));
+      const format = opts["format"] ?? "tsv";
       const keys = listKeys(db);
-      for (const k of keys) {
-        const status = k.revoked_at !== null ? "REVOKED" : "ACTIVE";
-        console.log(
-          `${k.id}\t${status}\t${k.label ?? "-"}\t[${k.scopes}]\tlimit=${k.rate_limit_per_min ?? "default"}\tcreated=${new Date(k.created_at * 1000).toISOString()}`,
-        );
+      if (format === "json") {
+        console.log(JSON.stringify(keys.map(k => ({
+          id: k.id,
+          status: k.revoked_at !== null ? "REVOKED" : "ACTIVE",
+          label: k.label ?? null,
+          scopes: k.scopes.split(","),
+          rate_limit_per_min: k.rate_limit_per_min,
+          created_at: new Date(k.created_at * 1000).toISOString(),
+          revoked_at: k.revoked_at !== null ? new Date(k.revoked_at * 1000).toISOString() : null,
+        }))));
+      } else {
+        // Print header row for pipe-friendly parsing
+        console.log("KEY_ID\tSTATUS\tLABEL\tSCOPES\tRATE_LIMIT\tCREATED");
+        for (const k of keys) {
+          const status = k.revoked_at !== null ? "REVOKED" : "ACTIVE";
+          // Escape tabs/newlines in label to keep output pipe-friendly
+          const safeLabel = (k.label ?? "-").replace(/[\t\n\r]/g, (c) => c === "\t" ? "\\t" : c === "\n" ? "\\n" : "\\r");
+          console.log(
+            `${k.id}\t${status}\t${safeLabel}\t${k.scopes}\t${k.rate_limit_per_min ?? "default"}\t${new Date(k.created_at * 1000).toISOString()}`,
+          );
+        }
       }
     } else if (subcommand === "revoke") {
       const id = args[2];

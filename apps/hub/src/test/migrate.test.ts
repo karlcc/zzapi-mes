@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { openDb, runMigrations } from "../db/index.js";
 
@@ -24,7 +24,7 @@ describe("migrate.ts — CLI entry point", () => {
     }
   });
 
-  it("runMigrations on fresh DB creates all tables and reaches v7", () => {
+  it("runMigrations on fresh DB creates all tables and reaches v10", () => {
     const db = new Database(":memory:");
     try {
       runMigrations(db);
@@ -36,7 +36,47 @@ describe("migrate.ts — CLI entry point", () => {
       assert.ok(names.includes("audit_log"));
 
       const row = db.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number | null };
-      assert.equal(row?.v, 9, "should reach migration v9");
+      assert.equal(row?.v, 10, "should reach migration v10");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("v10 migration adds CHECK constraints to existing api_keys table", () => {
+    const db = new Database(":memory:");
+    try {
+      // Seed a pre-v7 schema without CHECK constraints on api_keys
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS _migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS api_keys (
+          id TEXT PRIMARY KEY, hash TEXT NOT NULL, label TEXT, scopes TEXT NOT NULL,
+          rate_limit_per_min INTEGER, created_at INTEGER NOT NULL, revoked_at INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+          key TEXT NOT NULL, key_id TEXT NOT NULL, path TEXT NOT NULL,
+          status INTEGER NOT NULL, body_hash TEXT NOT NULL, created_at INTEGER NOT NULL,
+          PRIMARY KEY (key, key_id)
+        );
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, req_id TEXT NOT NULL, key_id TEXT NOT NULL,
+          method TEXT NOT NULL, path TEXT NOT NULL, body TEXT, sap_status INTEGER, created_at INTEGER NOT NULL
+        );
+        INSERT INTO _migrations VALUES (1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7),(8,8),(9,9);
+        INSERT INTO api_keys (id,hash,label,scopes,rate_limit_per_min,created_at)
+          VALUES ('abc123','hashval','test','ping',5,1000);
+      `);
+      runMigrations(db);
+      const v = (db.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number }).v;
+      assert.equal(v, 10, "should reach v10");
+      // Verify data survived the table rebuild
+      const row = db.prepare("SELECT id, label, scopes, rate_limit_per_min FROM api_keys WHERE id = 'abc123'").get() as { id: string; label: string; scopes: string; rate_limit_per_min: number } | undefined;
+      assert.ok(row, "data should survive v10 rebuild");
+      assert.equal(row!.id, "abc123");
+      assert.equal(row!.label, "test");
+      // Verify CHECK constraint is enforced at DB level
+      assert.throws(() => {
+        db.exec("INSERT INTO api_keys (id,hash,label,scopes,rate_limit_per_min,created_at) VALUES ('x','h','l','ping',-1,1000)");
+      }, "negative rate_limit_per_min should fail CHECK constraint");
     } finally {
       db.close();
     }
@@ -138,7 +178,7 @@ describe("migrate.ts — CLI entry point", () => {
       runMigrations(db);
 
       const after = (db.prepare("SELECT COUNT(*) AS cnt FROM _migrations").get() as { cnt: number }).cnt;
-      assert.equal(after, 9, "should add v4, v5, v6, v7, v8, v9 but not re-add v1–v3");
+      assert.equal(after, 10, "should add v4–v10 but not re-add v1–v3");
 
       // v6 should have dropped idx_audit_log_created_at (the redundant v1 index)
       const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_audit_log_created_at'").get();
@@ -162,5 +202,32 @@ describe("migrate.ts — script error paths", () => {
       proc.on("close", (c) => { clearTimeout(timer); resolve(c ?? 1); });
     });
     assert.notEqual(code, 0, "should exit non-zero for unwritable DB path");
+  });
+
+  it("creates backup file before migration", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "migrate-backup-"));
+    const dbPath = join(dir, "hub.db");
+    // Create and seed a database (runMigrations creates tables)
+    const db = openDb(dbPath);
+    runMigrations(db);
+    db.prepare("INSERT INTO api_keys (id, hash, label, scopes, rate_limit_per_min, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("testkey", "testhash", "testlabel", "ping", 10, Math.floor(Date.now() / 1000));
+    db.close();
+
+    const proc = spawn("node", [ENTRY], {
+      env: { ...process.env, HUB_DB_PATH: dbPath },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    proc.stdout!.on("data", (d: Buffer) => { stdout += d.toString(); });
+    const code = await new Promise<number>((resolve) => {
+      const timer = setTimeout(() => { proc.kill("SIGKILL"); resolve(-1); }, 10_000);
+      proc.on("close", (c) => { clearTimeout(timer); resolve(c ?? 1); });
+    });
+    assert.equal(code, 0, "migration should succeed");
+    assert.ok(stdout.includes("Backup:"), `should mention backup: ${stdout}`);
+    assert.ok(existsSync(dbPath + ".pre-migrate"), "backup file should exist");
+    // Cleanup
+    try { require("node:fs").rmSync(dir, { recursive: true, force: true }); } catch {}
   });
 });

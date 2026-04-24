@@ -165,10 +165,10 @@ describe("admin CLI", () => {
     assert.match(stderr, /not found or already revoked/);
   });
 
-  it("keys list on empty DB outputs nothing", async () => {
+  it("keys list on empty DB outputs header only", async () => {
     const { stdout, exitCode } = await runCli(["keys", "list"]);
     assert.equal(exitCode, 0);
-    assert.equal(stdout.trim(), "");
+    assert.equal(stdout.trim(), "KEY_ID\tSTATUS\tLABEL\tSCOPES\tRATE_LIMIT\tCREATED");
   });
 
   it("keys create requires --label", async () => {

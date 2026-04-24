@@ -164,6 +164,28 @@ export function runMigrations(db: Database.Database): void {
     `);
   }
 
+  // v10: Recreate api_keys table with CHECK constraint on rate_limit_per_min.
+  // v7 was a no-op (SQLite doesn't support ALTER TABLE ADD CHECK), so existing
+  // databases still lack the constraint. Recreate the table the same way v8
+  // recreated idempotency_keys.
+  if (v < 10) {
+    migrate(10, `
+      ALTER TABLE api_keys RENAME TO _api_keys_v9;
+      CREATE TABLE api_keys (
+        id                  TEXT PRIMARY KEY,
+        hash                TEXT NOT NULL,
+        label               TEXT,
+        scopes              TEXT NOT NULL,
+        rate_limit_per_min  INTEGER CHECK (rate_limit_per_min IS NULL OR rate_limit_per_min > 0),
+        created_at          INTEGER NOT NULL,
+        revoked_at          INTEGER
+      );
+      INSERT INTO api_keys (id, hash, label, scopes, rate_limit_per_min, created_at, revoked_at)
+        SELECT id, hash, label, scopes, rate_limit_per_min, created_at, revoked_at FROM _api_keys_v9;
+      DROP TABLE _api_keys_v9;
+    `);
+  }
+
   // v9: drop redundant idx_audit_log_key_id — v4's composite
   // idx_audit_log_key_created(key_id, created_at) subsumes it (SQLite uses
   // the leading column of a composite index for single-column lookups).
