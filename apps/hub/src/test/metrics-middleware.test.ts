@@ -2,7 +2,7 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { metricsMiddleware, normalizeRoute } from "../middleware/metrics.js";
-import { register, requestsTotal, requestDuration } from "../metrics.js";
+import { register, requestsTotal, requestDuration, sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 
 /** Build a minimal app that runs the metrics middleware and sets a jwtPayload. */
@@ -118,5 +118,45 @@ describe("normalizeRoute", () => {
 
   it("strips both query string and trailing slash", () => {
     assert.equal(normalizeRoute("/healthz/?format=json"), "/healthz");
+  });
+});
+
+describe("histogram bucket configuration", () => {
+  it("includes sub-millisecond bucket (0.005) for high-resolution timing", () => {
+    // Requests <10ms fall into the <0.01 bucket with no resolution.
+    // A 0.005 bucket allows distinguishing 1-5ms from 5-10ms responses.
+    const histObj = requestDuration as unknown as { buckets: number[] };
+    assert.ok(histObj.buckets.includes(0.005), `expected 0.005 bucket, got [${histObj.buckets}]`);
+  });
+
+  it("sapDuration includes sub-millisecond bucket (0.005)", () => {
+    const histObj = sapDuration as unknown as { buckets: number[] };
+    assert.ok(histObj.buckets.includes(0.005), `expected 0.005 bucket, got [${histObj.buckets}]`);
+  });
+});
+
+describe("registry isolation between test suites", () => {
+  it("resetMetrics() zeroes all values without de-registering metrics", async () => {
+    // Produce a labelled observation
+    requestsTotal.labels({ route: "/ping", status: "200", key_id: "isolation-test" }).inc();
+    const before = await register.getMetricsAsJSON();
+    const counter = before.find((m) => m.name === "zzapi_hub_requests_total");
+    assert.ok(counter, "requestsTotal counter should exist after inc()");
+    const values = (counter as { values: Array<{ labels: { key_id?: string }; value: number }> }).values;
+    assert.ok(values.some((v) => v.labels.key_id === "isolation-test" && v.value > 0));
+
+    // resetMetrics zeroes values but keeps metrics registered
+    register.resetMetrics();
+    const after = await register.getMetricsAsJSON();
+    const counterAfter = after.find((m) => m.name === "zzapi_hub_requests_total");
+    assert.ok(counterAfter, "metric should still be registered after resetMetrics()");
+    const valuesAfter = (counterAfter as { values: Array<{ value: number }> }).values;
+    assert.ok(valuesAfter.every((v) => v.value === 0), "all values should be 0 after resetMetrics()");
+  });
+
+  it("clear() removes all metrics from registry (deregisters them)", async () => {
+    register.clear();
+    const metrics = await register.getMetricsAsJSON();
+    assert.equal(metrics.length, 0, "registry should be empty after clear()");
   });
 });
