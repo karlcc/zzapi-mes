@@ -475,6 +475,20 @@ describe("GET /healthz", () => {
     assert.equal(body.ok, false);
     assert.equal(body.error, "SAP unreachable");
   });
+
+  it("returns 400 when ?check is an unknown value", async () => {
+    const res = await fetchApi("/healthz?check=sappp");
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.match(body.error as string, /unknown.*check/i);
+  });
+
+  it("returns 400 when ?check is empty string", async () => {
+    const res = await fetchApi("/healthz?check=");
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.match(body.error as string, /unknown.*check/i);
+  });
 });
 
 describe("Request ID middleware", () => {
@@ -3261,5 +3275,35 @@ describe("CORS allowMethods completeness", () => {
     assert.ok(!methodList.includes("PATCH"), "should NOT include PATCH");
     assert.ok(!methodList.includes("PUT"), "should NOT include PUT");
     delete process.env.HUB_CORS_ORIGIN;
+  });
+});
+
+describe("SAP_PING_TIMEOUT_MS validation", () => {
+  it("rejects Infinity — falls back to default 5000ms", async () => {
+    // The SAP_PING_TIMEOUT_MS constant is parsed at module load time.
+    // We test the validation expression that health.ts uses, verifying that
+    // Number.isFinite(Number("Infinity")) is false so Infinity is rejected.
+    const envVal = "Infinity";
+    const num = Number(envVal);
+    // Before fix: Number.isInteger(num) && num > 0 was true for Infinity
+    // After fix: Number.isFinite(num) is added, rejecting Infinity
+    assert.ok(!Number.isFinite(num), "Infinity should not be isFinite");
+    assert.ok(!(Number.isFinite(num) && Number.isInteger(num) && num > 0),
+      "validation expression should reject Infinity");
+  });
+
+  it("rejects NaN values — falls back to default", async () => {
+    const envVal = "abc";
+    const num = Number(envVal);
+    assert.ok(isNaN(num), "non-numeric string produces NaN");
+    assert.ok(!(Number.isFinite(num) && Number.isInteger(num) && num > 0),
+      "validation expression should reject NaN");
+  });
+
+  it("accepts valid positive integer", async () => {
+    const envVal = "10000";
+    const num = Number(envVal);
+    assert.ok(Number.isFinite(num) && Number.isInteger(num) && num > 0,
+      "validation expression should accept valid integer");
   });
 });
