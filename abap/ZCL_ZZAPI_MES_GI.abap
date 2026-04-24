@@ -11,8 +11,9 @@ CLASS zcl_zzapi_mes_gi IMPLEMENTATION.
     " Includes backflush guard: checks AFVC-MGVRG before posting.
     " Commits on success, rolls back on failure.
 
-    DATA: lv_method TYPE string,
-          lv_json   TYPE string.
+    DATA: lv_method    TYPE string,
+          lv_json      TYPE string,
+          lv_menge_str TYPE string.
 
     lv_method = server->request->get_header_field( '~request_method' ).
 
@@ -66,8 +67,7 @@ CLASS zcl_zzapi_mes_gi IMPLEMENTATION.
               AND mgvrg = abap_true.
         ENDIF.
         IF sy-subrc = 0.
-          CONCATENATE '{"orderid":"' lv_orderid '","status":"rejected",'
-            '"message":"Backflush is active for this order — GI handled by confirmation"}'
+          CONCATENATE '{"orderid":"' lv_orderid '","error":"Backflush is active for this order — GI handled by confirmation"}'
             INTO lv_json.
           server->response->set_status( code = 409 reason = 'Conflict' ).
           server->response->set_content_type( 'application/json' ).
@@ -141,8 +141,12 @@ CLASS zcl_zzapi_mes_gi IMPLEMENTATION.
         ELSE.
           CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
             EXPORTING wait = abap_true.
+          " Format menge with dot as decimal separator (locale-independent)
+          " to avoid comma in non-US locales producing invalid JSON.
+          lv_menge_str = lv_menge.
+          REPLACE ALL OCCURRENCES OF ',' IN lv_menge_str WITH '.'.
           CONCATENATE '{"orderid":"' lv_orderid '","matnr":"' lv_matnr '",'
-            '"menge":' lv_menge ','
+            '"menge":' lv_menge_str ','
             '"materialDocument":"' lv_matdoc '",'
             '"documentYear":"' lv_docyear '",'
             '"status":"posted","message":"Goods issue posted"}'
