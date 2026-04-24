@@ -171,6 +171,17 @@ describe("accessLog middleware", () => {
     const entry = JSON.parse(logged[0]!);
     assert.equal(entry.key_id, "-");
   });
+
+  it("strips ANSI escape sequences from request path", async () => {
+    const app = buildApp((a) => a.use("*", requestId).use("*", accessLog));
+    // Hono app.request doesn't allow raw control chars in path easily,
+    // so test stripAnsi function directly
+    const { stripAnsi } = await import("../middleware/log.js");
+    assert.equal(stripAnsi("\x1B[31m/red\x1B[0m"), "/red");
+    assert.equal(stripAnsi("\x1B[1;32;40m/bold\x1B[0m"), "/bold");
+    assert.equal(stripAnsi("/clean"), "/clean");
+    assert.equal(stripAnsi(""), "");
+  });
 });
 
 // ---------------------------------------------------------------------------

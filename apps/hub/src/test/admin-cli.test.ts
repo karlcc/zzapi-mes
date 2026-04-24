@@ -261,4 +261,16 @@ describe("admin CLI", () => {
     assert.notEqual(exitCode, 0);
     assert.match(stderr, /--max-age-seconds/);
   });
+
+  it("keys create rejects --scopes with only commas (empty after dedup)", async () => {
+    const { stderr, exitCode } = await runCli(["keys", "create", "--label", "empty-scopes", "--scopes", ",,,"]);
+    assert.notEqual(exitCode, 0);
+    assert.match(stderr, /at least one valid scope/);
+  });
+
+  it("keys create rejects --rate-limit with decimal value", async () => {
+    const { stderr, exitCode } = await runCli(["keys", "create", "--label", "decimal-rl", "--rate-limit", "10.5"]);
+    assert.notEqual(exitCode, 0);
+    assert.match(stderr, /integer.*decimal/);
+  });
 });

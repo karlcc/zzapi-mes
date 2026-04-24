@@ -60,13 +60,23 @@ async function main(args: string[]): Promise<void> {
       const scopes = opts["scopes"] ?? "ping,po";
       // Deduplicate scopes — "ping,ping,po" → "ping,po"
       const uniqueScopes = [...new Set(scopes.split(",").map(s => s.trim()).filter(Boolean))].join(",");
+      if (!uniqueScopes) {
+        console.error("--scopes must contain at least one valid scope");
+        process.exit(1);
+      }
       // Validate scopes against known values
       const invalidScopes = uniqueScopes.split(",").map(s => s.trim()).filter(s => s && !ALL_SCOPES.includes(s as typeof ALL_SCOPES[number]));
       if (invalidScopes.length > 0) {
         console.error(`Unknown scope(s): ${invalidScopes.join(", ")}. Valid scopes: ${ALL_SCOPES.join(", ")}`);
         process.exit(1);
       }
-      const rateLimit = opts["rate-limit"] ? parseInt(opts["rate-limit"], 10) : null;
+      const rateLimitRaw = opts["rate-limit"];
+      const rateLimit = rateLimitRaw != null ? parseInt(rateLimitRaw, 10) : null;
+      // parseInt("10.5", 10) → 10 — reject decimal input explicitly
+      if (rateLimit !== null && rateLimitRaw != null && rateLimitRaw.includes(".")) {
+        console.error("--rate-limit must be an integer (got decimal)");
+        process.exit(1);
+      }
       if (rateLimit !== null && (Number.isNaN(rateLimit) || rateLimit <= 0)) {
         console.error("--rate-limit must be a positive integer");
         process.exit(1);

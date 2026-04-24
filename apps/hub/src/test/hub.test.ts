@@ -1789,6 +1789,29 @@ describe("Request body size limit", () => {
     const data = await res.json() as Record<string, unknown>;
     assert.equal(data.status, "confirmed");
   });
+
+  it("rejects CJK chunked body where byte length exceeds 1 MB but string length does not", async () => {
+    const token = await validToken(["conf"]);
+    // CJK characters are 3 bytes each in UTF-8. 350,001 chars → ~1,050,003 bytes (> 1 MB)
+    // but string length is only 350,001 (< 1,048,576). The old check used .length
+    // and would have let this through. TextEncoder.encode().byteLength catches it.
+    const cjkChar = "\u4e2d"; // 中
+    const cjkBody = cjkChar.repeat(350_001);
+    assert.ok(cjkBody.length < 1_048_576, "JS string length should be under 1M");
+    assert.ok(new TextEncoder().encode(cjkBody).byteLength > 1_048_576, "byte length should exceed 1MB");
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "cjk-oversized-001",
+      },
+      body: cjkBody,
+    });
+    assert.equal(res.status, 413, "CJK body exceeding 1MB bytes should be rejected");
+    const body = await res.json() as Record<string, unknown>;
+    assert.match(String(body.error), /too large/i);
+  });
 });
 
 describe("JWT edge cases", () => {
