@@ -291,6 +291,32 @@ describe("POST /auth/token", () => {
     assert.ok(body.error?.toString().includes("Content-Type") || body.error?.toString().includes("JSON"),
       `expected Content-Type or JSON error hint, got: ${body.error}`);
   });
+
+  it("verifyApiKey timing: non-existent key takes similar time to wrong-secret key", async () => {
+    // Timing vulnerability: a key_id that doesn't exist in DB returns null
+    // instantly (no argon2 verify), while a key_id that exists but has a
+    // wrong secret takes ~100ms (argon2 verify runs). An attacker can
+    // enumerate key_ids by measuring response time.
+    // Fix: verifyApiKey should hash even when key not found.
+    const { verifyApiKey } = await import("../auth/verify.js");
+
+    // Measure time for non-existent key
+    const startNonExist = performance.now();
+    const resultNonExist = await verifyApiKey(db, "nonexistent.wrongsecret");
+    const durationNonExist = performance.now() - startNonExist;
+    assert.equal(resultNonExist, null);
+
+    // Measure time for existing key with wrong secret
+    const startWrongSecret = performance.now();
+    const resultWrongSecret = await verifyApiKey(db, "testkey1234.wrongsecret");
+    const durationWrongSecret = performance.now() - startWrongSecret;
+    assert.equal(resultWrongSecret, null);
+
+    // Both should take similar time (within 3x ratio). Without the fix,
+    // non-existent key takes ~0ms and wrong-secret takes ~100ms.
+    const ratio = Math.max(durationNonExist, durationWrongSecret) / (Math.min(durationNonExist, durationWrongSecret) || 1);
+    assert.ok(ratio < 3, `Timing ratio ${ratio.toFixed(1)}x too high — non-existent=${durationNonExist.toFixed(1)}ms, wrong-secret=${durationWrongSecret.toFixed(1)}ms. Key enumeration possible.`);
+  });
 });
 
 describe("Protected routes without JWT", () => {
@@ -1751,6 +1777,57 @@ describe("JWT edge cases", () => {
     assert.equal(res.status, 401);
     const body = await res.json() as Record<string, unknown>;
     assert.ok(String(body.error).includes("key_id"));
+  });
+
+  it("rejects JWT with future iat (clock skew)", async () => {
+    // Token minted 5 minutes in the future — hono/jwt verify() rejects this
+    // because iat must be lower than current time. Confirms the clock-skew
+    // protection is active (a clock-skewed server could otherwise mint tokens
+    // that bypass short TTL windows).
+    const futureIat = Math.floor(Date.now() / 1000) + 300;
+    const futureToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], iat: futureIat, exp: futureIat + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${futureToken}` } });
+    assert.equal(res.status, 401);
+  });
+
+  it("rate-limit fractional token boundary: 0.999 tokens rejects, 1.0 allows", async () => {
+    // Use _seedBucketForTest to set up a bucket just below and at the boundary
+    const { _seedBucketForTest: seedBucket } = await import("../middleware/rate-limit.js");
+
+    // Create a key with low rate limit
+    const keyId = "boundarytest";
+    const secret = "boundarytestsecret123456789abcd";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "boundary test key",
+      scopes: "ping",
+      rate_limit_per_min: 1,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    const authRes = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: plaintext }),
+    });
+    assert.equal(authRes.status, 200);
+    const { token } = await authRes.json() as { token: string };
+
+    // Seed bucket with 0.999 tokens — should reject
+    seedBucket(keyId, 0.999, Date.now());
+    const res1 = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res1.status, 429, "0.999 tokens should be rejected");
+
+    // Seed bucket with exactly 1.0 tokens — should allow
+    seedBucket(keyId, 1.0, Date.now());
+    const res2 = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res2.status, 200, "1.0 tokens should be allowed");
   });
 });
 
