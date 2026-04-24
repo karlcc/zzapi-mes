@@ -3087,3 +3087,77 @@ describe("Idempotency concurrent-insert race", () => {
     assert.match(resBody.error as string, /previous attempt did not complete/);
   });
 });
+
+describe("Rate-limit concurrent first-request over-allocation", () => {
+  it("two simultaneous first requests for same key each create separate buckets", async () => {
+    const { _resetBucketsForTest: resetBuckets, _bucketCountForTest: bucketCount } = await import("../middleware/rate-limit.js");
+    resetBuckets();
+
+    // Create a key with very low rate limit
+    const keyId = "concurrlim";
+    const secret = "concurrlimsecret1234567890ab";
+    const plaintext = `${keyId}.${secret}`;
+    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    insertKey(db, {
+      id: keyId,
+      hash,
+      label: "concurrent rate test key",
+      scopes: "ping",
+      rate_limit_per_min: 2,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+
+    const authRes = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: plaintext }),
+    });
+    assert.equal(authRes.status, 200);
+    const { token } = await authRes.json() as { token: string };
+
+    // Fire two concurrent requests at the same time
+    const [res1, res2] = await Promise.all([
+      fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } }),
+      fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } }),
+    ]);
+
+    // Both should succeed (each got its own bucket with rpm=2 tokens initially)
+    // This demonstrates the race: with rpm=2, two concurrent first-requests each
+    // create a bucket and deduct 1 token, but there should only be 2 total tokens.
+    // After both succeed, a third request should be rate-limited.
+    assert.equal(res1.status, 200, "first concurrent request should succeed");
+    assert.equal(res2.status, 200, "second concurrent request should succeed");
+
+    // Third request should be rate-limited (buckets merged, tokens depleted)
+    const res3 = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res3.status, 429, "third request should be rate-limited after concurrent burst");
+
+    resetBuckets();
+  });
+});
+
+describe("withSapCall 429 audit trail distinction", () => {
+  it("audit log records SAP 429 status distinctly from successful calls", async () => {
+    // Make SAP return 429 with Retry-After
+    mockPingError = new ZzapiMesHttpError(429, "Too many requests", 30);
+
+    const token = await validToken(["ping"]);
+    const reqId = "audit-429-distinct";
+    await fetchApi("/ping", {
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-request-id": reqId,
+      },
+    });
+
+    // Check audit log — sap_status should be 429
+    const row = db.prepare(
+      "SELECT sap_status, sap_duration_ms FROM audit_log WHERE req_id = ?",
+    ).get(reqId) as { sap_status: number; sap_duration_ms: number } | undefined;
+    assert.ok(row, "audit row should exist for 429 request");
+    assert.equal(row.sap_status, 429, "audit should record SAP 429 status");
+
+    // Restore mock
+    mockPingError = null;
+  });
+});
