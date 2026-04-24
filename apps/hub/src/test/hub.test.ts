@@ -2243,9 +2243,25 @@ describe("Security headers", () => {
     assert.equal(res.headers.get("cache-control"), "no-store");
   });
 
-  it("does not set Cache-Control on other routes", async () => {
+  it("does not set Cache-Control on unauthenticated routes", async () => {
     const res = await fetchApi("/healthz");
     assert.equal(res.headers.get("cache-control"), null);
+  });
+
+  it("sets Cache-Control no-store on authenticated routes", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(res.headers.get("cache-control"), "no-store");
+  });
+
+  it("sets Cache-Control no-store on write-back routes", async () => {
+    const token = await validToken(["conf", "gr", "gi"]);
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "idempotency-key": "cc-test-1" },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", plant: "1000", workCenter: "TURN1", confirmQty: 1, unit: "EA" }),
+    });
+    assert.equal(res.headers.get("cache-control"), "no-store");
   });
 
   it("sets Referrer-Policy no-referrer", async () => {

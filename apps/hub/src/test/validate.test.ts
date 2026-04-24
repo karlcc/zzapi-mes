@@ -154,4 +154,43 @@ describe("validateParam", () => {
     const body = await res.json() as Record<string, unknown>;
     assert.ok(String(body.error).includes("maximum length"), `expected maxLength error, got: ${body.error}`);
   });
+
+  it("rejects Unicode characters in path param (CJK)", async () => {
+    const sub = new Hono();
+    sub.get("/x/:id", (c) => {
+      const err = validateParam(c, "id", c.req.param("id"), 18);
+      if (err) return err;
+      return c.json({ ok: true });
+    });
+    const res = await sub.fetch(new Request("http://localhost/x/\u6D4B\u8BD5"));
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("invalid characters"));
+  });
+
+  it("rejects Unicode characters in query param (emoji)", async () => {
+    const res = await app.fetch(new Request("http://localhost/query?werks=\u{1F600}"));
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("invalid characters"));
+  });
+
+  it("rejects query param with non-ASCII accented characters", async () => {
+    const res = await app.fetch(new Request("http://localhost/query?werks=caf%C3%A9"));
+    assert.equal(res.status, 400);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(String(body.error).includes("invalid characters"));
+  });
+
+  it("accepts query param with hyphen and underscore via source:query", async () => {
+    // Hyphens and underscores are valid in SAP identifiers (e.g. work-center IDs)
+    const sub = new Hono();
+    sub.get("/q", (c) => {
+      const err = validateParam(c, "arbpl", c.req.query("arbpl") ?? "", 8, "query");
+      if (err) return err;
+      return c.json({ ok: true });
+    });
+    const res = await sub.fetch(new Request("http://localhost/q?arbpl=TURN-1"));
+    assert.equal(res.status, 200);
+  });
 });
