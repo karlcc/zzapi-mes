@@ -311,6 +311,7 @@ export class SapClient {
       res = await fetch(url, {
         headers: { Authorization: `Basic ${this.auth}` },
         signal: controller.signal,
+        redirect: "manual",
       });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
@@ -325,6 +326,59 @@ export class SapClient {
     }
 
     this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
+
+    return this.interpretSapResponse<T>(res);
+  }
+
+  private async postRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
+    const query = new URLSearchParams({ "sap-client": String(this.client) });
+    const url = `${this.host}${path}?${query}`;
+
+    this.onRequest?.({ url, method: "POST" });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+    const start = performance.now();
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${this.auth}`,
+          "Content-Type": "application/json",
+        },
+        redirect: "manual",
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new ZzapiMesHttpError(408, `Request timeout after ${this.timeout}ms`);
+      }
+      if (e instanceof TypeError) {
+        throw new ZzapiMesHttpError(502, `Network error: ${(e as TypeError).message}`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
+
+    return this.interpretSapResponse<T>(res);
+  }
+
+  /** Shared response interpretation: redirect detection, JSON parse, error extraction.
+   *  Eliminates ~60 lines of duplication between request() and postRequest(). */
+  private async interpretSapResponse<T>(res: Response): Promise<T> {
+    // Detect 3xx redirects — SAP ICF may redirect to a login page when the
+    // service is not activated. Without this, the redirect body (HTML) causes
+    // a confusing "Non-JSON response" error.
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location") ?? "(no Location header)";
+      throw new ZzapiMesHttpError(res.status, `SAP redirect (HTTP ${res.status}) → ${location}`);
+    }
 
     const bodyText = await readResponseBody(res);
     let json: Record<string, unknown>;
@@ -348,69 +402,6 @@ export class SapClient {
       throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
     }
     // Safety net: any 4xx/5xx without recognized error field is still an error.
-    if (res.status >= 400) {
-      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
-      throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`, retryAfter);
-    }
-
-    return json as T;
-  }
-
-  private async postRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
-    const query = new URLSearchParams({ "sap-client": String(this.client) });
-    const url = `${this.host}${path}?${query}`;
-
-    this.onRequest?.({ url, method: "POST" });
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeout);
-    const start = performance.now();
-
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${this.auth}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") {
-        throw new ZzapiMesHttpError(408, `Request timeout after ${this.timeout}ms`);
-      }
-      if (e instanceof TypeError) {
-        throw new ZzapiMesHttpError(502, `Network error: ${(e as TypeError).message}`);
-      }
-      throw e;
-    } finally {
-      clearTimeout(timer);
-    }
-
-    this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
-
-    const bodyText = await readResponseBody(res);
-    let json: Record<string, unknown>;
-    try {
-      json = JSON.parse(bodyText);
-    } catch {
-      throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
-    }
-
-    if ("error" in json) {
-      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
-      throw new ZzapiMesHttpError(res.status, json.error as string, retryAfter);
-    }
-    if ("errors" in json) {
-      const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
-      const arr = json.errors;
-      const errorMsg = Array.isArray(arr)
-        ? arr.map(e => typeof e === "object" && e !== null && "message" in (e as object) ? (e as { message: string }).message : String(e)).join("; ")
-        : String(arr);
-      throw new ZzapiMesHttpError(res.status, errorMsg, retryAfter);
-    }
     if (res.status >= 400) {
       const retryAfter = res.status === 429 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new ZzapiMesHttpError(res.status, `SAP error (HTTP ${res.status})`, retryAfter);

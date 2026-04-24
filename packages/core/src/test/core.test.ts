@@ -694,4 +694,23 @@ describe("SapClient ABAP error detection", () => {
       },
     );
   });
+
+  it("detects 3xx redirect and throws descriptive error", async () => {
+    // SapClient uses redirect: "manual" — SAP ICF may redirect to a login page
+    // when the service is not activated. Without detection this produces a
+    // confusing "Non-JSON response" error.
+    globalThis.fetch = async () => new Response(null, {
+      status: 302,
+      headers: { location: "/sap/bc/bsp/sap/system_login.htm" },
+    });
+    await assert.rejects(
+      () => new SapClient(CFG).ping(),
+      (e: unknown) => {
+        assert(e instanceof ZzapiMesHttpError);
+        assert.equal(e.status, 302);
+        assert.match(e.message, /redirect/i, `expected redirect hint, got: ${e.message}`);
+        return true;
+      },
+    );
+  });
 });
