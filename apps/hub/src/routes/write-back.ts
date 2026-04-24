@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { ZzapiMesHttpError } from "@zzapi-mes/core";
+import { ZzapiMesHttpError, ConfirmationResponseSchema, GoodsReceiptResponseSchema, GoodsIssueResponseSchema } from "@zzapi-mes/core";
 import { z } from "zod";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
@@ -29,11 +29,13 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
     schema: T;
     /** SAP call — receives the parsed, validated request data */
     fn: (data: z.infer<T>) => Promise<Record<string, unknown>>;
+    /** Zod schema for SAP response validation (strips unexpected fields) */
+    responseSchema?: z.ZodTypeAny;
     /** Field name from parsed data to include in error responses (e.g. "orderid") */
     errorField: string;
   },
 ) {
-  const { route, schema, fn, errorField } = opts;
+  const { route, schema, fn, responseSchema, errorField } = opts;
 
   let body: unknown;
   try {
@@ -75,6 +77,15 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
   } else {
     try {
       result = await fn(parsed.data);
+      // Validate SAP response against Zod schema to strip unexpected fields
+      if (responseSchema && result) {
+        const validated = responseSchema.safeParse(result);
+        if (validated.success) {
+          result = validated.data as Record<string, unknown>;
+        }
+        // If validation fails, return raw result — SAP schema may drift ahead
+        // of our spec, and silently dropping data is worse than propagating it.
+      }
       sapStatus = 201;
       clientStatus = 201;
     } catch (e) {
@@ -84,6 +95,7 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
       errorMsg = mapped.errorMsg;
       retryAfter = mapped.retryAfter;
     }
+  }
   }
   const durationMs = performance.now() - start;
 
