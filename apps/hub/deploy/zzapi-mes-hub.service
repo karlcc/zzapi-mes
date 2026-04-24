@@ -1,6 +1,7 @@
 [Unit]
 Description=zzapi-mes hub — token-gated SAP proxy
-After=network.target
+After=network-online.target
+Wants=network-online.target
 ConditionPathExists=/etc/zzapi-mes-hub.env
 
 [Service]
@@ -31,6 +32,11 @@ RestrictSUIDSGID=true
 LockPersonality=true
 MemoryDenyWriteExecute=false  # native addons (better-sqlite3, argon2) require mmap PROT_EXEC
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ProtectHostname=true
+ProtectClock=true
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+WatchdogSec=30
 
 [Install]
 WantedBy=multi-user.target
