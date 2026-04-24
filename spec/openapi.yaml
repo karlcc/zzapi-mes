@@ -2019,6 +2019,7 @@ components:
     ConfirmationRequest:
       type: object
       required: [orderid, operation, yield]
+      additionalProperties: false
       properties:
         orderid:
           type: string
@@ -2093,6 +2094,7 @@ components:
     GoodsReceiptRequest:
       type: object
       required: [ebeln, ebelp, menge, werks, lgort]
+      additionalProperties: false
       properties:
         ebeln:
           type: string
@@ -2170,6 +2172,7 @@ components:
     GoodsIssueRequest:
       type: object
       required: [orderid, matnr, menge, werks, lgort]
+      additionalProperties: false
       properties:
         orderid:
           type: string

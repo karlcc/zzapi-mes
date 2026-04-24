@@ -552,43 +552,45 @@ describe("SapClient Retry-After extraction from SAP 429", () => {
   });
 });
 
-describe("Zod schema .passthrough() on write-back requests", () => {
-  it("ConfirmationRequestSchema allows extra fields through", () => {
-    const result = ConfirmationRequestSchema.parse({
-      orderid: "1000000",
-      operation: "0010",
-      yield: 50,
-      injected_field: "should pass through",
-    });
-    assert.equal(result.orderid, "1000000");
-    // .passthrough() preserves extra keys
-    assert.equal((result as Record<string, unknown>).injected_field, "should pass through");
+describe("Zod schema .strict() on write-back requests", () => {
+  it("ConfirmationRequestSchema rejects extra fields", () => {
+    assert.throws(
+      () => ConfirmationRequestSchema.parse({
+        orderid: "1000000",
+        operation: "0010",
+        yield: 50,
+        injected_field: "should be rejected",
+      }),
+      /unrecognized_keys/,
+    );
   });
 
-  it("GoodsReceiptRequestSchema allows extra fields through", () => {
-    const result = GoodsReceiptRequestSchema.parse({
-      ebeln: "4500000001",
-      ebelp: "00010",
-      menge: 100,
-      werks: "1000",
-      lgort: "0001",
-      extra_key: "value",
-    });
-    assert.equal(result.ebeln, "4500000001");
-    assert.equal((result as Record<string, unknown>).extra_key, "value");
+  it("GoodsReceiptRequestSchema rejects extra fields", () => {
+    assert.throws(
+      () => GoodsReceiptRequestSchema.parse({
+        ebeln: "4500000001",
+        ebelp: "00010",
+        menge: 100,
+        werks: "1000",
+        lgort: "0001",
+        extra_key: "value",
+      }),
+      /unrecognized_keys/,
+    );
   });
 
-  it("GoodsIssueRequestSchema allows extra fields through", () => {
-    const result = GoodsIssueRequestSchema.parse({
-      orderid: "1000000",
-      matnr: "20000001",
-      menge: 50,
-      werks: "1000",
-      lgort: "0001",
-      custom: true,
-    });
-    assert.equal(result.orderid, "1000000");
-    assert.equal((result as Record<string, unknown>).custom, true);
+  it("GoodsIssueRequestSchema rejects extra fields", () => {
+    assert.throws(
+      () => GoodsIssueRequestSchema.parse({
+        orderid: "1000000",
+        matnr: "20000001",
+        menge: 50,
+        werks: "1000",
+        lgort: "0001",
+        custom: true,
+      }),
+      /unrecognized_keys/,
+    );
   });
 });
 

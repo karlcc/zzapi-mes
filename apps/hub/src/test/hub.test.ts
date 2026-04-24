@@ -1247,6 +1247,31 @@ describe("Phase 5B write-back routes", () => {
     assert.ok(row.body.length < huge.length, "body must be truncated");
     assert.ok(row.body.includes("[truncated"), "body must carry truncation marker");
   });
+
+  it("audit body truncation preserves valid JSON boundary", async () => {
+    // Build a JSON body that will be cut inside a long string value when sliced at 4096 chars
+    const padding = "x".repeat(5000);
+    const inner = '{"orderid":"1000000","operation":"0010","yield":50,' + '"padding":"' + padding + '"}';
+    const body = `{"outer":[${inner}]}`;
+    assert.ok(body.length > 4096, "body must exceed truncation limit");
+    writeAudit(db, {
+      req_id: "r-json-trunc",
+      key_id: "k-trunc",
+      method: "POST",
+      path: "/confirmation",
+      body,
+      sap_status: 201,
+    });
+    const row = db.prepare("SELECT body FROM audit_log WHERE req_id = 'r-json-trunc'").get() as { body: string } | undefined;
+    assert.ok(row);
+    // The truncated body must end at a valid JSON structural boundary (} or ])
+    // or at a comma (key-value boundary) — never mid-key like `"ord` + `...[truncated]`
+    const truncMarkerIdx = row.body.indexOf("...[truncated");
+    assert.ok(truncMarkerIdx > 0, "must have truncation marker");
+    const beforeMarker = row.body.slice(0, truncMarkerIdx);
+    assert.ok(beforeMarker.endsWith("}") || beforeMarker.endsWith("]") || beforeMarker.endsWith(","),
+      "truncated body must end at a JSON structural boundary or comma, got: ..." + JSON.stringify(beforeMarker.slice(-20)));
+  });
 });
 
 describe("Access log middleware", () => {

@@ -10,8 +10,10 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
     " POST only. Calls BAPI_PRODORDCONF_CREATE_TT.
     " Commits on success, rolls back on failure.
 
-    DATA: lv_method TYPE string,
-          lv_json   TYPE string.
+    DATA: lv_method    TYPE string,
+          lv_json      TYPE string,
+          lv_yield_str TYPE string,
+          lv_scrap_str TYPE string.
 
     lv_method = server->request->get_header_field( '~request_method' ).
 
@@ -37,12 +39,18 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
               lv_postg_date TYPE budat.
 
         " Simple JSON field extraction (SAP_BASIS 700 — no /UI2/CL_JSON)
-        PERFORM extract_field USING lv_body 'orderid' CHANGING lv_orderid.
-        PERFORM extract_field USING lv_body 'operation' CHANGING lv_operation.
-        PERFORM extract_field USING lv_body 'yield' CHANGING lv_yield.
-        PERFORM extract_field USING lv_body 'scrap' CHANGING lv_scrap.
-        PERFORM extract_field USING lv_body 'work_actual' CHANGING lv_work_act.
-        PERFORM extract_field USING lv_body 'postg_date' CHANGING lv_postg_date.
+        zcl_zzapi_mes_utils=>extract_field(
+          EXPORTING iv_json = lv_body iv_field = 'orderid' CHANGING cv_value = lv_orderid ).
+        zcl_zzapi_mes_utils=>extract_field(
+          EXPORTING iv_json = lv_body iv_field = 'operation' CHANGING cv_value = lv_operation ).
+        zcl_zzapi_mes_utils=>extract_field(
+          EXPORTING iv_json = lv_body iv_field = 'yield' CHANGING cv_value = lv_yield ).
+        zcl_zzapi_mes_utils=>extract_field(
+          EXPORTING iv_json = lv_body iv_field = 'scrap' CHANGING cv_value = lv_scrap ).
+        zcl_zzapi_mes_utils=>extract_field(
+          EXPORTING iv_json = lv_body iv_field = 'work_actual' CHANGING cv_value = lv_work_act ).
+        zcl_zzapi_mes_utils=>extract_field(
+          EXPORTING iv_json = lv_body iv_field = 'postg_date' CHANGING cv_value = lv_postg_date ).
 
         IF lv_orderid IS INITIAL OR lv_operation IS INITIAL OR lv_yield IS INITIAL.
           server->response->set_status( code = 400 reason = 'Bad Request' ).
@@ -103,8 +111,14 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
         ELSE.
           CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
             EXPORTING wait = abap_true.
+          " Format numeric fields with dot as decimal separator (locale-independent)
+          " to avoid comma in non-US locales producing invalid JSON.
+          lv_yield_str = lv_yield.
+          REPLACE ALL OCCURRENCES OF ',' IN lv_yield_str WITH '.'.
+          lv_scrap_str = lv_scrap.
+          REPLACE ALL OCCURRENCES OF ',' IN lv_scrap_str WITH '.'.
           CONCATENATE '{"orderid":"' lv_orderid '","operation":"' lv_operation '",'
-            '"yield":' lv_yield ',"scrap":' lv_scrap ','
+            '"yield":' lv_yield_str ',"scrap":' lv_scrap_str ','
             '"confNo":"' lv_conf_no '","confCnt":"' lv_conf_cnt '",'
             '"status":"confirmed","message":"Production confirmation recorded"}'
             INTO lv_json.

@@ -6,7 +6,7 @@ const health = new Hono<{ Variables: HubVariables }>();
 /** Cached SAP reachability result (refreshed every 30s). */
 let sapCache: { ok: boolean; checkedAt: number; error?: string } | null = null;
 const SAP_CACHE_TTL_MS = 30_000;
-const SAP_PING_TIMEOUT_MS = Number(process.env.SAP_PING_TIMEOUT_MS) > 0
+const SAP_PING_TIMEOUT_MS = Number.isInteger(Number(process.env.SAP_PING_TIMEOUT_MS)) && Number(process.env.SAP_PING_TIMEOUT_MS) > 0
   ? Number(process.env.SAP_PING_TIMEOUT_MS)
   : 5_000;
 

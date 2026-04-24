@@ -128,19 +128,18 @@ const WorkCenterResponse = z
     kostl: z.string().max(10).optional(),
   })
   .passthrough();
-const ConfirmationRequest = z
-  .object({
-    orderid: z.string().min(1).max(12),
-    operation: z.string().min(1).max(4),
-    yield: z.number().gte(1),
-    scrap: z.number().gte(0).optional(),
-    work_actual: z.number().gte(0).optional(),
-    postg_date: z
-      .string()
-      .regex(/^[0-9]{8}$/)
-      .optional(),
-  })
-  .passthrough();
+const ConfirmationRequest = z.object({
+  orderid: z.string().min(1).max(12),
+  operation: z.string().min(1).max(4),
+  yield: z.number().gte(1),
+  scrap: z.number().gte(0).optional(),
+  work_actual: z.number().gte(0).optional(),
+  postg_date: z
+    .string()
+    .regex(/^[0-9]{8}$/)
+    .optional(),
+})
+  .strict();
 const ConfirmationResponse = z
   .object({
     orderid: z.string(),
@@ -153,20 +152,19 @@ const ConfirmationResponse = z
     message: z.string().optional(),
   })
   .passthrough();
-const GoodsReceiptRequest = z
-  .object({
-    ebeln: z.string().min(1).max(10),
-    ebelp: z.string().min(1).max(5),
-    menge: z.number().gte(1),
-    werks: z.string().min(1).max(4),
-    lgort: z.string().min(1).max(4),
-    budat: z
-      .string()
-      .regex(/^[0-9]{8}$/)
-      .optional(),
-    charg: z.string().max(10).optional(),
-  })
-  .passthrough();
+const GoodsReceiptRequest = z.object({
+  ebeln: z.string().min(1).max(10),
+  ebelp: z.string().min(1).max(5),
+  menge: z.number().gte(1),
+  werks: z.string().min(1).max(4),
+  lgort: z.string().min(1).max(4),
+  budat: z
+    .string()
+    .regex(/^[0-9]{8}$/)
+    .optional(),
+  charg: z.string().max(10).optional(),
+})
+  .strict();
 const GoodsReceiptResponse = z
   .object({
     ebeln: z.string(),
@@ -178,20 +176,19 @@ const GoodsReceiptResponse = z
     message: z.string().optional(),
   })
   .passthrough();
-const GoodsIssueRequest = z
-  .object({
-    orderid: z.string().min(1).max(12),
-    matnr: z.string().min(1).max(18),
-    menge: z.number().gte(1),
-    werks: z.string().min(1).max(4),
-    lgort: z.string().min(1).max(4),
-    budat: z
-      .string()
-      .regex(/^[0-9]{8}$/)
-      .optional(),
-    charg: z.string().max(10).optional(),
-  })
-  .passthrough();
+const GoodsIssueRequest = z.object({
+  orderid: z.string().min(1).max(12),
+  matnr: z.string().min(1).max(18),
+  menge: z.number().gte(1),
+  werks: z.string().min(1).max(4),
+  lgort: z.string().min(1).max(4),
+  budat: z
+    .string()
+    .regex(/^[0-9]{8}$/)
+    .optional(),
+  charg: z.string().max(10).optional(),
+})
+  .strict();
 const GoodsIssueResponse = z
   .object({
     orderid: z.string(),

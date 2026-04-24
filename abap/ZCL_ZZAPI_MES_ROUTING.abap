@@ -69,12 +69,13 @@ CLASS zcl_zzapi_mes_routing IMPLEMENTATION.
         ENDIF.
 
         " --- Operations (PLPO) ---
-        DATA: lt_plpo TYPE TABLE OF plpo,
+        " NOTE: PLPO has no PLNAL. Sequence/alternative is resolved via PLAS.
+        " For a simple read, select by PLNTY/PLNNR and drop deleted rows.
+        DATA: lt_plpo     TYPE TABLE OF plpo,
               lv_ops_json TYPE string.
         SELECT * INTO TABLE lt_plpo FROM plpo
           WHERE plnty = ls_mapl-plnty
             AND plnnr = ls_mapl-plnnr
-            AND plnal = ls_mapl-plnal
             AND loekz = abap_false
           ORDER BY vornr.
         IF lines( lt_plpo ) > 0.
