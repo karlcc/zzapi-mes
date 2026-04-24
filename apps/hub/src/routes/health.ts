@@ -6,6 +6,10 @@ const health = new Hono<{ Variables: HubVariables }>();
 /** Cached SAP reachability result (refreshed every 30s). */
 let sapCache: { ok: boolean; checkedAt: number; error?: string } | null = null;
 const SAP_CACHE_TTL_MS = 30_000;
+/** In-flight SAP ping promise for concurrent-request dedup. Multiple requests
+ *  arriving while the cache is stale all share the same pending ping instead of
+ *  each triggering a separate SAP call. */
+let sapPingInFlight: Promise<{ ok: boolean; error?: string }> | null = null;
 const SAP_PING_TIMEOUT_MS = Number.isFinite(Number(process.env.SAP_PING_TIMEOUT_MS)) && Number.isInteger(Number(process.env.SAP_PING_TIMEOUT_MS)) && Number(process.env.SAP_PING_TIMEOUT_MS) > 0
   ? Number(process.env.SAP_PING_TIMEOUT_MS)
   : 5_000;
@@ -13,6 +17,7 @@ const SAP_PING_TIMEOUT_MS = Number.isFinite(Number(process.env.SAP_PING_TIMEOUT_
 /** Reset SAP health cache (for test isolation). */
 export function _resetSapHealthCacheForTest(): void {
   sapCache = null;
+  sapPingInFlight = null;
 }
 
 /** Set the SAP health cache directly (for test isolation). */
@@ -60,30 +65,46 @@ health.get("/healthz", async (c) => {
       return c.json({ ok: true, sap: "reachable" });
     }
 
-    // Ping SAP with timeout
+    // Ping SAP with timeout — dedup concurrent requests via in-flight promise
     const sap = c.get("sap");
     if (!sap) {
       return c.json({ ok: false, error: "SAP client not configured" }, 503);
     }
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), SAP_PING_TIMEOUT_MS);
-      try {
-        await Promise.race([
-          sap.ping(),
-          new Promise((_, reject) =>
-            controller.signal.addEventListener("abort", () => reject(new Error("timeout"))),
-          ),
-        ]);
-        sapCache = { ok: true, checkedAt: now };
-        return c.json({ ok: true, sap: "reachable" });
-      } finally {
-        clearTimeout(timer);
-      }
-    } catch {
-      sapCache = { ok: false, checkedAt: now, error: "SAP unreachable" };
-      return c.json({ ok: false, error: "SAP unreachable" }, 503);
+
+    // If a ping is already in flight, reuse it instead of firing another
+    if (!sapPingInFlight) {
+      sapPingInFlight = (async () => {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), SAP_PING_TIMEOUT_MS);
+          try {
+            await Promise.race([
+              sap.ping(),
+              new Promise((_, reject) =>
+                controller.signal.addEventListener("abort", () => reject(new Error("timeout"))),
+              ),
+            ]);
+            return { ok: true };
+          } finally {
+            clearTimeout(timer);
+          }
+        } catch {
+          return { ok: false, error: "SAP unreachable" as string | undefined };
+        }
+      })();
     }
+
+    const result = await sapPingInFlight;
+    // Clear in-flight reference so future requests after cache expiry start a new ping
+    sapPingInFlight = null;
+
+    const checkedAt = Date.now();
+    if (result.ok) {
+      sapCache = { ok: true, checkedAt };
+      return c.json({ ok: true, sap: "reachable" });
+    }
+    sapCache = { ok: false, checkedAt, error: result.error };
+    return c.json({ ok: false, error: result.error }, 503);
   }
 
   return c.json({ ok: true });
