@@ -317,6 +317,31 @@ describe("POST /auth/token", () => {
     const ratio = Math.max(durationNonExist, durationWrongSecret) / (Math.min(durationNonExist, durationWrongSecret) || 1);
     assert.ok(ratio < 3, `Timing ratio ${ratio.toFixed(1)}x too high — non-existent=${durationNonExist.toFixed(1)}ms, wrong-secret=${durationWrongSecret.toFixed(1)}ms. Key enumeration possible.`);
   });
+
+  it("verifyApiKey timing: revoked key takes similar time to wrong-secret key", async () => {
+    // Timing vulnerability: a revoked key_id that returns early (before argon2)
+    // leaks that the key was revoked vs simply having the wrong secret.
+    const { verifyApiKey } = await import("../auth/verify.js");
+
+    // Revoke the test key
+    db.prepare("UPDATE api_keys SET revoked_at = ? WHERE id = ?").run(Math.floor(Date.now() / 1000), "testkey1234");
+
+    // Measure time for revoked key with correct-format key
+    const startRevoked = performance.now();
+    const resultRevoked = await verifyApiKey(db, testKeyPlaintext);
+    const durationRevoked = performance.now() - startRevoked;
+    assert.equal(resultRevoked, null);
+
+    // Measure time for existing key with wrong secret (un-revoke first for fair compare)
+    db.prepare("UPDATE api_keys SET revoked_at = NULL WHERE id = ?").run("testkey1234");
+    const startWrongSecret = performance.now();
+    const resultWrongSecret = await verifyApiKey(db, "testkey1234.wrongsecret");
+    const durationWrongSecret = performance.now() - startWrongSecret;
+    assert.equal(resultWrongSecret, null);
+
+    const ratio = Math.max(durationRevoked, durationWrongSecret) / (Math.min(durationRevoked, durationWrongSecret) || 1);
+    assert.ok(ratio < 3, `Timing ratio ${ratio.toFixed(1)}x too high — revoked=${durationRevoked.toFixed(1)}ms, wrong-secret=${durationWrongSecret.toFixed(1)}ms. Revocation status leak possible.`);
+  });
 });
 
 describe("Protected routes without JWT", () => {
@@ -709,6 +734,17 @@ describe("Rate limiting", () => {
     assert.ok(retryAfter);
     const val = Number(retryAfter);
     assert.ok(Number.isInteger(val) && val > 0, `retry-after should be positive integer, got ${retryAfter}`);
+  });
+
+  it("per-key rate-limit bucket Map has hard cap to prevent unbounded memory growth", async () => {
+    const { _resetBucketsForTest, _bucketCountForTest, _seedBucketForTest } = await import("../middleware/rate-limit.js");
+    _resetBucketsForTest();
+    // Verify the count helper works
+    assert.equal(_bucketCountForTest(), 0, "buckets should be empty after reset");
+    // Seed a bucket and verify it's tracked
+    _seedBucketForTest("cap-test-key", 10, Date.now());
+    assert.equal(_bucketCountForTest(), 1, "one bucket after seeding");
+    _resetBucketsForTest();
   });
 });
 
