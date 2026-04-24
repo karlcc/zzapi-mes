@@ -51,9 +51,10 @@ CLASS zcl_zzapi_mes_wc IMPLEMENTATION.
         " --- Capacity (CRCA) ---
         DATA: lt_crca TYPE TABLE OF crca,
               lv_crca_json TYPE string.
+        " CRCA has no WERKS column — OBJID (from CRHD) is already plant-unique
         SELECT * INTO TABLE lt_crca FROM crca
-          WHERE objid = ls_crhd-objid
-            AND werks = lv_werks.
+          WHERE objty = 'A'
+            AND objid = ls_crhd-objid.
         IF lines( lt_crca ) > 0.
           lv_crca_json = zz_cl_json=>serialize(
             data        = lt_crca
@@ -66,10 +67,10 @@ CLASS zcl_zzapi_mes_wc IMPLEMENTATION.
         " --- Cost center (CRCO) ---
         DATA: lt_crco TYPE TABLE OF crco,
               lv_crco_json TYPE string.
-        " CRCO has no LOEKZ column — filter by objid/werks only
+        " CRCO has no WERKS column — OBJID (from CRHD) is already plant-unique
         SELECT * INTO TABLE lt_crco FROM crco
-          WHERE objid = ls_crhd-objid
-            AND werks = lv_werks.
+          WHERE objty = 'A'
+            AND objid = ls_crhd-objid.
         IF lines( lt_crco ) > 0.
           lv_crco_json = zz_cl_json=>serialize(
             data        = lt_crco
