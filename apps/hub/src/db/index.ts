@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { existsSync } from "node:fs";
 
 export interface ApiKeyRecord {
   id: string;
@@ -14,7 +15,12 @@ export interface ApiKeyRecord {
 const DB_PATH = () => process.env.HUB_DB_PATH ?? "/var/lib/zzapi-mes-hub/hub.db";
 
 export function openDb(path?: string): Database.Database {
-  const db = new Database(path ?? DB_PATH());
+  const resolvedPath = path ?? DB_PATH();
+  const dir = dirname(resolve(resolvedPath));
+  if (!existsSync(dir)) {
+    throw new Error(`Database directory does not exist: ${dir}`);
+  }
+  const db = new Database(resolvedPath);
   db.pragma("journal_mode = WAL");
   db.pragma("synchronous = NORMAL");
   db.pragma("busy_timeout = 5000");

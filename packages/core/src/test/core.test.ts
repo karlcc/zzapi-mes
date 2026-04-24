@@ -392,6 +392,31 @@ describe("ensureProtocol", () => {
       /Unsupported URL scheme/,
     );
   });
+
+  it("rejects protocol-relative URL (//host)", () => {
+    assert.throws(
+      () => ensureProtocol("//cdn.example.com"),
+      /Protocol-relative URL/,
+    );
+  });
+
+  it("rejects whitespace-only host", () => {
+    assert.throws(
+      () => ensureProtocol("   "),
+      /non-empty string/,
+    );
+  });
+
+  it("rejects empty string", () => {
+    assert.throws(
+      () => ensureProtocol(""),
+      /non-empty string/,
+    );
+  });
+
+  it("trims whitespace before processing", () => {
+    assert.equal(ensureProtocol("  http://sap.test  "), "http://sap.test");
+  });
 });
 
 describe("Zod schemas", () => {
@@ -824,6 +849,23 @@ describe("ZzapiMesHttpError toString format", () => {
   it("name property is ZzapiMesHttpError", () => {
     const err = new ZzapiMesHttpError(409, "conflict");
     assert.equal(err.name, "ZzapiMesHttpError");
+  });
+
+  it("toJSON() returns structured object (Error props are non-enumerable)", () => {
+    const err = new ZzapiMesHttpError(429, "Too many requests", 30);
+    const json = err.toJSON();
+    assert.equal(json.name, "ZzapiMesHttpError");
+    assert.equal(json.status, 429);
+    assert.equal(json.message, "Too many requests");
+    assert.equal(json.retryAfter, 30);
+    assert.equal(json.originalStatus, undefined);
+  });
+
+  it("toJSON() omits undefined retryAfter/originalStatus", () => {
+    const err = new ZzapiMesHttpError(502, "upstream error");
+    const json = err.toJSON();
+    assert.equal("retryAfter" in json, false);
+    assert.equal("originalStatus" in json, false);
   });
 });
 

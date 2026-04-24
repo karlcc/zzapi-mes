@@ -36,7 +36,7 @@ function readConfig() {
   const user = process.env.SAP_USER || rc.SAP_USER;
   const password = process.env.SAP_PASS || rc.SAP_PASS;
 
-  if (!user || !password) {
+  if (!user || !user.trim() || !password || !password.trim()) {
     console.error("Set SAP_USER and SAP_PASS (env or ~/.zzapirc).");
     process.exit(1);
   }
@@ -76,7 +76,14 @@ function parseMode(args: string[]): { mode: Mode; rest: string[] } {
     }
     return { mode: "direct", rest: args };
   }
+  // Check for duplicate --mode flags (e.g. --mode hub --mode=direct)
+  const secondMode = args.indexOf("--mode", modeIdx + 1);
+  const secondModeEq = args.slice(modeIdx + 1).find(a => a.startsWith("--mode="));
+  if (secondMode !== -1 || secondModeEq) {
+    die("Duplicate --mode flag — specify only one mode");
+  }
   const mode = args[modeIdx + 1];
+  if (!mode) die("--mode requires a value: 'direct' or 'hub'");
   if (mode !== "direct" && mode !== "hub") die(`Unknown mode: ${mode}. Use 'direct' or 'hub'.`);
   return { mode, rest: [...args.slice(0, modeIdx), ...args.slice(modeIdx + 2)] };
 }
@@ -212,8 +219,12 @@ Environment (hub mode):
       if (scrapIdx !== -1 && !Number.isFinite(scrap)) die(`--scrap must be a number (got ${args[scrapIdx + 1]})`);
       const waIdx = args.indexOf("--work-actual");
       const workActual = waIdx !== -1 ? Number(args[waIdx + 1]) : undefined;
-      const pdIdx = args.indexOf("--postg-date") !== -1 ? args.indexOf("--postg-date") : args.indexOf("--budat");
-      const postgDate = pdIdx !== -1 ? args[pdIdx + 1] : undefined;
+      if (waIdx !== -1 && !Number.isFinite(workActual!)) die(`--work-actual must be a number (got ${args[waIdx + 1]})`);
+      if (waIdx !== -1 && workActual! < 0) die(`--work-actual must be non-negative (got ${workActual})`);
+      const pdIdx = args.indexOf("--postg-date");
+      const budatIdx = args.indexOf("--budat");
+      const effectivePdIdx = pdIdx !== -1 ? pdIdx : budatIdx;
+      const postgDate = effectivePdIdx !== -1 ? args[effectivePdIdx + 1] : undefined;
       let res;
       if (mode === "hub") {
         const idemKey = `cli-conf-${orderid}-${Date.now()}`;
