@@ -30,6 +30,12 @@ if ! command -v pnpm >/dev/null 2>&1; then
   exit 1
 fi
 
+# --- rsync pre-flight check ---
+if ! command -v rsync >/dev/null 2>&1; then
+  echo "Error: rsync is required but not found in PATH. Install via your package manager (e.g. apt install rsync)" >&2
+  exit 1
+fi
+
 INSTALL_DIR="/opt/zzapi-mes-hub"
 DATA_DIR="/var/lib/zzapi-mes-hub"
 ENV_FILE="/etc/zzapi-mes-hub.env"
@@ -69,6 +75,8 @@ fi
 echo "Setting up data directory..."
 sudo mkdir -p "$DATA_DIR"
 sudo chown zzapi-mes:zzapi-mes "$DATA_DIR"
+# Restrict DB directory to owner only — contains API key hashes
+sudo chmod 700 "$DATA_DIR"
 echo "Running DB migration..."
 sudo -u zzapi-mes node "$INSTALL_DIR/dist/scripts/migrate.js"
 
