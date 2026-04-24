@@ -8,6 +8,7 @@ export interface JwtPayload {
   iat: number;
   exp: number;
   rate_limit_per_min: number | null;
+  jti?: string;
 }
 
 /** Shared Hono context variables for the hub app. */

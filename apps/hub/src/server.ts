@@ -24,6 +24,7 @@ import { createGoodsIssueRouter } from "./routes/goods-issue.js";
 import { idempotencyGuard } from "./middleware/idempotency.js";
 import { z } from "zod";
 import { sign } from "hono/jwt";
+import { randomBytes } from "node:crypto";
 import type Database from "better-sqlite3";
 import { openDb, runMigrations } from "./db/index.js";
 import { verifyApiKey } from "./auth/verify.js";
@@ -326,6 +327,7 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
         iat: now,
         exp: now + jwtTtl,
         rate_limit_per_min: verified.rate_limit_per_min,
+        jti: randomBytes(8).toString("hex"),
       },
       jwtSecret,
     );

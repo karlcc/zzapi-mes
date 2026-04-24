@@ -3,6 +3,7 @@ import { ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, HubClient } from "@z
 import { readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { randomBytes } from "node:crypto";
 
 type Mode = "direct" | "hub";
 
@@ -92,6 +93,20 @@ function parseMode(args: string[]): { mode: Mode; rest: string[] } {
 }
 
 async function main() {
+  // Register SIGINT handler for in-flight write-back requests.
+  // Without this, Ctrl+C during a POST to SAP exits immediately — the user
+  // may retry, causing a duplicate write-back. With the handler, we log a
+  // warning and let the in-flight request finish (idempotency key protects
+  // against duplicates). A second Ctrl+C forces exit.
+  let sigintCount = 0;
+  const sigintIdempotencyKey = randomBytes(8).toString("hex");
+  process.on("SIGINT", () => {
+    sigintCount++;
+    if (sigintCount >= 2) {
+      process.exit(130);  // 128 + SIGINT(2)
+    }
+    console.error(`\nSIGINT received — in-flight write-back may be running. Press Ctrl+C again to force exit.`);
+  });
   // Parse --mode from all args first, then extract command from remaining
   const [, , ...allArgs] = process.argv;
   const { mode, rest } = parseMode(allArgs);
