@@ -1,4 +1,4 @@
-import { describe, it, before, after } from "node:test";
+import { describe, it, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { createApp } from "../server.js";
@@ -9,9 +9,6 @@ import argon2 from "argon2";
 import { runMigrations, insertKey } from "../db/index.js";
 
 const JWT_SECRET = "integration-test-16ch";
-
-process.env.HUB_JWT_SECRET = JWT_SECRET;
-process.env.HUB_JWT_TTL_SECONDS = "900";
 
 // --- Mock SAP server ---
 
@@ -202,7 +199,11 @@ describe("E2E integration against mock SAP", () => {
     const { server, port } = await startMockSap();
     mockSap = server;
     sapPort = port;
+  });
 
+  beforeEach(async () => {
+    process.env.HUB_JWT_SECRET = JWT_SECRET;
+    process.env.HUB_JWT_TTL_SECONDS = "900";
     db = new Database(":memory:");
     runMigrations(db);
 
@@ -221,9 +222,14 @@ describe("E2E integration against mock SAP", () => {
     });
   });
 
+  afterEach(() => {
+    db.close();
+    delete process.env.HUB_JWT_SECRET;
+    delete process.env.HUB_JWT_TTL_SECONDS;
+  });
+
   after(() => {
     mockSap.close();
-    db.close();
   });
 
   it("authenticates and proxies ping + po through hub to mock SAP", async () => {

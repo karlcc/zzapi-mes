@@ -1,4 +1,4 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../server.js";
 import { SapClient, ZzapiMesHttpError, ALL_SCOPES } from "@zzapi-mes/core";
@@ -11,10 +11,6 @@ import { _resetBucketsForTest } from "../middleware/rate-limit.js";
 import { _resetSapHealthCacheForTest } from "../routes/health.js";
 
 const JWT_SECRET = "test-secret-16ch";
-
-// Set env vars before creating app
-process.env.HUB_JWT_SECRET = JWT_SECRET;
-process.env.HUB_JWT_TTL_SECONDS = "900";
 
 // --- In-memory DB setup ---
 
@@ -154,11 +150,19 @@ beforeEach(async () => {
   mockGrError = null;
   mockGiError = null;
 
+  process.env.HUB_JWT_SECRET = JWT_SECRET;
+  process.env.HUB_JWT_TTL_SECONDS = "900";
   db = new Database(":memory:");
   runMigrations(db);
   _resetBucketsForTest();
   _resetSapHealthCacheForTest();
   testKeyPlaintext = await seedTestKey();
+});
+
+afterEach(() => {
+  db.close();
+  delete process.env.HUB_JWT_SECRET;
+  delete process.env.HUB_JWT_TTL_SECONDS;
 });
 
 // --- Helpers ---
