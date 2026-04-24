@@ -408,8 +408,22 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "405" POST \
     ".error" "Method not allowed"
 
+  check "GET /auth/token returns 405" \
+    "${BASE_URL}/auth/token" \
+    "405" GET
+
   check "GET /confirmation returns 405" \
     "${BASE_URL}/confirmation" \
+    "405" GET \
+    ".error" "Method not allowed"
+
+  check "GET /goods-receipt returns 405" \
+    "${BASE_URL}/goods-receipt" \
+    "405" GET \
+    ".error" "Method not allowed"
+
+  check "GET /goods-issue returns 405" \
+    "${BASE_URL}/goods-issue" \
     "405" GET \
     ".error" "Method not allowed"
 
@@ -435,31 +449,68 @@ if [[ "$HUB_MODE" == "1" ]]; then
     -H "content-type: application/json" \
     -d '{"api_key":"invalid.key123"}'
 
+  # Additional hub smoke tests
+  echo ""
+  echo "-- Additional hub coverage --"
+
+  check "healthz?check=sap returns SAP connectivity status" \
+    "${BASE_URL}/healthz?check=sap" \
+    "200" GET
+
+  # Duplicate idempotency-key tests for goods-receipt and goods-issue
+  check "goods-receipt duplicate idempotency key returns 409" \
+    "${BASE_URL}/goods-receipt" \
+    "409" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-gr-001" \
+    -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
+
+  check "goods-issue duplicate idempotency key returns 409" \
+    "${BASE_URL}/goods-issue" \
+    "409" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-gi-001" \
+    -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}'
+
+  # Invalid path-param test (hub validateParam rejects non-alphanumeric)
+  check "po with invalid path-param returns 400" \
+    "${BASE_URL}/po/abc%3Bdef" \
+    "400" GET
+
+  # Body-too-large test (1.1 MB exceeds 1 MB limit)
+  OVERSIZED_BODY=$(python3 -c "import json; print(json.dumps({'orderid':'1000000','operation':'0010','yield':50,'padding':'x'*1100000}))")
+  check "oversized body returns 413" \
+    "${BASE_URL}/confirmation" \
+    "413" POST \
+    -H "content-type: application/json" \
+    -H "idempotency-key: smoke-413-001" \
+    -d "$OVERSIZED_BODY"
+
   # Scope-based 403 test
   echo ""
   echo "-- Scope-based 403 (hub) --"
 
   SAVED_TOKEN="$HUB_TOKEN"
-  HUB_TOKEN=$(curl -s "$HUB_URL/auth/token" \
-    -d "{\"api_key\":\"$HUB_API_KEY\"}" \
-    -H 'content-type: application/json' \
-    | jq -r .token 2>/dev/null) || true
-  # Create a token with limited scope by using a key with only ping scope
-  # For now, test with a JWT that has wrong scope by directly crafting one
-  # This test assumes the admin CLI can create a limited-scope key:
-  #   zzapi-mes-hub-admin keys create --label limited --scopes ping
-  # If that key doesn't exist, this test is skipped gracefully
-  LIMITED_KEY_ID="limited-scope-test"
-  LIMITED_KEY_SECRET=""
-  LIMITED_KEY_SECRET=$(curl -s "$HUB_URL/auth/token" \
-    -d "{\"api_key\":\"${LIMITED_KEY_ID}.$LIMITED_KEY_SECRET\"}" \
-    -H 'content-type: application/json' 2>/dev/null | jq -r .token 2>/dev/null) || true
-  if [[ -n "$LIMITED_KEY_SECRET" && "$LIMITED_KEY_SECRET" != "null" ]]; then
-    check "wrong scope returns 403" \
-      "${BASE_URL}/po/3010000608" \
-      "403" GET
+  # Create a limited-scope key via admin CLI if hub admin is available
+  LIMITED_KEY=""
+  LIMITED_KEY=$(node "$(dirname "$0")/../apps/hub/dist/admin/cli.js" keys create --label smoke-limited --scopes ping 2>/dev/null | grep -oP '[a-zA-Z0-9.]+') || true
+  if [[ -n "$LIMITED_KEY" ]]; then
+    LIMITED_TOKEN=$(curl -s "$HUB_URL/auth/token" \
+      -d "{\"api_key\":\"$LIMITED_KEY\"}" \
+      -H 'content-type: application/json' \
+      | jq -r .token 2>/dev/null) || true
+    if [[ -n "$LIMITED_TOKEN" && "$LIMITED_TOKEN" != "null" ]]; then
+      HUB_TOKEN="$LIMITED_TOKEN"
+      check "wrong scope returns 403" \
+        "${BASE_URL}/po/3010000608" \
+        "403" GET
+      # Revoke the limited key
+      node "$(dirname "$0")/../apps/hub/dist/admin/cli.js" keys revoke "$(echo "$LIMITED_KEY" | cut -d. -f1)" 2>/dev/null || true
+    else
+      echo "  SKIP  scope-403 test (could not obtain limited-scope token)"
+    fi
   else
-    echo "  SKIP  scope-403 test (no limited-scope key configured)"
+    echo "  SKIP  scope-403 test (admin CLI unavailable or key creation failed)"
   fi
   HUB_TOKEN="$SAVED_TOKEN"
 fi
