@@ -799,4 +799,39 @@ describe("CLI", () => {
       assert.ok(!stderr.includes("Set HUB_URL"), "should load HUB_URL from .zzapirc");
     });
   });
+
+  describe("numeric argument validation", () => {
+    it("rejects non-numeric --yield value in confirm command", async () => {
+      const { stderr, code } = await run(["--mode", "direct", "confirm", "1000000", "--yield", "abc"], {
+        SAP_HOST: "sap.test:8000",
+        SAP_CLIENT: "200",
+        SAP_USER: "test",
+        SAP_PASS: "test",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--yield") && stderr.includes("number"), `stderr should mention --yield: ${stderr}`);
+    });
+
+    it("rejects non-numeric --menge value in goods-receipt command", async () => {
+      const { stderr, code } = await run(["--mode", "direct", "goods-receipt", "4500000001", "--menge", "abc", "--werks", "1000", "--lgort", "0001"], {
+        SAP_HOST: "sap.test:8000",
+        SAP_CLIENT: "200",
+        SAP_USER: "test",
+        SAP_PASS: "test",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--menge") && stderr.includes("number"), `stderr should mention --menge: ${stderr}`);
+    });
+
+    it("rejects non-numeric --menge value in goods-issue command", async () => {
+      const { stderr, code } = await run(["--mode", "direct", "goods-issue", "1000000", "--matnr", "10000001", "--menge", "xyz", "--werks", "1000", "--lgort", "0001"], {
+        SAP_HOST: "sap.test:8000",
+        SAP_CLIENT: "200",
+        SAP_USER: "test",
+        SAP_PASS: "test",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("--menge") && stderr.includes("number"), `stderr should mention --menge: ${stderr}`);
+    });
+  });
 });

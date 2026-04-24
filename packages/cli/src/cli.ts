@@ -109,7 +109,7 @@ Options:
   --werks <plant>     Plant code (required for stock, routing, work-center)
   --lgort <sloc>      Storage location (stock, goods-receipt, goods-issue)
   --operation <op>    Operation number (confirm, default: 0010)
-  --yield <qty>       Yield quantity (confirm, default: 0)
+  --yield <qty>       Yield quantity (confirm, required)
   --ebelp <item>      PO item number (goods-receipt, default: 00010)
   --menge <qty>       Quantity (goods-receipt, goods-issue)
   --matnr <material>  Material number (goods-issue)
@@ -206,8 +206,10 @@ Environment (hub mode):
       const operation = opIdx !== -1 ? args[opIdx + 1]! : "0010";
       const yieldIdx = args.indexOf("--yield");
       const yieldQty = yieldIdx !== -1 ? Number(args[yieldIdx + 1]) : die("--yield is required");
+      if (!Number.isFinite(yieldQty)) die(`--yield must be a number (got ${args[yieldIdx + 1]})`);
       const scrapIdx = args.indexOf("--scrap");
       const scrap = scrapIdx !== -1 ? Number(args[scrapIdx + 1]) : undefined;
+      if (scrapIdx !== -1 && !Number.isFinite(scrap)) die(`--scrap must be a number (got ${args[scrapIdx + 1]})`);
       const waIdx = args.indexOf("--work-actual");
       const workActual = waIdx !== -1 ? Number(args[waIdx + 1]) : undefined;
       const pdIdx = args.indexOf("--postg-date") !== -1 ? args.indexOf("--postg-date") : args.indexOf("--budat");
@@ -226,6 +228,7 @@ Environment (hub mode):
       const ebeln = args[0] || die("Usage: zzapi-mes goods-receipt <ebeln> --menge <qty> --werks <plant> --lgort <sloc>");
       const mengeIdx = args.indexOf("--menge");
       const menge = mengeIdx !== -1 ? Number(args[mengeIdx + 1]) : die("--menge is required");
+      if (!Number.isFinite(menge)) die(`--menge must be a number (got ${args[mengeIdx + 1]})`);
       const werksIdx = args.indexOf("--werks");
       const werks = werksIdx !== -1 ? args[werksIdx + 1]! : die("--werks is required");
       const lgortIdx = args.indexOf("--lgort");
@@ -252,6 +255,7 @@ Environment (hub mode):
       const matnr = matnrIdx !== -1 ? args[matnrIdx + 1]! : die("--matnr is required");
       const mengeIdx = args.indexOf("--menge");
       const menge = mengeIdx !== -1 ? Number(args[mengeIdx + 1]) : die("--menge is required");
+      if (!Number.isFinite(menge)) die(`--menge must be a number (got ${args[mengeIdx + 1]})`);
       const werksIdx = args.indexOf("--werks");
       const werks = werksIdx !== -1 ? args[werksIdx + 1]! : die("--werks is required");
       const lgortIdx = args.indexOf("--lgort");

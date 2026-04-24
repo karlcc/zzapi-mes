@@ -803,6 +803,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "405":
           description: Method not allowed
           content:
@@ -1069,6 +1075,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "504":
           description: SAP request timeout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -1402,16 +1414,26 @@ paths:
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ErrorResponse"
-                  - type: object
-                    required: [orderid]
-                    properties:
-                      orderid:
-                        type: string
-                        description: Production order ID from the request body
+                oneOf:
+                  - allOf:
+                    - $ref: "#/components/schemas/ErrorResponse"
+                    - type: object
+                      required: [orderid]
+                      properties:
+                        orderid:
+                          type: string
+                          description: Production order ID from the request body
+                        original_status:
+                          type: integer
+                          description: Original HTTP status from the first successful request (present on completed duplicates)
+                  - allOf:
+                    - $ref: "#/components/schemas/ErrorResponse"
+                    - type: object
+                      properties:
+                        error:
+                          type: string
+                          description: "Duplicate request; previous attempt did not complete. Retry with a new Idempotency-Key"
         "422":
-          description: Idempotency-Key reused with different body, or SAP business rule rejection
           content:
             application/json:
               schema:
@@ -1458,7 +1480,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    required: [orderid]
+                    properties:
+                      orderid:
+                        type: string
+                        description: Production order ID from the request body
         "405":
           description: Method not allowed
           content:
@@ -1579,7 +1608,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    required: [ebeln]
+                    properties:
+                      ebeln:
+                        type: string
+                        description: Purchase order number from the request body
         "405":
           description: Method not allowed
           content:
@@ -1703,7 +1739,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    required: [orderid]
+                    properties:
+                      orderid:
+                        type: string
+                        description: Production order ID from the request body
         "405":
           description: Method not allowed
           content:
