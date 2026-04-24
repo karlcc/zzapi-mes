@@ -87,6 +87,10 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
       console.error(`SAP_CLIENT must be a positive integer (got ${process.env.SAP_CLIENT})`);
       process.exit(1);
     }
+    if (sapClientNum > 999) {
+      console.error(`SAP_CLIENT must be in range 001-999 (got ${sapClientNum})`);
+      process.exit(1);
+    }
     return new SapClient({
       host: requireEnv("SAP_HOST"),
       client: sapClientNum,
@@ -365,7 +369,8 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   // Global error handler — ensures unhandled exceptions return ErrorResponse
   // schema ({ error: string }) rather than Hono's default { message: string }
   app.onError((err, c) => {
-    console.error(JSON.stringify({ type: "unhandled_error", path: c.req.path, error: err.message }));
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(JSON.stringify({ type: "unhandled_error", path: c.req.path, error: message }));
     return c.json({ error: "Internal Server Error" }, 500);
   });
 

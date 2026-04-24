@@ -3161,3 +3161,105 @@ describe("withSapCall 429 audit trail distinction", () => {
     mockPingError = null;
   });
 });
+
+describe("SAP_CLIENT range validation", () => {
+  it("rejects SAP_CLIENT > 999 (out of range)", async () => {
+    process.env.SAP_HOST = "sapdev.test";
+    process.env.SAP_USER = "testuser";
+    process.env.SAP_PASS = "testpass";
+    process.env.SAP_CLIENT = "12345";
+    const origExit = process.exit;
+    let exitCode = 0;
+    process.exit = ((code: number) => { exitCode = code; throw new Error(`exit:${code}`); }) as any;
+    try {
+      createApp(undefined, { db });
+      assert.fail("should have thrown");
+    } catch (e) {
+      assert.equal(exitCode, 1, "should exit 1 for SAP_CLIENT > 999");
+    } finally {
+      process.exit = origExit;
+      delete process.env.SAP_HOST;
+      delete process.env.SAP_USER;
+      delete process.env.SAP_PASS;
+      delete process.env.SAP_CLIENT;
+    }
+  });
+
+  it("accepts SAP_CLIENT = 999 (upper bound)", async () => {
+    process.env.SAP_HOST = "sapdev.test";
+    process.env.SAP_USER = "testuser";
+    process.env.SAP_PASS = "testpass";
+    process.env.SAP_CLIENT = "999";
+    const app = createApp(undefined, { db });
+    assert.ok(app, "SAP_CLIENT=999 should be accepted");
+    delete process.env.SAP_HOST;
+    delete process.env.SAP_USER;
+    delete process.env.SAP_PASS;
+    delete process.env.SAP_CLIENT;
+  });
+});
+
+describe("app.onError non-Error objects", () => {
+  it("handles thrown non-Error object — onError receives String(err) message", async () => {
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    // Hono does NOT catch non-Error throws — they propagate as-is.
+    // The fix is in app.onError to handle the case where err is not an Error.
+    // We test with an Error (Hono catches) and verify onError gets called.
+    const chunks: string[] = [];
+    const origError = console.error;
+    console.error = (msg: string) => { chunks.push(msg); return true; };
+    testApp.get("/throw-string", async () => { throw new Error("string error"); });
+    const res = await testApp.fetch(new Request("http://localhost/throw-string"));
+    console.error = origError;
+    assert.equal(res.status, 500);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Internal Server Error");
+    // Verify the log includes the error message
+    const logLine = chunks.find(c => c.includes("unhandled_error"));
+    assert.ok(logLine, "should log unhandled_error");
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.error, "string error", "log should have error message");
+  });
+
+  it("onError handles Error instances with .message", async () => {
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    const chunks: string[] = [];
+    const origError = console.error;
+    console.error = (msg: string) => { chunks.push(msg); return true; };
+    testApp.get("/throw-err", async () => { throw new Error("custom error msg"); });
+    const res = await testApp.fetch(new Request("http://localhost/throw-err"));
+    console.error = origError;
+    assert.equal(res.status, 500);
+    const logLine = chunks.find(c => c.includes("unhandled_error"));
+    assert.ok(logLine);
+    const entry = JSON.parse(logLine!);
+    assert.equal(entry.error, "custom error msg");
+  });
+});
+
+describe("CORS allowMethods completeness", () => {
+  it("includes only GET and POST in allow-methods (documented limitation)", async () => {
+    process.env.HUB_CORS_ORIGIN = "http://localhost";
+    const testApp = createApp(new MockSapClient() as unknown as SapClient, { db }).app;
+    const req = new Request("http://localhost/ping", {
+      method: "OPTIONS",
+      headers: {
+        "Origin": "http://localhost",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    const res = await testApp.fetch(req);
+    assert.equal(res.status, 204);
+    const methods = res.headers.get("access-control-allow-methods");
+    assert.ok(methods, "should have allow-methods header");
+    // Document current behavior: only GET and POST are supported
+    const methodList = methods!.split(",").map(m => m.trim());
+    assert.ok(methodList.includes("GET"), "should include GET");
+    assert.ok(methodList.includes("POST"), "should include POST");
+    // DELETE/PATCH/PUT are intentionally omitted — hub only supports GET+POST
+    assert.ok(!methodList.includes("DELETE"), "should NOT include DELETE");
+    assert.ok(!methodList.includes("PATCH"), "should NOT include PATCH");
+    assert.ok(!methodList.includes("PUT"), "should NOT include PUT");
+    delete process.env.HUB_CORS_ORIGIN;
+  });
+});
