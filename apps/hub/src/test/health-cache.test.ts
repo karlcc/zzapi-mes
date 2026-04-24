@@ -231,6 +231,27 @@ describe("SAP_PING_TIMEOUT_MS configurability", () => {
     db2.close();
   });
 
+  it("rejects Infinity as SAP_PING_TIMEOUT_MS — falls back to 5000", () => {
+    process.env.SAP_PING_TIMEOUT_MS = "Infinity";
+    const parsed = Number(process.env.SAP_PING_TIMEOUT_MS);
+    assert.equal(Number.isInteger(parsed) && parsed > 0, false, "Infinity should not be accepted");
+    delete process.env.SAP_PING_TIMEOUT_MS;
+  });
+
+  it("rejects non-integer decimal as SAP_PING_TIMEOUT_MS — falls back to 5000", () => {
+    process.env.SAP_PING_TIMEOUT_MS = "5.5";
+    const parsed = Number(process.env.SAP_PING_TIMEOUT_MS);
+    assert.equal(Number.isInteger(parsed) && parsed > 0, false, "5.5 should not be accepted");
+    delete process.env.SAP_PING_TIMEOUT_MS;
+  });
+
+  it("rejects negative value as SAP_PING_TIMEOUT_MS — falls back to 5000", () => {
+    process.env.SAP_PING_TIMEOUT_MS = "-1";
+    const parsed = Number(process.env.SAP_PING_TIMEOUT_MS);
+    assert.equal(Number.isInteger(parsed) && parsed > 0, false, "-1 should not be accepted");
+    delete process.env.SAP_PING_TIMEOUT_MS;
+  });
+
   it("uses env value when SAP_PING_TIMEOUT_MS is a valid positive integer", () => {
     // We can't easily re-import the module, but we can verify the env var
     // is consumed by setting it before the module-level code would run.

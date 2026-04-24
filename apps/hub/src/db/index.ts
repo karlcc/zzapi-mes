@@ -299,7 +299,25 @@ export function writeAudit(
 ): void {
   let body = record.body ?? null;
   if (body && body.length > AUDIT_BODY_MAX) {
-    body = body.slice(0, AUDIT_BODY_MAX) + `...[truncated from ${body.length}]`;
+    // Find the last valid JSON boundary before the truncation point
+    // to avoid producing invalid JSON that can't be parsed later.
+    const cut = body.slice(0, AUDIT_BODY_MAX);
+    const lastBrace = cut.lastIndexOf("}");
+    const lastBracket = cut.lastIndexOf("]");
+    const lastStruct = Math.max(lastBrace, lastBracket);
+    if (lastStruct > 0) {
+      body = cut.slice(0, lastStruct + 1) + `...[truncated from ${record.body!.length}]`;
+    } else {
+      // No closing brace/bracket — we're inside a long string value.
+      // Fall back to the last comma (key-value boundary) to avoid
+      // mid-value cuts that produce unparseable fragments.
+      const lastComma = cut.lastIndexOf(",");
+      if (lastComma > 0) {
+        body = cut.slice(0, lastComma + 1) + `...[truncated from ${record.body!.length}]`;
+      } else {
+        body = cut + `...[truncated from ${record.body!.length}]`;
+      }
+    }
   }
   db.prepare(AUDIT_INSERT).run(
     record.req_id,

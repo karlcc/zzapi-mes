@@ -140,7 +140,7 @@ const ConfirmationRequest = z
       .regex(/^[0-9]{8}$/)
       .optional(),
   })
-  .passthrough();
+  .strict();
 const ConfirmationResponse = z
   .object({
     orderid: z.string(),
@@ -166,7 +166,7 @@ const GoodsReceiptRequest = z
       .optional(),
     charg: z.string().max(10).optional(),
   })
-  .passthrough();
+  .strict();
 const GoodsReceiptResponse = z
   .object({
     ebeln: z.string(),
@@ -191,7 +191,7 @@ const GoodsIssueRequest = z
       .optional(),
     charg: z.string().max(10).optional(),
   })
-  .passthrough();
+  .strict();
 const GoodsIssueResponse = z
   .object({
     orderid: z.string(),
