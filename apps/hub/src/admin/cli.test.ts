@@ -118,11 +118,13 @@ describe("Admin CLI", () => {
   });
 
   describe("keys list", () => {
-    it("lists keys", async () => {
-      // Create a key first
+    it("lists keys with header row", async () => {
       await run(["keys", "create", "--label", "listme"]);
       const { stdout, code } = await run(["keys", "list"]);
       assert.equal(code, 0);
+      const lines = stdout.split("\n");
+      // First line is a header row
+      assert.ok(lines[0]!.startsWith("KEY_ID\t"), `first line should be header, got: ${lines[0]}`);
       assert.ok(stdout.includes("listme"));
       assert.ok(stdout.includes("ACTIVE"));
     });
@@ -135,6 +137,37 @@ describe("Admin CLI", () => {
       assert.equal(code, 0);
       assert.ok(stdout.includes("REVOKED"));
       assert.ok(stdout.includes("revokedlist"));
+    });
+
+    it("escapes tabs and newlines in label", async () => {
+      const { stdout: plaintext, code } = await run(["keys", "create", "--label", "lab\tel"]);
+      assert.equal(code, 0);
+      const { stdout } = await run(["keys", "list"]);
+      // Label containing tab should be escaped so output remains pipe-friendly
+      const lines = stdout.split("\n");
+      // Find the data line (skip header)
+      const dataLine = lines.find(l => l.includes("lab"));
+      assert.ok(dataLine, "should find line with label content");
+      // The label should NOT contain a raw tab — tabs are column delimiters
+      const fields = dataLine!.split("\t");
+      // label field (index 2) should have escaped tab, not raw tab
+      const labelField = fields[2]!;
+      assert.ok(!labelField.includes("\t") || labelField === "lab\\tel", `label should escape tabs: "${labelField}"`);
+    });
+
+    it("supports --format json for structured output", async () => {
+      await run(["keys", "create", "--label", "jsontest", "--scopes", "ping,po"]);
+      const { stdout, code } = await run(["keys", "list", "--format", "json"]);
+      assert.equal(code, 0);
+      const parsed = JSON.parse(stdout);
+      assert.ok(Array.isArray(parsed), "should be a JSON array");
+      assert.ok(parsed.length > 0, "should have at least one key");
+      const key = parsed[0]!;
+      assert.ok("id" in key, "key object should have id");
+      assert.ok("status" in key, "key object should have status");
+      assert.ok("label" in key, "key object should have label");
+      assert.ok("scopes" in key, "key object should have scopes");
+      assert.equal(key.label, "jsontest");
     });
   });
 
@@ -243,7 +276,8 @@ describe("Admin CLI", () => {
     it("handles empty keys list", async () => {
       const { stdout, code } = await run(["keys", "list"]);
       assert.equal(code, 0);
-      assert.equal(stdout, "");
+      // Empty list still prints header row
+      assert.equal(stdout, "KEY_ID\tSTATUS\tLABEL\tSCOPES\tRATE_LIMIT\tCREATED");
     });
   });
 });
