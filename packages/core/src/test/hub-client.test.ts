@@ -148,6 +148,23 @@ describe("HubClient", () => {
     });
   });
 
+  it("auth error uses statusText when body read fails", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) {
+        // Return a response whose text() will throw (simulating body read failure)
+        return new Response(null, { status: 503, statusText: "Service Unavailable" });
+      }
+      return jsonResponse(200, { ok: true, sap_time: "20260422163000" });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    await assert.rejects(() => client.ping(), (err: unknown) => {
+      assert(err instanceof ZzapiMesHttpError);
+      assert.equal(err.status, 503);
+      assert.match(err.message, /Service Unavailable/);
+      return true;
+    });
+  });
+
   it("getPo builds correct URL with ebeln", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) {
