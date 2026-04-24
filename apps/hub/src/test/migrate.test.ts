@@ -36,7 +36,7 @@ describe("migrate.ts — CLI entry point", () => {
       assert.ok(names.includes("audit_log"));
 
       const row = db.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number | null };
-      assert.equal(row?.v, 8, "should reach migration v8");
+      assert.equal(row?.v, 9, "should reach migration v9");
     } finally {
       db.close();
     }
@@ -138,7 +138,7 @@ describe("migrate.ts — CLI entry point", () => {
       runMigrations(db);
 
       const after = (db.prepare("SELECT COUNT(*) AS cnt FROM _migrations").get() as { cnt: number }).cnt;
-      assert.equal(after, 8, "should add v4, v5, v6, v7, v8 but not re-add v1–v3");
+      assert.equal(after, 9, "should add v4, v5, v6, v7, v8, v9 but not re-add v1–v3");
 
       // v6 should have dropped idx_audit_log_created_at (the redundant v1 index)
       const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_audit_log_created_at'").get();

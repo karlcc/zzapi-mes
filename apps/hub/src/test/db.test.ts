@@ -258,7 +258,7 @@ describe("DB layer — migrations", () => {
   it("runMigrations applies latest version", () => {
     const row = db.prepare("SELECT version FROM _migrations ORDER BY version DESC LIMIT 1").get() as { version: number } | undefined;
     assert.ok(row);
-    assert.ok(row!.version >= 2);
+    assert.ok(row!.version >= 9);
   });
 
   it("runMigrations is idempotent — calling twice does not re-apply v1", () => {
@@ -268,13 +268,15 @@ describe("DB layer — migrations", () => {
     assert.equal(after.cnt, before.cnt);
   });
 
-  it("v1 creates expected indexes (v6 drops the redundant created_at one)", () => {
+  it("v1 creates expected indexes (v6 drops created_at, v9 drops key_id)", () => {
     const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'").all() as { name: string }[];
     const names = indexes.map(i => i.name);
     // idx_idempotency_created_at: created by v1, dropped by v8 table recreate,
     // then re-created by v8 migration. So it should still exist.
     assert.ok(names.includes("idx_idempotency_created_at"));
-    assert.ok(names.includes("idx_audit_log_key_id"));
+    // idx_audit_log_key_id was created by v1 but dropped by v9 (redundant
+    // with v4's idx_audit_log_key_created composite which subsumes it)
+    assert.ok(!names.includes("idx_audit_log_key_id"), "v9 should have dropped this redundant index");
     // idx_audit_log_created_at was created by v1 but dropped by v6 (redundant
     // with v5's idx_audit_log_created_at_retention which serves the same column)
     assert.ok(!names.includes("idx_audit_log_created_at"), "v6 should have dropped this redundant index");
