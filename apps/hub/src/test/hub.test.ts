@@ -1333,6 +1333,8 @@ describe("Access log middleware", () => {
     const entry = JSON.parse(logLine!);
     assert.equal(entry.key_id, "-");
     assert.equal(entry.path, "/healthz");
+    assert.equal(entry.sap_status, undefined, "sap_status should be omitted when no SAP call");
+    assert.equal(entry.sap_duration_ms, undefined, "sap_duration_ms should be omitted when no SAP call");
   });
 
   it("log entry includes sap_status and sap_duration_ms on SAP call", async () => {
