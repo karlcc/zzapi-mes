@@ -89,6 +89,50 @@ describe("DB layer — api_keys", () => {
     );
   });
 
+  it("insertKey rejects label exceeding 255 characters", () => {
+    const longLabel = "x".repeat(256);
+    assert.throws(
+      () => insertKey(db, {
+        id: "long-label",
+        hash: "h",
+        label: longLabel,
+        scopes: "ping",
+        rate_limit_per_min: null,
+        created_at: 1000,
+      }),
+      (err: unknown) => err instanceof Error && err.message.includes("label") && err.message.includes("255"),
+    );
+  });
+
+  it("insertKey accepts label at exactly 255 characters", () => {
+    const maxLabel = "x".repeat(255);
+    insertKey(db, {
+      id: "max-label",
+      hash: "h",
+      label: maxLabel,
+      scopes: "ping",
+      rate_limit_per_min: null,
+      created_at: 1000,
+    });
+    const record = findById(db, "max-label");
+    assert.ok(record);
+    assert.equal(record!.label, maxLabel);
+  });
+
+  it("insertKey rejects control characters in label", () => {
+    assert.throws(
+      () => insertKey(db, {
+        id: "ctrl-label",
+        hash: "h",
+        label: "hello\x00world",
+        scopes: "ping",
+        rate_limit_per_min: null,
+        created_at: 1000,
+      }),
+      (err: unknown) => err instanceof Error && err.message.includes("control character"),
+    );
+  });
+
   it("findById returns undefined for unknown id", () => {
     assert.equal(findById(db, "nope"), undefined);
   });

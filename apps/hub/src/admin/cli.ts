@@ -57,6 +57,21 @@ async function main(args: string[]): Promise<void> {
     if (subcommand === "create") {
       const opts = parseArgs(args.slice(2));
       const label = opts["label"] ?? usage();
+      // Validate label length and characters at CLI level for user-friendly errors
+      const MAX_LABEL_LENGTH = 255;
+      if (label.length > MAX_LABEL_LENGTH) {
+        console.error(`--label must be at most ${MAX_LABEL_LENGTH} characters, got ${label.length}`);
+        process.exit(1);
+      }
+      if (/[\x00-\x1f\x7f]/.test(label)) {
+        console.error("--label must not contain control characters");
+        process.exit(1);
+      }
+      // Warn if label is already in use (non-blocking — labels are not unique)
+      const existing = listKeys(db).find(k => k.label === label);
+      if (existing) {
+        console.error(`Warning: label "${label}" is already used by key ${existing.id}`);
+      }
       const scopes = opts["scopes"] ?? "ping,po";
       // Deduplicate scopes — "ping,ping,po" → "ping,po"
       const uniqueScopes = [...new Set(scopes.split(",").map(s => s.trim()).filter(Boolean))].join(",");
