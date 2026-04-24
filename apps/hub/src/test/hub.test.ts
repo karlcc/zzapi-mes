@@ -2604,6 +2604,91 @@ describe("GET route SAP error handling", () => {
     assert.equal(body.error, "SAP upstream error");
   });
 
+  it("returns 404 on /prod-order/:aufnr when SAP returns 404", async () => {
+    mockProdOrderError = new ZzapiMesHttpError(404, "Order not found");
+    const token = await validToken(["prod_order"]);
+    const res = await fetchApi("/prod-order/999", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 404);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "Order not found");
+  });
+
+  it("returns 404 on /material/:matnr when SAP returns 404", async () => {
+    mockMaterialError = new ZzapiMesHttpError(404, "Material not found");
+    const token = await validToken(["material"]);
+    const res = await fetchApi("/material/99999999", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 404);
+  });
+
+  it("returns 404 on /stock/:matnr when SAP returns 404", async () => {
+    mockStockError = new ZzapiMesHttpError(404, "Stock not found");
+    const token = await validToken(["stock"]);
+    const res = await fetchApi("/stock/99999999?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 404);
+  });
+
+  it("returns 404 on /po/:ebeln/items when SAP returns 404", async () => {
+    mockPoItemsError = new ZzapiMesHttpError(404, "PO items not found");
+    const token = await validToken(["po"]);
+    const res = await fetchApi("/po/999/items", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 404);
+  });
+
+  it("returns 404 on /routing/:matnr when SAP returns 404", async () => {
+    mockRoutingError = new ZzapiMesHttpError(404, "Routing not found");
+    const token = await validToken(["routing"]);
+    const res = await fetchApi("/routing/99999999?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 404);
+  });
+
+  it("returns 404 on /work-center/:arbpl when SAP returns 404", async () => {
+    mockWorkCenterError = new ZzapiMesHttpError(404, "Work center not found");
+    const token = await validToken(["work_center"]);
+    const res = await fetchApi("/work-center/INVALID?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 404);
+  });
+
+  it("returns 502 on /prod-order when SAP returns 500", async () => {
+    mockProdOrderError = new ZzapiMesHttpError(500, "SAP internal error");
+    const token = await validToken(["prod_order"]);
+    const res = await fetchApi("/prod-order/1000000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+  });
+
+  it("returns 502 on /material when SAP returns 500", async () => {
+    mockMaterialError = new ZzapiMesHttpError(500, "SAP internal error");
+    const token = await validToken(["material"]);
+    const res = await fetchApi("/material/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+  });
+
+  it("returns 502 on /stock when SAP returns 500", async () => {
+    mockStockError = new ZzapiMesHttpError(500, "SAP internal error");
+    const token = await validToken(["stock"]);
+    const res = await fetchApi("/stock/10000001?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+  });
+
   it("returns 502 on non-ZzapiMesHttpError from SAP", async () => {
     // Temporarily override ping to throw a plain Error
     const origPing = MockSapClient.prototype.ping;
