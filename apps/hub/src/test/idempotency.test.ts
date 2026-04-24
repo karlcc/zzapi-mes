@@ -108,18 +108,20 @@ describe("idempotency empty bodyHash edge case", () => {
   });
   afterEach(() => { eDb.close(); });
 
-  it("empty body_hash matches any subsequent body hash (known edge case)", () => {
-    // Simulate a scenario where the first request's body read fails (body already consumed),
-    // leaving body_hash="" in the DB. A second request with the same idempotency key but
-    // a real body hash will compare "" !== "abc123..." and produce a false 422 mismatch.
-    // This is a known edge case — body_hash="" acts as a wildcard that never matches.
-    const result1 = checkIdempotency(eDb, "empty-hash-key", "k1", "/confirmation", 0, "");
-    assert.equal(result1, null, "first insert with empty hash succeeds");
+  it("empty body_hash sentinel matches any subsequent body hash (crash-retry)", () => {
+    // When the first request's body is consumed/empty, the middleware uses
+    // the SHA-256 of empty string as a sentinel hash. The middleware skips
+    // mismatch checks when either hash is the sentinel, so a legitimate
+    // retry with a real body hash returns 409 (duplicate) not 422.
+    const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const result1 = checkIdempotency(eDb, "empty-hash-key", "k1", "/confirmation", 0, EMPTY_BODY_HASH);
+    assert.equal(result1, null, "first insert with sentinel hash succeeds");
 
-    // Second request with same key but real hash — the mismatch fires
+    // Second request with same key but real hash — checkIdempotency returns
+    // the existing record; the middleware will skip the 422 mismatch check
+    // because the stored hash is the sentinel.
     const existing = checkIdempotency(eDb, "empty-hash-key", "k1", "/confirmation", 0, "abc123def");
     assert.ok(existing, "should return existing record");
-    assert.equal(existing!.body_hash, "", "stored hash should be empty");
-    assert.notEqual(existing!.body_hash, "abc123def", "hash mismatch — would trigger 422 in middleware");
+    assert.equal(existing!.body_hash, EMPTY_BODY_HASH, "stored hash should be sentinel");
   });
 });

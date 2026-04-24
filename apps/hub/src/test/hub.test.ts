@@ -2146,19 +2146,20 @@ describe("Empty Idempotency-Key header", () => {
 });
 
 describe("Idempotency body-hash edge case", () => {
-  it("does not false-422 when stored bodyHash is empty (crashed first request)", async () => {
-    // If the first request's body was consumed upstream (e.g. by logging middleware
-    // that called c.req.text()), the idempotency guard catches the error and
-    // stores bodyHash="". A legitimate retry with the same body should NOT get
-    // a 422 mismatch — empty stored hash now skips the mismatch check.
+  it("does not false-422 when stored bodyHash is sentinel (crashed first request)", async () => {
+    // If the first request's body was consumed upstream, the middleware stores
+    // the SHA-256 of empty string as a sentinel hash. The middleware skips
+    // mismatch checks when either hash is the sentinel, so a legitimate retry
+    // with the same body should return 409 (duplicate) not 422.
+    const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
     const token = await validToken();
     const idemKey = "body-consumed-no-false-422";
     const keyId = "testkey1234";
 
-    // Seed an idempotency record with empty bodyHash (simulating body-consumed path)
+    // Seed an idempotency record with sentinel bodyHash (simulating body-consumed path)
     db.prepare(
       "INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run(idemKey, keyId, "/confirmation", 201, "", Math.floor(Date.now() / 1000));
+    ).run(idemKey, keyId, "/confirmation", 201, EMPTY_BODY_HASH, Math.floor(Date.now() / 1000));
 
     // Subsequent request with a real body → should return 409 (duplicate) not 422
     const res = await fetchApi("/confirmation", {

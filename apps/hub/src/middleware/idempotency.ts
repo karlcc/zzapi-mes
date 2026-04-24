@@ -37,7 +37,10 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   // Hash the request body for dedup comparison. If the body cannot be read
   // (already consumed by earlier middleware), use a sentinel value so that
   // a retry with a readable body doesn't false-positive a hash mismatch.
-  let bodyHash = "";
+  // The DB schema enforces body_hash <> '' (CHECK constraint), so we use
+  // a SHA-256 of the empty string as the sentinel for consumed/empty bodies.
+  const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  let bodyHash = EMPTY_BODY_HASH;
   try {
     const body = await c.req.text();
     if (body.length > 0) {
@@ -48,7 +51,7 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
     }
   } catch {
     // Body already consumed — use sentinel to avoid false 422 on retry
-    bodyHash = "";
+    bodyHash = EMPTY_BODY_HASH;
   }
 
   const payload = c.get("jwtPayload");
@@ -76,9 +79,10 @@ export const idempotencyGuard = createMiddleware<{ Variables: HubVariables }>(as
   }
   if (existing) {
     // Body hash mismatch: client reused idempotency key with different body.
-    // Skip mismatch check when either hash is empty — a consumed/empty body
-    // from a failed first request should not block a legitimate retry.
-    if (existing.body_hash !== bodyHash && existing.body_hash !== "" && bodyHash !== "") {
+    // Skip mismatch check when either hash is the sentinel (SHA-256 of empty
+    // string) — a consumed/empty body from a failed first request should not
+    // block a legitimate retry.
+    if (existing.body_hash !== bodyHash && existing.body_hash !== EMPTY_BODY_HASH && bodyHash !== EMPTY_BODY_HASH) {
       return c.json(
         { error: "Idempotency-Key already used with different request body" },
         422,
