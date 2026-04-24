@@ -382,8 +382,9 @@ export class SapClient {
     return this.interpretSapResponse<T>(res);
   }
 
-  /** Shared response interpretation: redirect detection, JSON parse, error extraction.
-   *  Eliminates ~60 lines of duplication between request() and postRequest(). */
+  /** Shared response interpretation: redirect detection, Content-Type check,
+   *  JSON parse, error extraction. Eliminates ~60 lines of duplication between
+   *  request() and postRequest(). */
   private async interpretSapResponse<T>(res: Response): Promise<T> {
     // Detect 3xx redirects — SAP ICF may redirect to a login page when the
     // service is not activated. Without this, the redirect body (HTML) causes
@@ -391,6 +392,15 @@ export class SapClient {
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get("location") ?? "(no Location header)";
       throw new ZzapiMesHttpError(res.status, `SAP redirect (HTTP ${res.status}) → ${location}`);
+    }
+
+    // Validate Content-Type — SAP ICF may return HTML login pages with 200
+    // status when the service is not activated or auth fails silently.
+    // Without this check, HTML is passed to JSON.parse which produces a
+    // confusing "Non-JSON response" error with no hint about the real cause.
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new ZzapiMesHttpError(502, `Unexpected Content-Type: ${contentType || "(missing)"}`);
     }
 
     const bodyText = await readResponseBody(res);
