@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
+import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, readResponseBody, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
 
 const BASE = "http://sapdev.test:8000";
 const CFG = { host: BASE, client: 200, user: "u", password: "p", timeout: 5000 };
@@ -921,5 +921,62 @@ describe("SapClient POST 409 GI backflush — message loss via safety net", () =
       assert.match(err.message, /Non-JSON/);
       return true;
     });
+  });
+});
+
+describe("readResponseBody size limit", () => {
+  it("reads a small response body without error", async () => {
+    const res = new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
+    const text = await readResponseBody(res, 1024);
+    assert.equal(text, '{"ok":true}');
+  });
+
+  it("rejects response with Content-Length exceeding limit", async () => {
+    const res = new Response("x", { status: 200, headers: { "content-length": "9999999" } });
+    await assert.rejects(
+      () => readResponseBody(res, 1024),
+      (err: unknown) => err instanceof ZzapiMesHttpError && err.status === 502 && err.message.includes("too large"),
+    );
+  });
+
+  it("rejects streamed response body exceeding limit", async () => {
+    // Create a response with a large body but no Content-Length header
+    const largeBody = "x".repeat(2000);
+    const res = new Response(largeBody, { status: 200 });
+    await assert.rejects(
+      () => readResponseBody(res, 1024),
+      (err: unknown) => err instanceof ZzapiMesHttpError && err.status === 502,
+    );
+  });
+
+  it("allows response body exactly at the limit", async () => {
+    const body = "x".repeat(100);
+    const res = new Response(body, { status: 200 });
+    const text = await readResponseBody(res, 100);
+    assert.equal(text.length, 100);
+  });
+});
+
+describe("SapClient response size limit integration", () => {
+  it("throws 502 on oversized SAP response via GET", async () => {
+    globalThis.fetch = async () => new Response("x".repeat(2_000_000), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    await assert.rejects(
+      () => new SapClient(CFG).ping(),
+      (err: unknown) => err instanceof ZzapiMesHttpError && err.status === 502 && err.message.includes("too large"),
+    );
+  });
+
+  it("throws 502 on oversized SAP response via POST", async () => {
+    globalThis.fetch = async () => new Response("x".repeat(2_000_000), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    await assert.rejects(
+      () => new SapClient(CFG).postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (err: unknown) => err instanceof ZzapiMesHttpError && err.status === 502 && err.message.includes("too large"),
+    );
   });
 });

@@ -127,6 +127,63 @@ export class ZzapiMesHttpError extends Error {
 // Utility
 // ---------------------------------------------------------------------------
 
+/** Maximum SAP response body size in bytes (1 MB). Prevents OOM from
+ *  unbounded res.text() if SAP returns an unexpectedly large payload. */
+export const SAP_RESPONSE_MAX_BYTES = 1_048_576;
+
+/** Read a Response body with a size limit. Throws if the body exceeds maxBytes.
+ *  Uses Content-Length as a fast path when available, otherwise streams and
+ *  counts bytes. This avoids loading an entire oversized response into memory. */
+export async function readResponseBody(res: Response, maxBytes: number = SAP_RESPONSE_MAX_BYTES): Promise<string> {
+  const contentLength = res.headers.get("content-length");
+  if (contentLength !== null) {
+    const declared = Number(contentLength);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      throw new ZzapiMesHttpError(502, `SAP response too large (${declared} bytes, limit ${maxBytes})`);
+    }
+  }
+  // Stream the body, counting bytes to avoid loading an oversized payload
+  const reader = res.body?.getReader();
+  if (!reader) {
+    // No body stream — fall back to text() (e.g. null body on some responses)
+    const text = await res.text();
+    if (text.length > maxBytes) {
+      throw new ZzapiMesHttpError(502, `SAP response too large (${text.length} bytes, limit ${maxBytes})`);
+    }
+    return text;
+  }
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        reader.cancel().catch(() => {});
+        throw new ZzapiMesHttpError(502, `SAP response too large (>${maxBytes} bytes)`);
+      }
+      chunks.push(value);
+    }
+  } catch (e) {
+    if (e instanceof ZzapiMesHttpError) throw e;
+    // Reader errors — fall back to text()
+    const text = await res.text();
+    if (text.length > maxBytes) {
+      throw new ZzapiMesHttpError(502, `SAP response too large (${text.length} bytes, limit ${maxBytes})`);
+    }
+    return text;
+  }
+  // Decode collected chunks
+  const decoder = new TextDecoder();
+  let text = "";
+  for (const chunk of chunks) {
+    text += decoder.decode(chunk, { stream: true });
+  }
+  text += decoder.decode(); // flush
+  return text;
+}
+
 /** Prepends http:// if the host string has no scheme. */
 export function ensureProtocol(host: string): string {
   if (/^https?:\/\//i.test(host)) return host;
@@ -273,10 +330,10 @@ export class SapClient {
 
     this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
 
-    const body = await res.text();
+    const bodyText = await readResponseBody(res);
     let json: Record<string, unknown>;
     try {
-      json = JSON.parse(body);
+      json = JSON.parse(bodyText);
     } catch {
       throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
     }
@@ -336,7 +393,7 @@ export class SapClient {
 
     this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
 
-    const text = await res.text();
+    const text = await readResponseBody(res);
     let json: Record<string, unknown>;
     try {
       json = JSON.parse(text);

@@ -1,4 +1,4 @@
-import { ensureProtocol } from "./index.js";
+import { ensureProtocol, readResponseBody } from "./index.js";
 import type { PingResponse, PoResponse, ProdOrderResponse, MaterialResponse, StockResponse, PoItemsResponse, RoutingResponse, WorkCenterResponse, ConfirmationRequest, ConfirmationResponse, GoodsReceiptRequest, GoodsReceiptResponse, GoodsIssueRequest, GoodsIssueResponse } from "./index.js";
 import { ZzapiMesHttpError, parseRetryAfter } from "./index.js";
 
@@ -213,7 +213,7 @@ export class HubClient {
   }
 
   private async parseResponse<T>(res: Response): Promise<T> {
-    const body = await res.text();
+    const body = await readResponseBody(res);
     let json: Record<string, unknown>;
     try {
       json = JSON.parse(body);
