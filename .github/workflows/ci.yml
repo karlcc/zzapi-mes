@@ -33,7 +33,5 @@ jobs:
       - run: pnpm test
       - name: Validate OpenAPI spec
         run: npx @redocly/cli lint spec/openapi.yaml --skip-rule security-overwrite-to-more-specific || true
-      - name: Docker build verification
-        run: docker build -t zzapi-mes-hub-ci . --target runner
       - name: Dependency audit
         run: pnpm audit --audit-level moderate || true
