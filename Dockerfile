@@ -30,7 +30,7 @@ COPY spec/ spec/
 RUN pnpm build
 
 # Prune to production dependencies only (keeps native .node binaries)
-RUN pnpm prune --prod
+RUN CI=true pnpm prune --prod
 
 # --- Runtime ---
 FROM node:22-slim AS runner
