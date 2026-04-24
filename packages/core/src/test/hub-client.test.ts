@@ -1013,9 +1013,11 @@ describe("HubClient constructor validation", () => {
     assert.ok(client);
   });
 
-  it("ensureProtocol passes through ftp:// scheme unchanged", () => {
-    const client = new HubClient({ url: "ftp://evil.example.com", apiKey: API_KEY });
-    assert.ok(client);
+  it("ensureProtocol rejects ftp:// scheme", () => {
+    assert.throws(
+      () => new HubClient({ url: "ftp://evil.example.com", apiKey: API_KEY }),
+      /Unsupported URL scheme/,
+    );
   });
 
   it("does NOT follow redirects — uses redirect: manual (P1 security)", async () => {

@@ -2,6 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { mapSapError } from "../routes/write-back.js";
+import Database from "better-sqlite3";
+import { runMigrations, checkIdempotency, updateIdempotencyStatus } from "../db/index.js";
 
 describe("mapSapError all-branches unit test", () => {
   it("409 → clientStatus 409, message preserved", () => {
@@ -79,5 +81,48 @@ describe("mapSapError all-branches unit test", () => {
     assert.equal(result.sapStatus, 400);
     assert.equal(result.clientStatus, 502);
     assert.equal(result.errorMsg, "SAP rejected request");
+  });
+});
+
+describe("withWriteBack crash-before-audit: pending idempotency blocks retry", () => {
+  // When withWriteBack crashes after SAP succeeds but before the atomic
+  // audit+idempotency transaction commits, the idempotency key stays at
+  // status=0 (pending). A subsequent retry with the same key should get 409
+  // with "previous attempt did not complete" rather than being allowed through.
+
+  it("pending idempotency key (status=0) blocks retry via checkIdempotency", () => {
+    const db = new Database(":memory:");
+    runMigrations(db);
+    const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    // Simulate crash-before-audit: key inserted with status=0 but never updated
+    const result1 = checkIdempotency(db, "crash-key-001", "k1", "/confirmation", 0, EMPTY_BODY_HASH);
+    assert.equal(result1, null, "first insert should succeed");
+
+    // Retry with same key — should return the pending record
+    const result2 = checkIdempotency(db, "crash-key-001", "k1", "/confirmation", 0, EMPTY_BODY_HASH);
+    assert.ok(result2, "duplicate should return existing record");
+    assert.equal(result2!.status, 0, "pending status should be 0");
+
+    // After a successful completion, status is updated
+    updateIdempotencyStatus(db, "crash-key-001", 201);
+    const result3 = checkIdempotency(db, "crash-key-001", "k1", "/confirmation", 0, EMPTY_BODY_HASH);
+    assert.ok(result3, "should return record after status update");
+    assert.equal(result3!.status, 201, "status should be updated to 201");
+
+    db.close();
+  });
+
+  it("different key_id for same key returns existing record (crash from different client)", () => {
+    const db = new Database(":memory:");
+    runMigrations(db);
+    const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    checkIdempotency(db, "shared-crash-key", "k1", "/confirmation", 0, EMPTY_BODY_HASH);
+    const result = checkIdempotency(db, "shared-crash-key", "k2", "/confirmation", 0, EMPTY_BODY_HASH);
+    assert.ok(result, "should return existing record regardless of key_id");
+    assert.equal(result!.status, 0, "pending status preserved");
+
+    db.close();
   });
 });
