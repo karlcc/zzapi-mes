@@ -15,6 +15,7 @@ EnvironmentFile=/etc/zzapi-mes-hub.env
 # LoadCredential=hub-env:/etc/zzapi-mes-hub.env.cred
 ExecStart=/usr/bin/node /opt/zzapi-mes-hub/dist/index.js
 Restart=on-failure
+LimitNOFILE=65536
 RestartSec=5
 
 # Hardening

@@ -56,6 +56,7 @@ New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
 Write-Host "Running DB migration..."
 $env:HUB_DB_PATH = Join-Path $DataDir "hub.db"
 node (Join-Path $distDir "scripts\migrate.js")
+if ($LASTEXITCODE -ne 0) { Write-Error "DB migration failed (exit code $LASTEXITCODE)"; exit 1 }
 
 # --- 4. Install nssm if missing ---
 $nssmPath = "C:\Windows\nssm.exe"

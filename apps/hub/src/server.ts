@@ -157,8 +157,16 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
       console.error("HUB_CORS_ORIGIN=* with credentials is not permitted. Set explicit origins or leave unset.");
       process.exit(1);
     }
+    // Reject dangerous origin schemes (javascript:, data:) that could enable XSS
+    const origins = corsOrigins.split(",").map(o => o.trim());
+    for (const origin of origins) {
+      if (/^(javascript|data):/i.test(origin)) {
+        console.error(`HUB_CORS_ORIGIN contains dangerous scheme: ${origin}. Only http/https origins are allowed.`);
+        process.exit(1);
+      }
+    }
     app.use("*", cors({
-      origin: corsOrigins.split(",").map(o => o.trim()),
+      origin: origins,
       allowMethods: ["GET", "POST"],
       allowHeaders: ["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
       exposeHeaders: ["X-Request-ID", "Retry-After"],

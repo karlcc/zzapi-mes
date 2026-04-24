@@ -192,6 +192,18 @@ describe("Hub startup validation", () => {
     assert.notEqual(code, 0);
     assert.ok(stderr.includes("HUB_JWT_TTL_SECONDS"), `stderr should mention HUB_JWT_TTL_SECONDS: ${stderr}`);
   });
+
+  it("rejects HUB_CORS_ORIGIN with javascript: scheme", async () => {
+    const { stderr, code } = await run({ HUB_CORS_ORIGIN: "javascript:alert(1)" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("dangerous scheme"), `stderr should mention dangerous scheme: ${stderr}`);
+  });
+
+  it("rejects HUB_CORS_ORIGIN with data: scheme", async () => {
+    const { stderr, code } = await run({ HUB_CORS_ORIGIN: "data:text/html,<script>alert(1)</script>" });
+    assert.notEqual(code, 0);
+    assert.ok(stderr.includes("dangerous scheme"), `stderr should mention dangerous scheme: ${stderr}`);
+  });
 });
 
 describe("Graceful shutdown", () => {
