@@ -137,7 +137,12 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
     // For chunked transfer (no Content-Length), read body and enforce limit
     if (!contentLength && c.req.method !== "GET" && c.req.method !== "HEAD") {
       const rawBody = await c.req.text();
-      if (rawBody.length > 1_048_576) {
+      // Use byte length (not JS string length) to correctly handle CJK/multi-byte
+      // characters. A 1MB JSON body in UTF-8 can have far fewer JS string chars
+      // than 1_048_576, but the reverse is also true: a string of 1M CJK chars
+      // is ~3MB in UTF-8 bytes.
+      const byteLength = new TextEncoder().encode(rawBody).byteLength;
+      if (byteLength > 1_048_576) {
         return c.json({ error: "Request body too large (max 1 MB)" }, 413);
       }
       // Re-attach parsed body so downstream c.req.json() / c.req.text() works
