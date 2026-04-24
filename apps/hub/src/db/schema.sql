@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   key_id     TEXT NOT NULL,
   path       TEXT NOT NULL,
   status     INTEGER NOT NULL CHECK (status >= 0),
-  body_hash  TEXT NOT NULL,
+  body_hash  TEXT NOT NULL CHECK (body_hash <> ''),
   created_at INTEGER NOT NULL
 );
 
@@ -60,3 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created_at_retention ON audit_log(creat
 -- v7: CHECK constraints to prevent invalid data at the DB level
 -- ALTER TABLE api_keys ADD CHECK (rate_limit_per_min IS NULL OR rate_limit_per_min > 0);
 -- ALTER TABLE idempotency_keys ADD CHECK (status >= 0);
+-- ALTER TABLE idempotency_keys ADD CHECK (body_hash <> '');
+-- Note: SQLite doesn't support ALTER TABLE ADD CHECK; these are enforced
+-- inline in CREATE TABLE for new databases. Existing databases rely on
+-- application-level validation.

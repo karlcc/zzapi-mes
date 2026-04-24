@@ -44,7 +44,7 @@ export function runMigrations(db: Database.Database): void {
       key_id     TEXT NOT NULL,
       path       TEXT NOT NULL,
       status     INTEGER NOT NULL CHECK (status >= 0),
-      body_hash  TEXT NOT NULL,
+      body_hash  TEXT NOT NULL CHECK (body_hash <> ''),
       created_at INTEGER NOT NULL
     );
 
@@ -63,6 +63,13 @@ export function runMigrations(db: Database.Database): void {
   // Apply versioned migrations — each in its own transaction so a partial
   // failure (e.g. ALTER TABLE on an already-existing column) cannot advance
   // _migrations and block a re-run.
+  //
+  // Downgrade safety: opening a database that has run migrations beyond what
+  // this code knows about is not supported. The _migrations table will contain
+  // versions this code won't re-apply (they're already in _migrations), so the
+  // schema may include columns/indexes/constraints that this code doesn't create.
+  // This is generally safe for read operations but may cause issues if the newer
+  // schema is incompatible with this code's queries.
   const currentVersion = db.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number | null };
   const v = currentVersion?.v ?? 0;
 
