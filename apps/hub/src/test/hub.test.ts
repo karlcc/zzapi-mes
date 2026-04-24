@@ -2135,13 +2135,13 @@ describe("Empty Idempotency-Key header", () => {
 });
 
 describe("Idempotency body-hash edge case", () => {
-  it("stores empty bodyHash when body is already consumed", async () => {
-    // If c.req.text() throws (body consumed upstream), the catch block
-    // silently leaves bodyHash = "". This test seeds a record with bodyHash=""
-    // and verifies a subsequent request with a readable body gets 422 (mismatch),
-    // documenting the false-positive edge case.
+  it("does not false-422 when stored bodyHash is empty (crashed first request)", async () => {
+    // If the first request's body was consumed upstream (e.g. by logging middleware
+    // that called c.req.text()), the idempotency guard catches the error and
+    // stores bodyHash="". A legitimate retry with the same body should NOT get
+    // a 422 mismatch — empty stored hash now skips the mismatch check.
     const token = await validToken();
-    const idemKey = "body-consumed-test";
+    const idemKey = "body-consumed-no-false-422";
     const keyId = "testkey1234";
 
     // Seed an idempotency record with empty bodyHash (simulating body-consumed path)
@@ -2149,7 +2149,7 @@ describe("Idempotency body-hash edge case", () => {
       "INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)"
     ).run(idemKey, keyId, "/confirmation", 201, "", Math.floor(Date.now() / 1000));
 
-    // Subsequent request with a real body → bodyHash will differ from ""
+    // Subsequent request with a real body → should return 409 (duplicate) not 422
     const res = await fetchApi("/confirmation", {
       method: "POST",
       headers: {
@@ -2159,10 +2159,9 @@ describe("Idempotency body-hash edge case", () => {
       },
       body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
     });
-    // 422 because the stored "" doesn't match the real SHA-256 hash
-    assert.equal(res.status, 422);
+    assert.equal(res.status, 409, "empty stored bodyHash should not cause false 422");
     const body = await res.json() as Record<string, unknown>;
-    assert.match(body.error as string, /different request body/);
+    assert.equal(body.original_status, 201, "should return original_status from completed request");
   });
 });
 
