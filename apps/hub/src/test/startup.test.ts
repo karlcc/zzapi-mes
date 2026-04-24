@@ -1,8 +1,18 @@
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 
 const ENTRY = "dist/index.js";
+
+/** Track spawned children so afterEach can kill orphans on test failure. */
+const spawned: ChildProcess[] = [];
+
+afterEach(() => {
+  for (const child of spawned) {
+    try { child.kill("SIGKILL"); } catch {}
+  }
+  spawned.length = 0;
+});
 
 function runWithEnv(env: Record<string, string>): Promise<{ code: number | null; stderr: string }> {
   return new Promise((resolve) => {
@@ -10,10 +20,16 @@ function runWithEnv(env: Record<string, string>): Promise<{ code: number | null;
       env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
+    spawned.push(child);
     let stderr = "";
     child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
     const timer = setTimeout(() => { child.kill("SIGKILL"); }, 10_000);
-    child.on("close", (code) => { clearTimeout(timer); resolve({ code, stderr }); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const idx = spawned.indexOf(child);
+      if (idx !== -1) spawned.splice(idx, 1);
+      resolve({ code, stderr });
+    });
   });
 }
 
@@ -67,6 +83,7 @@ describe("maintenance boot blocking", () => {
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
+    spawned.push(child);
 
     const output = await new Promise<string>((resolve) => {
       let buf = "";
