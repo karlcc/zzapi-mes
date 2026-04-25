@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, beforeEach, afterEach, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../server.js";
 import { SapClient, ZzapiMesHttpError, ALL_SCOPES } from "@zzapi-mes/core";
@@ -9,8 +9,13 @@ import argon2 from "argon2";
 import { runMigrations, insertKey, writeAudit, revokeKey, checkIdempotency, evictIdempotencyKeys, pruneAuditLog } from "../db/index.js";
 import { _resetBucketsForTest } from "../middleware/rate-limit.js";
 import { _resetSapHealthCacheForTest } from "../routes/health.js";
+import { _setHashOptionsForTest, _resetHashOptionsForTest, _getHashOptionsForTest } from "../auth/verify.js";
 
 const JWT_SECRET = "test-secret-16ch";
+
+// Cheap argon2 params for tests — production defaults (m=65536,t=3,p=4)
+// cost ~100ms/hash and pin P-cores; these cost ~1ms/hash each.
+const TEST_HASH_OPTS: argon2.Options = { type: argon2.argon2id, parallelism: 1, memoryCost: 1024, timeCost: 2 };
 
 // --- In-memory DB setup ---
 
@@ -21,7 +26,7 @@ async function seedTestKey(scopes = ALL_SCOPES.join(",")): Promise<string> {
   const keyId = "testkey1234";
   const secret = "abc123xyz789def456ghi012jkl345mno678pqr";
   const plaintext = `${keyId}.${secret}`;
-  const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+  const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
 
   insertKey(db, {
     id: keyId,
@@ -128,6 +133,14 @@ class MockSapClient {
     };
   }
 }
+
+before(() => {
+  _setHashOptionsForTest(TEST_HASH_OPTS);
+});
+
+after(() => {
+  _resetHashOptionsForTest();
+});
 
 beforeEach(async () => {
   mockPingResult = { ok: true, sap_time: "20260422163000" };
@@ -325,6 +338,9 @@ describe("POST /auth/token", () => {
     // wrong secret takes ~100ms (argon2 verify runs). An attacker can
     // enumerate key_ids by measuring response time.
     // Fix: verifyApiKey should hash even when key not found.
+    // Skip when using cheap test hash options — timing guard is deliberately
+    // disabled in test mode; verify with production argon2 params instead.
+    if (_getHashOptionsForTest()) return;
     const { verifyApiKey } = await import("../auth/verify.js");
 
     // Measure time for non-existent key
@@ -348,6 +364,9 @@ describe("POST /auth/token", () => {
   it("verifyApiKey timing: revoked key takes similar time to wrong-secret key", async () => {
     // Timing vulnerability: a revoked key_id that returns early (before argon2)
     // leaks that the key was revoked vs simply having the wrong secret.
+    // Skip when using cheap test hash options — timing guard is deliberately
+    // disabled in test mode; verify with production argon2 params instead.
+    if (_getHashOptionsForTest()) return;
     const { verifyApiKey } = await import("../auth/verify.js");
 
     // Revoke the test key
@@ -656,7 +675,7 @@ describe("Rate limiting", () => {
     const keyId = "ratelimited";
     const secret = "ratelimitedsecret123456789abcdef0";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: keyId,
       hash,
@@ -694,7 +713,7 @@ describe("Rate limiting", () => {
     const keyId = "refilltest";
     const secret = "refilltestsecret123456789abcdef01";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: keyId,
       hash,
@@ -733,7 +752,7 @@ describe("Rate limiting", () => {
     const keyId = "retrytest";
     const secret = "retrytestsecret123456789abcdef012";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: keyId,
       hash,
@@ -1897,7 +1916,7 @@ describe("JWT edge cases", () => {
     const keyId = "boundarytest";
     const secret = "boundarytestsecret123456789abcd";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: keyId,
       hash,
@@ -2746,7 +2765,7 @@ describe("Rate limit 429 on write-back route", () => {
     const keyId = "wbratelimited";
     const secret = "wbratelimitedsecret123456789abcd";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: keyId,
       hash,
@@ -2901,7 +2920,7 @@ describe("Admin CLI key revoke", () => {
     const keyId = "revokeme";
     const secret = "revokemesecret123456789abcdef0";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: keyId,
       hash,
@@ -2929,7 +2948,7 @@ describe("Admin CLI key revoke", () => {
     const keyId = "alreadyrevoked";
     const secret = "alreadyrevokedsecret123456789ab";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: keyId,
       hash,
@@ -2949,7 +2968,7 @@ describe("Admin CLI key revoke", () => {
     const keyId = "authrevoked";
     const secret = "authrevokedsecret123456789abcde";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: keyId,
       hash,
@@ -3039,7 +3058,7 @@ describe("Write-back DB transaction failure after SAP success", () => {
     const keyId = "wbdbtest";
     const secret = "wbdbtestsecret123456789abcdef012";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(brokenDb, {
       id: keyId,
       hash,
@@ -3197,7 +3216,7 @@ describe("Rate-limit concurrent first-request over-allocation", () => {
     const keyId = "concurrlim";
     const secret = "concurrlimsecret1234567890ab";
     const plaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: keyId,
       hash,

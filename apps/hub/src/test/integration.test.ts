@@ -7,6 +7,7 @@ import { sign } from "hono/jwt";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
 import { runMigrations, insertKey } from "../db/index.js";
+import { _setHashOptionsForTest, _resetHashOptionsForTest, _getHashOptionsForTest } from "../auth/verify.js";
 
 const JWT_SECRET = "integration-test-16ch";
 
@@ -196,6 +197,7 @@ describe("E2E integration against mock SAP", () => {
   let testKeyPlaintext: string;
 
   before(async () => {
+    _setHashOptionsForTest({ type: argon2.argon2id, parallelism: 1, memoryCost: 1024, timeCost: 2 });
     const { server, port } = await startMockSap();
     mockSap = server;
     sapPort = port;
@@ -210,7 +212,7 @@ describe("E2E integration against mock SAP", () => {
     const keyId = "e2etestkey001";
     const secret = "integrationtestsecret123456789abcdef";
     testKeyPlaintext = `${keyId}.${secret}`;
-    const hash = await argon2.hash(testKeyPlaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(testKeyPlaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
 
     insertKey(db, {
       id: keyId,
@@ -230,6 +232,7 @@ describe("E2E integration against mock SAP", () => {
 
   after(() => {
     mockSap.close();
+    _resetHashOptionsForTest();
   });
 
   it("authenticates and proxies ping + po through hub to mock SAP", async () => {

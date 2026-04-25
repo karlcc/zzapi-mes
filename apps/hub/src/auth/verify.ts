@@ -2,6 +2,27 @@ import type Database from "better-sqlite3";
 import argon2 from "argon2";
 import { findById, type ApiKeyRecord } from "../db/index.js";
 
+// --- Test-only argon2 option override ---
+// Production argon2 defaults (m=65536, t=3, p=4) are expensive (~100ms/hash).
+// Tests that create many keys can override these to cheap params to avoid
+// P-core saturation on Apple M-series and speed up suites by ~100×.
+let _testHashOptions: argon2.Options | null = null;
+
+/** @internal Set cheap argon2 params for test runs. Call once in `before()`. */
+export function _setHashOptionsForTest(opts: argon2.Options): void {
+  _testHashOptions = opts;
+}
+
+/** @internal Reset to production defaults. Called automatically after tests. */
+export function _resetHashOptionsForTest(): void {
+  _testHashOptions = null;
+}
+
+/** @internal Get current hash options (test override or null for defaults). */
+export function _getHashOptionsForTest(): argon2.Options | null {
+  return _testHashOptions;
+}
+
 export interface VerifiedKey {
   key_id: string;
   scopes: string[];
@@ -15,6 +36,7 @@ export interface VerifiedKey {
  * the side-channel that would otherwise reveal whether a key_id exists.
  */
 async function dummyVerify(): Promise<void> {
+  if (_testHashOptions) return; // skip expensive timing guard in tests
   try {
     // Use a fixed dummy hash and a fixed dummy secret — the result is always
     // false but argon2 still runs, costing the same ~100ms as a real verify.
