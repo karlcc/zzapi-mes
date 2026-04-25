@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc",
     "pretest": "pnpm run build",
-    "test": "node --test dist/cli.test.js",
+    "test": "node --test --test-concurrency=2 dist/cli.test.js",
     "prepublishOnly": "pnpm run build"
   },
   "license": "UNLICENSED",
