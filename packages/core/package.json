@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "pretest": "tsc",
-    "test": "node --test dist/test/*.test.js",
+    "test": "node --test --test-concurrency=2 dist/test/*.test.js",
     "prepublishOnly": "pnpm run build"
   },
   "license": "UNLICENSED",

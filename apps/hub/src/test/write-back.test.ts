@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { mapSapError } from "../routes/write-back.js";
 import Database from "better-sqlite3";
-import { runMigrations, checkIdempotency, updateIdempotencyStatus } from "../db/index.js";
+import { runMigrations, insertKey, checkIdempotency, updateIdempotencyStatus } from "../db/index.js";
 
 describe("mapSapError all-branches unit test", () => {
   it("409 → clientStatus 409, message preserved", () => {
@@ -93,6 +93,7 @@ describe("withWriteBack crash-before-audit: pending idempotency blocks retry", (
   it("pending idempotency key (status=0) blocks retry via checkIdempotency", () => {
     const db = new Database(":memory:");
     runMigrations(db);
+    insertKey(db, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     // Simulate crash-before-audit: key inserted with status=0 but never updated
@@ -115,6 +116,8 @@ describe("withWriteBack crash-before-audit: pending idempotency blocks retry", (
   it("different key_id for same key does NOT collide — each key_id has its own namespace", () => {
     const db = new Database(":memory:");
     runMigrations(db);
+    insertKey(db, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
+    insertKey(db, { id: "k2", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     const EMPTY_BODY_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     checkIdempotency(db, "shared-crash-key", "k1", "/confirmation", 0, EMPTY_BODY_HASH);

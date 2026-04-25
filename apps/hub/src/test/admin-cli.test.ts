@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import Database from "better-sqlite3";
-import { runMigrations, findById, writeAudit, pruneAuditLog, evictIdempotencyKeys } from "../db/index.js";
+import { runMigrations, findById, insertKey, writeAudit, pruneAuditLog, evictIdempotencyKeys } from "../db/index.js";
 
 const CLI = "dist/admin/cli.js";
 
@@ -42,6 +42,7 @@ function runCli(args: string[]): Promise<{ stdout: string; stderr: string; exitC
 function openDb(): Database.Database {
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
   return db;
 }
 
@@ -214,12 +215,15 @@ describe("admin CLI", () => {
   it("audit prune removes old rows via CLI", async () => {
     const db = openDb();
     try {
+      // Insert a referenced api_keys row first (v11 FK constraint requires it)
+      const now = Math.floor(Date.now() / 1000);
+      insertKey(db, { id: "k-prune", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: now });
       // Insert an old audit row (31 days ago) directly
-      const oldTs = Math.floor(Date.now() / 1000) - 31 * 86400;
+      const oldTs = now - 31 * 86400;
       db.prepare("INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .run("old-req", "-", "GET", "/ping", null, 200, 50, oldTs);
+        .run("old-req", "k-prune", "GET", "/ping", null, 200, 50, oldTs);
       // Insert a recent row via the normal function
-      writeAudit(db, { req_id: "new-req", key_id: "-", method: "GET", path: "/ping", body: "", sap_status: 200, sap_duration_ms: 50 });
+      writeAudit(db, { req_id: "new-req", key_id: "k-prune", method: "GET", path: "/ping", body: "", sap_status: 200, sap_duration_ms: 50 });
     } finally {
       db.close();
     }
@@ -246,14 +250,16 @@ describe("admin CLI", () => {
   it("idempotency evict removes stale keys via CLI", async () => {
     const db = openDb();
     try {
+      // Insert a referenced api_keys row first (v11 FK constraint requires it)
+      const now = Math.floor(Date.now() / 1000);
+      insertKey(db, { id: "k-evict", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
       // Insert a stale idempotency key (600s ago)
-      const staleTs = Math.floor(Date.now() / 1000) - 600;
+      const staleTs = now - 600;
       db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .run("stale-key", "test-key", "/confirmation", 201, "stale-body-hash", staleTs);
+        .run("stale-key", "k-evict", "/confirmation", 201, "stale-body-hash", staleTs);
       // Insert a fresh key
-      const freshTs = Math.floor(Date.now() / 1000);
       db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .run("fresh-key", "test-key", "/confirmation", 0, "fresh-body-hash", freshTs);
+        .run("fresh-key", "k-evict", "/confirmation", 0, "fresh-body-hash", now);
     } finally {
       db.close();
     }

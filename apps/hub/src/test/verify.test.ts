@@ -1,13 +1,23 @@
-import { describe, it, beforeEach } from "node:test";
+import { describe, it, beforeEach, before, after } from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 import argon2 from "argon2";
-import { verifyApiKey } from "../auth/verify.js";
+import { verifyApiKey, _setHashOptionsForTest, _resetHashOptionsForTest, _getHashOptionsForTest } from "../auth/verify.js";
 import { runMigrations, insertKey } from "../db/index.js";
+
+const TEST_HASH_OPTS: argon2.Options = { type: argon2.argon2id, parallelism: 1, memoryCost: 1024, timeCost: 2 };
 
 let db: Database.Database;
 
 describe("verifyApiKey", () => {
+  before(() => {
+    _setHashOptionsForTest(TEST_HASH_OPTS);
+  });
+
+  after(() => {
+    _resetHashOptionsForTest();
+  });
+
   beforeEach(() => {
     db = new Database(":memory:");
     runMigrations(db);
@@ -16,7 +26,7 @@ describe("verifyApiKey", () => {
   async function seedKey(id: string, scopes = "ping,po", rateLimit: number | null = null): Promise<string> {
     const secret = "testsecret123456789abcdef0123456789";
     const plaintext = `${id}.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id,
       hash,
@@ -93,7 +103,7 @@ describe("verifyApiKey", () => {
   it("handles key with multiple dots (splits on first)", async () => {
     const secret = "part2.part3";
     const plaintext = `multidot.${secret}`;
-    const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+    const hash = await argon2.hash(plaintext, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, {
       id: "multidot",
       hash,

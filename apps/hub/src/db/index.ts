@@ -194,6 +194,50 @@ export function runMigrations(db: Database.Database): void {
       DROP INDEX IF EXISTS idx_audit_log_key_id;
     `);
   }
+
+  // v11: Add REFERENCES api_keys(id) to audit_log.key_id and idempotency_keys.key_id.
+  // SQLite does not support ALTER TABLE ADD CONSTRAINT, so we recreate both tables.
+  // ON DELETE CASCADE ensures orphaned rows are cleaned up when a key is deleted.
+  // Note: v10 already recreated api_keys, so we only recreate the two referencing tables.
+  if (v < 11) {
+    migrate(11, `
+      ALTER TABLE audit_log RENAME TO _audit_log_v10;
+      CREATE TABLE audit_log (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        req_id           TEXT NOT NULL,
+        key_id           TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+        method           TEXT NOT NULL,
+        path             TEXT NOT NULL,
+        body             TEXT,
+        sap_status       INTEGER,
+        sap_duration_ms  INTEGER,
+        created_at       INTEGER NOT NULL
+      );
+      INSERT INTO audit_log (id, req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at)
+        SELECT id, req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at FROM _audit_log_v10;
+      DROP TABLE _audit_log_v10;
+
+      ALTER TABLE idempotency_keys RENAME TO _idempotency_keys_v10;
+      CREATE TABLE idempotency_keys (
+        key        TEXT NOT NULL,
+        key_id     TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+        path       TEXT NOT NULL,
+        status     INTEGER NOT NULL CHECK (status >= 0),
+        body_hash  TEXT NOT NULL CHECK (body_hash <> ''),
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (key, key_id)
+      );
+      INSERT OR IGNORE INTO idempotency_keys (key, key_id, path, status, body_hash, created_at)
+        SELECT key, key_id, path, status, body_hash, created_at FROM _idempotency_keys_v10;
+      DROP TABLE _idempotency_keys_v10;
+
+      CREATE INDEX IF NOT EXISTS idx_audit_log_path ON audit_log(path);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_key_created ON audit_log(key_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_created_at_retention ON audit_log(created_at);
+      CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at);
+      CREATE INDEX IF NOT EXISTS idx_idempotency_key_id ON idempotency_keys(key_id);
+    `);
+  }
 }
 
 const FIND_BY_ID = `
