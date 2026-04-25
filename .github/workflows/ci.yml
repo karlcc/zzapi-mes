@@ -29,8 +29,6 @@ jobs:
       - run: pnpm spec:gen
       - run: git diff --exit-code
       - run: pnpm test
-        env:
-          NODE_OPTIONS: --test-concurrency=2
       - name: Validate OpenAPI spec
         run: npx @redocly/cli lint spec/openapi.yaml --skip-rule security-overwrite-to-more-specific || true
       - name: Dependency audit
