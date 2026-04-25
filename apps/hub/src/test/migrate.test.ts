@@ -24,7 +24,7 @@ describe("migrate.ts — CLI entry point", () => {
     }
   });
 
-  it("runMigrations on fresh DB creates all tables and reaches v10", () => {
+  it("runMigrations on fresh DB creates all tables and reaches v11", () => {
     const db = new Database(":memory:");
     try {
       runMigrations(db);
@@ -36,7 +36,7 @@ describe("migrate.ts — CLI entry point", () => {
       assert.ok(names.includes("audit_log"));
 
       const row = db.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number | null };
-      assert.equal(row?.v, 10, "should reach migration v10");
+      assert.equal(row?.v, 11, "should reach migration v11");
     } finally {
       db.close();
     }
@@ -59,15 +59,17 @@ describe("migrate.ts — CLI entry point", () => {
         );
         CREATE TABLE IF NOT EXISTS audit_log (
           id INTEGER PRIMARY KEY AUTOINCREMENT, req_id TEXT NOT NULL, key_id TEXT NOT NULL,
-          method TEXT NOT NULL, path TEXT NOT NULL, body TEXT, sap_status INTEGER, created_at INTEGER NOT NULL
+          method TEXT NOT NULL, path TEXT NOT NULL, body TEXT, sap_status INTEGER, sap_duration_ms INTEGER, created_at INTEGER NOT NULL
         );
         INSERT INTO _migrations VALUES (1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7),(8,8),(9,9);
         INSERT INTO api_keys (id,hash,label,scopes,rate_limit_per_min,created_at)
           VALUES ('abc123','hashval','test','ping',5,1000);
+        INSERT INTO idempotency_keys (key,key_id,path,status,body_hash,created_at) VALUES ('ik1','abc123','/conf',201,'h1',1000);
+        INSERT INTO audit_log (req_id,key_id,method,path,body,sap_status,created_at) VALUES ('r1','abc123','POST','/conf',null,201,1000);
       `);
       runMigrations(db);
       const v = (db.prepare("SELECT MAX(version) AS v FROM _migrations").get() as { v: number }).v;
-      assert.equal(v, 10, "should reach v10");
+      assert.equal(v, 11, "should reach v11");
       // Verify data survived the table rebuild
       const row = db.prepare("SELECT id, label, scopes, rate_limit_per_min FROM api_keys WHERE id = 'abc123'").get() as { id: string; label: string; scopes: string; rate_limit_per_min: number } | undefined;
       assert.ok(row, "data should survive v10 rebuild");
@@ -162,9 +164,11 @@ describe("migrate.ts — CLI entry point", () => {
         );
         CREATE TABLE IF NOT EXISTS audit_log (
           id INTEGER PRIMARY KEY AUTOINCREMENT, req_id TEXT NOT NULL, key_id TEXT NOT NULL,
-          method TEXT NOT NULL, path TEXT NOT NULL, body TEXT, sap_status INTEGER, created_at INTEGER NOT NULL
+          method TEXT NOT NULL, path TEXT NOT NULL, body TEXT, sap_status INTEGER, sap_duration_ms INTEGER, created_at INTEGER NOT NULL
         );
         INSERT INTO _migrations VALUES (1, 1), (2, 2), (3, 3);
+        INSERT INTO api_keys (id,hash,label,scopes,rate_limit_per_min,created_at)
+          VALUES ('abc123','hashval','test','ping',5,1000);
       `);
       // Verify v3 columns exist but v2 column does not yet
       // (v2 adds sap_duration_ms — but since we faked v2 via _migrations only,
@@ -178,7 +182,7 @@ describe("migrate.ts — CLI entry point", () => {
       runMigrations(db);
 
       const after = (db.prepare("SELECT COUNT(*) AS cnt FROM _migrations").get() as { cnt: number }).cnt;
-      assert.equal(after, 10, "should add v4–v10 but not re-add v1–v3");
+      assert.equal(after, 11, "should add v4–v11 but not re-add v1–v3");
 
       // v6 should have dropped idx_audit_log_created_at (the redundant v1 index)
       const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_audit_log_created_at'").get();

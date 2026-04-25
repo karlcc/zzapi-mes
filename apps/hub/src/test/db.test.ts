@@ -127,11 +127,13 @@ describe("DB layer — api_keys", () => {
 
 describe("DB layer — idempotency_keys", () => {
   it("checkIdempotency returns null on first insert", () => {
+    insertKey(db, { id: "kid1", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     const result = checkIdempotency(db, "key-1", "kid1", "/conf", 201, "hash1");
     assert.equal(result, null);
   });
 
   it("checkIdempotency returns existing record on duplicate (same key_id)", () => {
+    insertKey(db, { id: "kid1", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     checkIdempotency(db, "key-1", "kid1", "/conf", 201, "hash1");
     const result = checkIdempotency(db, "key-1", "kid1", "/conf", 201, "hash1");
     assert.ok(result);
@@ -141,12 +143,15 @@ describe("DB layer — idempotency_keys", () => {
   });
 
   it("checkIdempotency does NOT return record for different key_id (scoped namespace)", () => {
+    insertKey(db, { id: "kid1", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
+    insertKey(db, { id: "kid2", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     checkIdempotency(db, "key-1", "kid1", "/conf", 201, "hash1");
     const result = checkIdempotency(db, "key-1", "kid2", "/conf", 201, "hash1");
     assert.equal(result, null, "different key_id should not see kid1's record");
   });
 
   it("updateIdempotencyStatus changes stored status", () => {
+    insertKey(db, { id: "kid1", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     checkIdempotency(db, "key-2", "kid1", "/gr", 201, "hash2");
     updateIdempotencyStatus(db, "key-2", "kid1", 500);
     const result = checkIdempotency(db, "key-2", "kid1", "/gr", 201, "hash2");
@@ -155,6 +160,7 @@ describe("DB layer — idempotency_keys", () => {
   });
 
   it("evictIdempotencyKeys removes old entries", () => {
+    insertKey(db, { id: "kid1", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     // Insert with current timestamp (will be too recent to evict)
     checkIdempotency(db, "fresh", "kid1", "/conf", 201, "h1");
     // Manually insert an old entry
@@ -176,6 +182,7 @@ describe("DB layer — idempotency_keys", () => {
 
 describe("DB layer — audit_log", () => {
   it("writeAudit inserts a row", () => {
+    insertKey(db, { id: "kid1", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     writeAudit(db, {
       req_id: "req-1",
       key_id: "kid1",
@@ -195,6 +202,7 @@ describe("DB layer — audit_log", () => {
   });
 
   it("writeAudit with optional fields null", () => {
+    insertKey(db, { id: "kid2", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     writeAudit(db, {
       req_id: "req-2",
       key_id: "kid2",
@@ -209,6 +217,7 @@ describe("DB layer — audit_log", () => {
   });
 
   it("writeAudit does not truncate body at exactly 4096 characters", () => {
+    insertKey(db, { id: "kid1", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     const body4096 = "x".repeat(4096);
     writeAudit(db, {
       req_id: "req-boundary",
@@ -224,6 +233,7 @@ describe("DB layer — audit_log", () => {
   });
 
   it("writeAudit truncates body at 4097 characters", () => {
+    insertKey(db, { id: "kid1", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     const body4097 = "x".repeat(4097);
     writeAudit(db, {
       req_id: "req-over",
@@ -240,6 +250,7 @@ describe("DB layer — audit_log", () => {
   });
 
   it("v2 adds sap_duration_ms column", () => {
+    insertKey(db, { id: "k", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     // Insert a row so the SELECT works even with an empty table
     writeAudit(db, { req_id: "v2test", key_id: "k", method: "GET", path: "/t", sap_duration_ms: 42 });
     const row = db.prepare("SELECT sap_duration_ms FROM audit_log WHERE req_id = ?").get("v2test") as Record<string, unknown> | undefined;
@@ -302,10 +313,46 @@ describe("DB layer — migrations", () => {
     const pkCols = tableInfo.filter(c => c.pk > 0).map(c => c.name);
     assert.deepStrictEqual(pkCols, ["key", "key_id"], "composite PK should be (key, key_id)");
   });
+
+  it("v11 adds REFERENCES api_keys(id) to audit_log.key_id and idempotency_keys.key_id", () => {
+    // Check audit_log.key_id references api_keys.id
+    const auditFK = db.prepare("PRAGMA foreign_key_list(audit_log)").all() as { table: string; from: string; to: string }[];
+    const auditKeyIdFK = auditFK.find(fk => fk.from === "key_id");
+    assert.ok(auditKeyIdFK, "audit_log.key_id should have a foreign key");
+    assert.equal(auditKeyIdFK!.table, "api_keys", "audit_log.key_id should reference api_keys");
+    assert.equal(auditKeyIdFK!.to, "id", "audit_log.key_id should reference api_keys.id");
+
+    // Check idempotency_keys.key_id references api_keys.id
+    const idempFK = db.prepare("PRAGMA foreign_key_list(idempotency_keys)").all() as { table: string; from: string; to: string }[];
+    const idempKeyIdFK = idempFK.find(fk => fk.from === "key_id");
+    assert.ok(idempKeyIdFK, "idempotency_keys.key_id should have a foreign key");
+    assert.equal(idempKeyIdFK!.table, "api_keys", "idempotency_keys.key_id should reference api_keys");
+    assert.equal(idempKeyIdFK!.to, "id", "idempotency_keys.key_id should reference api_keys.id");
+  });
+
+  it("FK enforcement prevents inserting audit_log with non-existent key_id", () => {
+    assert.throws(
+      () => writeAudit(db, {
+        req_id: "orphan",
+        key_id: "nonexistent_key",
+        method: "GET",
+        path: "/ping",
+      }),
+      (err: unknown) => err instanceof Error && err.message.includes("FOREIGN KEY"),
+    );
+  });
+
+  it("FK enforcement prevents inserting idempotency_keys with non-existent key_id", () => {
+    assert.throws(
+      () => checkIdempotency(db, "ik1", "nonexistent_key", "/conf", 201, "hash1"),
+      (err: unknown) => err instanceof Error && err.message.includes("FOREIGN KEY"),
+    );
+  });
 });
 
 describe("DB layer — pruneAuditLog batch boundary", () => {
   it("prunes >10k rows across multiple batch iterations", () => {
+    insertKey(db, { id: "k", hash: "h", label: "t", scopes: "ping", rate_limit_per_min: null, created_at: 1000 });
     const now = Math.floor(Date.now() / 1000);
     const stale = now - 31 * 86_400;
     // Insert 10_001 stale rows to exercise the do/while boundary

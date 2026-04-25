@@ -198,6 +198,8 @@ describe("Admin CLI", () => {
       // Insert stale audit row directly
       const db = new Database(dbPath);
       const now = Math.floor(Date.now() / 1000);
+      insertKey(db, { id: "k-old", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
+      insertKey(db, { id: "k-new", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
       db.prepare("INSERT INTO audit_log (req_id, key_id, method, path, body, sap_status, sap_duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .run("r-old", "k-old", "POST", "/confirmation", null, 201, null, now - 31 * 86_400);
       writeAudit(db, { req_id: "r-new", key_id: "k-new", method: "POST", path: "/confirmation", sap_status: 201 });
@@ -236,6 +238,8 @@ describe("Admin CLI", () => {
     it("evicts stale idempotency keys", async () => {
       const db = new Database(dbPath);
       const now = Math.floor(Date.now() / 1000);
+      insertKey(db, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
+      insertKey(db, { id: "k2", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
       checkIdempotency(db, "fresh-key-cli", "k1", "/confirmation", 201, "abc");
       db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
         .run("stale-key-cli", "k2", "/confirmation", 201, "def", now - 600);

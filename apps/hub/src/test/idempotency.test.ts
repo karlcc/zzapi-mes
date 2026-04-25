@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { runMigrations, checkIdempotency, evictIdempotencyKeys } from "../db/index.js";
+import { runMigrations, checkIdempotency, evictIdempotencyKeys, insertKey } from "../db/index.js";
 import { maybeEvict, IDEMPOTENCY_MAX_AGE_SECONDS, EVICTION_PROBABILITY } from "../middleware/idempotency.js";
 
 let db: Database.Database;
@@ -15,6 +15,7 @@ describe("idempotency guard eviction logic", () => {
 
   it("maybeEvict calls evictIdempotencyKeys when random < EVICTION_PROBABILITY", () => {
     const now = Math.floor(Date.now() / 1000);
+    insertKey(db, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
     // Insert a stale key
     db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
       .run("stale-key", "k1", "/confirmation", 201, "hash1", now - 600);
@@ -32,6 +33,7 @@ describe("idempotency guard eviction logic", () => {
 
   it("maybeEvict is a no-op when random >= EVICTION_PROBABILITY", () => {
     const now = Math.floor(Date.now() / 1000);
+    insertKey(db, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
     db.prepare("INSERT INTO idempotency_keys (key, key_id, path, status, body_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)")
       .run("stale-key", "k1", "/confirmation", 201, "hash1", now - 600);
 
@@ -64,6 +66,7 @@ describe("checkIdempotency race condition (UNIQUE constraint retry)", () => {
   afterEach(() => { db.close(); });
 
   it("simulates UNIQUE constraint race by inserting same key directly", () => {
+    insertKey(db, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     // First insert succeeds
     const result1 = checkIdempotency(db, "race-key", "k1", "/confirmation", 201, "hash1");
     assert.equal(result1, null, "first insert should return null");
@@ -76,6 +79,7 @@ describe("checkIdempotency race condition (UNIQUE constraint retry)", () => {
   });
 
   it("returns existing record when same key_id reuses same idempotency key", () => {
+    insertKey(db, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     checkIdempotency(db, "scoped-key", "k1", "/confirmation", 201, "hash1");
     const result = checkIdempotency(db, "scoped-key", "k1", "/confirmation", 201, "hash1");
     assert.ok(result, "should return existing record for same key_id");
@@ -83,6 +87,8 @@ describe("checkIdempotency race condition (UNIQUE constraint retry)", () => {
   });
 
   it("does NOT return existing record when different key_id uses same idempotency key", () => {
+    insertKey(db, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
+    insertKey(db, { id: "k2", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     checkIdempotency(db, "shared-key", "k1", "/confirmation", 201, "hash1");
     const result = checkIdempotency(db, "shared-key", "k2", "/confirmation", 201, "hash2");
     // Different API key (key_id) using the same Idempotency-Key header
@@ -100,6 +106,7 @@ describe("idempotency guard pending-status handling", () => {
   afterEach(() => { pendDb.close(); });
 
   it("checkIdempotency returns status=0 for newly inserted key (pending)", () => {
+    insertKey(pendDb, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     const result = checkIdempotency(pendDb, "pending-key", "k1", "/confirmation", 0, "hash1");
     assert.equal(result, null, "first insert returns null");
     // Look up again — should get the record with status=0
@@ -118,6 +125,7 @@ describe("idempotency empty bodyHash edge case", () => {
   afterEach(() => { eDb.close(); });
 
   it("empty body_hash sentinel matches any subsequent body hash (crash-retry)", () => {
+    insertKey(eDb, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     // When the first request's body is consumed/empty, the middleware uses
     // the SHA-256 of empty string as a sentinel hash. The middleware skips
     // mismatch checks when either hash is the sentinel, so a legitimate

@@ -1364,6 +1364,7 @@ describe("Phase 5B write-back routes", () => {
   });
 
   it("truncates oversized audit body to bounded size", async () => {
+    insertKey(db, { id: "k-trunc", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     const huge = "x".repeat(10_000);
     writeAudit(db, {
       req_id: "r-trunc",
@@ -1380,6 +1381,7 @@ describe("Phase 5B write-back routes", () => {
   });
 
   it("audit body truncation preserves valid JSON boundary", async () => {
+    insertKey(db, { id: "k-trunc", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     // Build a JSON body that will be cut inside a long string value when sliced at 4096 chars
     const padding = "x".repeat(5000);
     const inner = '{"orderid":"1000000","operation":"0010","yield":50,' + '"padding":"' + padding + '"}';
@@ -2973,6 +2975,8 @@ describe("Admin CLI key revoke", () => {
 describe("Idempotency eviction", () => {
   it("evictIdempotencyKeys removes stale keys and keeps fresh ones", () => {
     const now = Math.floor(Date.now() / 1000);
+    insertKey(db, { id: "k1", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
+    insertKey(db, { id: "k2", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
     // Insert a fresh key (1 second ago) via the normal path
     checkIdempotency(db, "fresh-key-evict", "k1", "/confirmation", 201, "abc");
     // Insert a stale key (600 seconds ago) directly to control created_at
@@ -3128,6 +3132,8 @@ describe("GET route audit write failure", () => {
 describe("Audit log retention", () => {
   it("pruneAuditLog removes rows older than N days and keeps recent ones", () => {
     const now = Math.floor(Date.now() / 1000);
+    insertKey(db, { id: "k-recent", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
+    insertKey(db, { id: "k-stale", hash: "h", label: "t", scopes: "conf", rate_limit_per_min: null, created_at: now });
     // Insert a recent row (1 second ago)
     writeAudit(db, {
       req_id: "r-recent", key_id: "k-recent", method: "POST",
