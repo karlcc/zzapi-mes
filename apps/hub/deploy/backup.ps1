@@ -5,7 +5,7 @@
 # Uses `sqlite3 .backup` for a WAL-safe snapshot. Requires sqlite3.exe in PATH
 # (install: `winget install SQLite.SQLite`).
 #
-# Env overrides: HUB_DB, HUB_BACKUP_DIR, HUB_BACKUP_RETAIN_DAYS.
+# Env overrides: HUB_DB_PATH, HUB_BACKUP_DIR, HUB_BACKUP_RETAIN_DAYS.
 $ErrorActionPreference = 'Stop'
 
 # --- Pre-flight checks ---
@@ -14,8 +14,8 @@ if (-not (Get-Command sqlite3.exe -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-$Db = if ($env:HUB_DB) { $env:HUB_DB } else { 'C:\var\lib\zzapi-mes-hub\hub.db' }
-$BackupDir = if ($env:HUB_BACKUP_DIR) { $env:HUB_BACKUP_DIR } else { 'C:\var\lib\zzapi-mes-hub\backups' }
+$Db = if ($env:HUB_DB_PATH) { $env:HUB_DB_PATH } else { 'C:\var\zzapi-mes-hub\hub.db' }
+$BackupDir = if ($env:HUB_BACKUP_DIR) { $env:HUB_BACKUP_DIR } else { 'C:\var\zzapi-mes-hub\backups' }
 
 if (-not (Test-Path $Db)) {
     Write-Error "database file not found: $Db"
