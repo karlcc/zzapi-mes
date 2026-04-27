@@ -165,6 +165,7 @@ beforeEach(async () => {
 
   process.env.HUB_JWT_SECRET = JWT_SECRET;
   process.env.HUB_JWT_TTL_SECONDS = "900";
+  process.env.HUB_WRITEBACK_DISABLED = "0";  // Enable write-back for tests (mock SAP)
   db = new Database(":memory:");
   runMigrations(db);
   _resetBucketsForTest();
@@ -176,6 +177,7 @@ afterEach(() => {
   db.close();
   delete process.env.HUB_JWT_SECRET;
   delete process.env.HUB_JWT_TTL_SECONDS;
+  delete process.env.HUB_WRITEBACK_DISABLED;
 });
 
 // --- Helpers ---

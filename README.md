@@ -63,6 +63,8 @@ SAP_USER=<your_user> SAP_PASS='<your_password>' pnpm smoke
 
 ## SDK Usage
 
+### Direct mode (SAP Basic Auth)
+
 ```ts
 import { ZzapiMesClient } from "@zzapi-mes/sdk";
 
@@ -71,7 +73,6 @@ const client = new ZzapiMesClient({
   client: 200,
   user: process.env.SAP_USER!,
   password: process.env.SAP_PASS!,
-  timeout: 30000, // optional, default 30s
 });
 
 const pong = await client.ping();
@@ -79,22 +80,58 @@ const pong = await client.ping();
 
 const po = await client.getPo("3010000608");
 // { ebeln: "3010000608", aedat: "20170306", lifnr: "0000500340", eindt: "20170630" }
+
+// SAP IDs must be 18-char padded (add leading zeros)
+const mat = await client.getMaterial("000000000100000001");
+// { matnr: "000000000100000001", maktx: "ATOS Software Upgr51", ... }
+```
+
+### Hub mode (API key, no SAP creds on client)
+
+```ts
+import { HubClient } from "@zzapi-mes/sdk";
+
+const hub = new HubClient({
+  hubUrl: process.env.HUB_URL!,       // e.g. http://100.103.147.52:8080
+  apiKey: process.env.HUB_API_KEY!,   // from zzapi-mes-hub-admin keys create
+});
+
+const pong = await hub.ping();
+const po = await hub.getPo("3010000608");
+const mat = await hub.getMaterial("000000000100000001");
+const stock = await hub.getStock("000000000100000001", { werks: "1000" });
 ```
 
 ## CLI Usage
 
+> **SAP ID padding**: SAP expects 18-character internal IDs. Use `000000000100000001` (not `10000001`) for materials, `000001001234` for production orders, etc. PO numbers like `3010000608` are already the correct length.
+
 ```bash
-# Direct mode (default) — talks to SAP with Basic Auth
-SAP_USER=<your_user> SAP_PASS='<your_password>' npx zzapi-mes ping
-SAP_USER=<your_user> SAP_PASS='<your_password>' npx zzapi-mes po 3010000608
+# Hub mode via ~/.zzapirc (HUB_URL + HUB_API_KEY auto-loaded)
+zzapi-mes --mode hub ping
+zzapi-mes --mode hub po 3010000608
+zzapi-mes --mode hub material 000000000100000001
+zzapi-mes --mode hub stock 000000000100000001 --werks 1000
+zzapi-mes --mode hub routing 000000000100920000 --werks 1000
+zzapi-mes --mode hub work-center TURN1 --werks 1000
 
-# Hub mode — talks to the hub with API key, no SAP creds needed
-HUB_URL=http://localhost:8080 HUB_API_KEY=my-key npx zzapi-mes --mode hub ping
-HUB_URL=http://localhost:8080 HUB_API_KEY=my-key npx zzapi-mes --mode hub po 3010000608
+# Direct mode (SAP Basic Auth, reads SAP_USER/SAP_PASS from env or ~/.zzapirc)
+zzapi-mes ping
+zzapi-mes po 3010000608
+zzapi-mes material 000000000100000001
+```
 
-# Or via ~/.zzapirc
-echo '{"SAP_USER":"<your_user>","SAP_PASS":"<your_password>"}' > ~/.zzapirc
-npx zzapi-mes ping
+`~/.zzapirc` example:
+
+```json
+{
+  "SAP_HOST": "sapdev.fastcell.hk:8000",
+  "SAP_CLIENT": 200,
+  "SAP_USER": "your_user",
+  "SAP_PASS": "your_password",
+  "HUB_URL": "http://100.103.147.52:8080",
+  "HUB_API_KEY": "your-api-key"
+}
 ```
 
 ## Commands
@@ -102,7 +139,7 @@ npx zzapi-mes ping
 | Command | Description |
 |---|---|
 | `pnpm build` | Compile all TypeScript packages |
-| `pnpm test` | Run unit tests (732 passing: 175 core + 494 hub + 63 CLI) |
+| `pnpm test` | Run unit tests (746 passing: 159 core + 545 hub + 42 CLI) |
 | `pnpm smoke` | Curl round-trip tests against sapdev |
 | `pnpm spec:gen` | Regenerate `packages/core/src/generated/schemas.ts` from OpenAPI spec |
 
@@ -146,6 +183,8 @@ npx zzapi-mes ping
 All write-back endpoints require an `Idempotency-Key` header for deduplication. 429 responses include a `Retry-After` header.
 
 ## Hub Quick Start
+
+### Linux / macOS
 
 1. Build and start the hub:
 
@@ -200,6 +239,48 @@ curl localhost:8080/metrics
 
 4. Deploy as systemd unit — see `apps/hub/deploy/`. For Windows, see `docs/deploy-msi1.md`.
 
+### Windows (msi-1)
+
+1. Build and run (PowerShell):
+
+```powershell
+pnpm build
+$env:HUB_JWT_SECRET = "change-me-16chars-min"
+$env:SAP_HOST = "sapdev.fastcell.hk:8000"
+$env:SAP_CLIENT = "200"
+$env:SAP_USER = "<your_user>"
+$env:SAP_PASS = "<your_password>"
+node apps\hub\dist\index.js
+```
+
+2. Create an API key:
+
+```powershell
+node apps\hub\dist\scripts\migrate.js   # first run only
+$env:API_KEY = (node apps\hub\dist\admin\cli.js keys create --label msi1-dev --scopes ping,po,prod_order,material,stock,routing,work_center,conf,gr,gi)
+```
+
+3. Get a token and test:
+
+```powershell
+$env:TOKEN = (Invoke-RestMethod -Uri http://localhost:8080/auth/token -Method Post -ContentType "application/json" -Body ('{"api_key":"' + $env:API_KEY + '"}')).token
+
+# Read endpoints
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:TOKEN" } -Uri http://localhost:8080/ping
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:TOKEN" } -Uri http://localhost:8080/po/3010000608
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:TOKEN" } -Uri http://localhost:8080/material/10000001
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:TOKEN" } -Uri "http://localhost:8080/stock/10000001?werks=1000"
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:TOKEN" } -Uri http://localhost:8080/po/4500000001/items
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:TOKEN" } -Uri "http://localhost:8080/routing/10000001?werks=1000"
+Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:TOKEN" } -Uri "http://localhost:8080/work-center/TURN1?werks=1000"
+
+# Health and metrics (no auth)
+Invoke-RestMethod -Uri http://localhost:8080/healthz
+Invoke-RestMethod -Uri http://localhost:8080/metrics
+```
+
+4. Deploy as Windows service — see `apps/hub/deploy/install.ps1` (automated) or `docs/deploy-msi1.md` (step-by-step with nssm).
+
 ## Operating the Hub
 
 ### Key Management
@@ -229,10 +310,17 @@ The hub runs both operations automatically on startup (configurable via `HUB_AUD
 
 ### Rotating HUB_JWT_SECRET
 
-Changing `HUB_JWT_SECRET` invalidates all outstanding JWTs. Clients will get 401 and must re-authenticate with their API key. Steps:
+Changing `HUB_JWT_SECRET` invalidates all outstanding JWTs. Clients will get 401 and must re-authenticate with their API key.
+
+**Linux:**
 
 1. Update `HUB_JWT_SECRET` in `/etc/zzapi-mes-hub.env`
 2. `sudo systemctl restart zzapi-mes-hub`
+
+**Windows (nssm):**
+
+1. Update `HUB_JWT_SECRET` in `C:\etc\zzapi-mes-hub.env` or via nssm: `nssm set zzapi-mes-hub AppEnvironmentExtra HUB_JWT_SECRET=<new-secret> ...`
+2. `nssm restart zzapi-mes-hub`
 
 ### Metrics
 
@@ -244,14 +332,51 @@ Scrape `GET /metrics` from Prometheus (localhost-only by default). Key counters 
 
 ### Structured Logs
 
-The hub writes JSON lines to stdout (captured by journald):
+The hub writes JSON lines to stdout. Each line includes `req_id`, `key_id`, `method`, `path`, `status`, `latency_ms`.
+
+**Linux:**
 
 ```bash
 journalctl -u zzapi-mes-hub -f
 ```
 
-Each line includes `req_id`, `key_id`, `method`, `path`, `status`, `latency_ms`.
+**Windows (nssm):**
+
+```powershell
+Get-Content C:\var\zzapi-mes-hub\stdout.log -Tail 50 -Wait
+```
 
 ### systemd LoadCredential (alternative to plaintext env)
 
 For systemd 250+, you can store secrets encrypted on disk instead of plaintext env files. See the commented `LoadCredential=` section in `zzapi-mes-hub.service`.
+
+### Windows Service (nssm)
+
+The hub runs as a Windows service via [nssm](https://nssm.cc/). Automated install:
+
+```powershell
+# From repo root, admin PowerShell
+powershell -File apps\hub\deploy\install.ps1
+```
+
+Manual nssm commands:
+
+```powershell
+# Install
+nssm install zzapi-mes-hub "C:\Program Files\nodejs\node.exe" "C:\Users\karlchow\code\zzapi-mes\apps\hub\dist\index.js"
+nssm set zzapi-mes-hub AppDirectory "C:\Users\karlchow\code\zzapi-mes\apps\hub"
+nssm set zzapi-mes-hub AppStdout "C:\var\zzapi-mes-hub\stdout.log"
+nssm set zzapi-mes-hub AppStderr "C:\var\zzapi-mes-hub\stderr.log"
+nssm set zzapi-mes-hub AppRotateFiles 1
+nssm set zzapi-mes-hub AppRotateBytes 1048576
+nssm set zzapi-mes-hub AppEnvironmentExtra "HUB_PORT=8080" "HUB_JWT_SECRET=<secret>" "SAP_HOST=sapdev.fastcell.hk:8000" "SAP_CLIENT=200" "SAP_USER=<user>" "SAP_PASS=<pass>"
+nssm set zzapi-mes-hub Start SERVICE_AUTO_START
+nssm start zzapi-mes-hub
+
+# Manage
+nssm status zzapi-mes-hub
+nssm restart zzapi-mes-hub
+nssm stop zzapi-mes-hub
+```
+
+SQLite backup on Windows uses `apps/hub/deploy/backup.ps1` (requires `sqlite3.exe` in PATH). Schedule via Task Scheduler for automatic rotation.

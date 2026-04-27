@@ -121,6 +121,11 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
 
   const app = new Hono<{ Variables: HubVariables }>();
 
+  // Log experimental write-back guard status
+  if (process.env.HUB_WRITEBACK_DISABLED !== "0") {
+    console.error("NOTE: Write-back routes are DISABLED (HUB_WRITEBACK_DISABLED is set). SAP writes will return 202 suppressed. Set HUB_WRITEBACK_DISABLED=0 to enable.");
+  }
+
   // Expose db to Hono context for write-back middleware
   app.use("*", async (c, next) => {
     c.set("db", db);

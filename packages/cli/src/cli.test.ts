@@ -98,11 +98,19 @@ describe("CLI", () => {
 
   describe("direct mode (missing creds)", () => {
     it("exits if SAP_USER/SAP_PASS not set", async () => {
-      const { stderr, code } = await run(["ping"], {
-        SAP_USER: "", SAP_PASS: "",
-      });
-      assert.notEqual(code, 0);
-      assert.ok(stderr.includes("SAP_USER") || stderr.includes("SAP_PASS"));
+      // Point HOME at a temp dir with no .zzapirc so the rc-file fallback
+      // doesn't mask the missing-env-var check.
+      const tmpHome = mkdtempSync(join(tmpdir(), "zzapi-no-rc-"));
+      try {
+        const { stderr, code } = await run(["ping"], {
+          HOME: tmpHome,
+          SAP_USER: "", SAP_PASS: "",
+        });
+        assert.notEqual(code, 0);
+        assert.ok(stderr.includes("SAP_USER") || stderr.includes("SAP_PASS"));
+      } finally {
+        rmSync(tmpHome, { recursive: true });
+      }
     });
   });
 

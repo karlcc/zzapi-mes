@@ -59,16 +59,31 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
   let errorMsg: string | null = null;
   let retryAfter: number | undefined;
   const start = performance.now();
-  try {
-    result = await fn(parsed.data);
-    sapStatus = 201;
-    clientStatus = 201;
-  } catch (e) {
-    const mapped = mapSapError(e);
-    sapStatus = mapped.sapStatus;
-    clientStatus = mapped.clientStatus;
-    errorMsg = mapped.errorMsg;
-    retryAfter = mapped.retryAfter;
+
+  // Experimental write-back guard — when HUB_WRITEBACK_DISABLED is not "0",
+  // skip the SAP BAPI call and return a synthetic 202. This allows full
+  // integration testing (JWT, scope, idempotency, Zod) without mutating
+  // SAP data. Set HUB_WRITEBACK_DISABLED=0 to enable real SAP writes.
+  if (process.env.HUB_WRITEBACK_DISABLED !== "0") {
+    sapStatus = 0;   // sentinel: write suppressed
+    clientStatus = 202;
+    result = {
+      status: "suppressed",
+      message: "Write-back disabled (HUB_WRITEBACK_DISABLED is set). Set HUB_WRITEBACK_DISABLED=0 to enable SAP writes.",
+      ...parsed.data as Record<string, unknown>,
+    };
+  } else {
+    try {
+      result = await fn(parsed.data);
+      sapStatus = 201;
+      clientStatus = 201;
+    } catch (e) {
+      const mapped = mapSapError(e);
+      sapStatus = mapped.sapStatus;
+      clientStatus = mapped.clientStatus;
+      errorMsg = mapped.errorMsg;
+      retryAfter = mapped.retryAfter;
+    }
   }
   const durationMs = performance.now() - start;
 

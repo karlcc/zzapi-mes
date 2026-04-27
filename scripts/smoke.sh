@@ -103,7 +103,7 @@ check() {
   if [[ "$status" != "$expect_status" ]]; then
     echo "  FAIL  ${label}  expected ${expect_status}, got ${status}  (${elapsed}ms)"
     [[ "$VERBOSE" == "1" ]] && echo "        body: ${body}"
-    ((fail++))
+    ((fail++)) || true
     return
   fi
 
@@ -116,13 +116,13 @@ check() {
       echo "  FAIL  ${label}  status OK (${status}) but ${jq_path} mismatch"
       echo "        expected: ${expected_val}"
       [[ "$VERBOSE" == "1" ]] && echo "        body: ${body}"
-      ((fail++))
+      ((fail++)) || true
       return
     fi
   done
 
   echo "  PASS  ${label}  (${status}, ${elapsed}ms)"
-  ((pass++))
+  ((pass++)) || true
 }
 
 echo "=== zzapi-mes smoke tests ==="
@@ -192,41 +192,48 @@ if [[ "$HUB_MODE" != "1" ]]; then
     ".error" "Method not allowed"
 
   # Phase 5A direct SAP endpoints
+  # IDs sourced from PTD_READONLY (cloned sapdev SQL backup, client 200):
+  #   MATNR=000000000100000001 (Z010, stock at WERKS=1000, LGORT=4111)
+  #   AUFNR=000000100000 (Z100 production order)
+  #   EBELN=2010000000, EBELP=00010 (PO with line item, Q010)
+  #   Routing: MATNR=000000000100920000 + WERKS=1000 → PLNNR=50000038
   echo ""
   echo "-- Phase 5A: prod-order, material, stock, po-items, routing, work-center (direct) --"
 
   check "prod-order returns aufnr" \
-    "${BASE_URL}/sap/bc/zzapi/mes/prod_order?aufnr=1000000" \
+    "${BASE_URL}/sap/bc/zzapi/mes/prod_order?aufnr=000000100000" \
     "200" GET \
-    ".aufnr" "1000000"
+    ".aufnr" "000000100000"
 
   check "prod-order missing aufnr returns 400" \
     "${BASE_URL}/sap/bc/zzapi/mes/prod_order" \
     "400" GET
 
   check "material returns matnr" \
-    "${BASE_URL}/sap/bc/zzapi/mes/material?matnr=10000001" \
+    "${BASE_URL}/sap/bc/zzapi/mes/material?matnr=000000000100000001" \
     "200" GET
 
   check "stock with werks returns data" \
-    "${BASE_URL}/sap/bc/zzapi/mes/stock?matnr=10000001&werks=1000" \
+    "${BASE_URL}/sap/bc/zzapi/mes/stock?matnr=000000000100000001&werks=1000" \
     "200" GET
 
   check "stock without werks returns 400" \
-    "${BASE_URL}/sap/bc/zzapi/mes/stock?matnr=10000001" \
+    "${BASE_URL}/sap/bc/zzapi/mes/stock?matnr=000000000100000001" \
     "400" GET
 
   check "po-items returns ebeln" \
-    "${BASE_URL}/sap/bc/zzapi/mes/po_items?ebeln=4500000001" \
+    "${BASE_URL}/sap/bc/zzapi/mes/po_items?ebeln=2010000000" \
     "200" GET \
-    ".ebeln" "4500000001"
+    ".ebeln" "2010000000"
 
-  check "routing with werks returns data" \
-    "${BASE_URL}/sap/bc/zzapi/mes/routing?matnr=10000001&werks=1000" \
-    "200" GET
+  # Routing: sapdev has NO PLNTY='R' entries (only 'N' network), so 404 is expected
+  check "routing with werks returns 404 (no routing data in sapdev)" \
+    "${BASE_URL}/sap/bc/zzapi/mes/routing?matnr=000000000100920000&werks=1000" \
+    "404" GET \
+    ".error" "No routing found for material/plant"
 
   check "work-center with werks returns arbpl" \
-    "${BASE_URL}/sap/bc/zzapi/mes/wc?arbpl=TURN1&werks=1000" \
+    "${BASE_URL}/sap/bc/zzapi/mes/wc?arbpl=00310211&werks=1000" \
     "200" GET
 
   # Phase 5B direct SAP write-back endpoints
@@ -237,19 +244,19 @@ if [[ "$HUB_MODE" != "1" ]]; then
     "${BASE_URL}/sap/bc/zzapi/mes/conf" \
     "201" POST \
     -H "content-type: application/json" \
-    -d '{"orderid":"1000000","operation":"0010","yield":50}'
+    -d '{"orderid":"000000100000","operation":"0010","yield":50}'
 
   check "direct goods-receipt POST returns 201" \
     "${BASE_URL}/sap/bc/zzapi/mes/gr" \
     "201" POST \
     -H "content-type: application/json" \
-    -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
+    -d '{"ebeln":"2010000000","ebelp":"00010","menge":100,"werks":"1000","lgort":"4111"}'
 
   check "direct goods-issue POST returns 201" \
     "${BASE_URL}/sap/bc/zzapi/mes/gi" \
     "201" POST \
     -H "content-type: application/json" \
-    -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}'
+    -d '{"orderid":"000000100000","matnr":"000000000100000001","menge":50,"werks":"1000","lgort":"4111"}'
 
   check "direct confirmation invalid body returns 400" \
     "${BASE_URL}/sap/bc/zzapi/mes/conf" \
@@ -261,13 +268,13 @@ if [[ "$HUB_MODE" != "1" ]]; then
     "${BASE_URL}/sap/bc/zzapi/mes/gr" \
     "400" POST \
     -H "content-type: application/json" \
-    -d '{"ebeln":"","ebelp":"00010","menge":0,"werks":"1000","lgort":"0001"}'
+    -d '{"ebeln":"","ebelp":"00010","menge":0,"werks":"1000","lgort":"4111"}'
 
   check "direct goods-issue invalid body returns 400" \
     "${BASE_URL}/sap/bc/zzapi/mes/gi" \
     "400" POST \
     -H "content-type: application/json" \
-    -d '{"orderid":"","matnr":"20000001","menge":0,"werks":"1000","lgort":"0001"}'
+    -d '{"orderid":"","matnr":"000000000100000001","menge":0,"werks":"1000","lgort":"4111"}'
 fi
 
 if [[ "$HUB_MODE" == "1" ]]; then
@@ -288,37 +295,38 @@ if [[ "$HUB_MODE" == "1" ]]; then
   HUB_TOKEN="$SAVED_TOKEN"
 
   # Phase 5A read endpoints (hub mode only)
+  # IDs sourced from PTD_READONLY (cloned sapdev SQL backup, client 200)
   echo ""
   echo "-- Phase 5A: prod-order, material, stock, po-items, routing, work-center --"
   check "prod-order returns aufnr" \
-    "${BASE_URL}/prod-order/1000000" \
+    "${BASE_URL}/prod-order/000000100000" \
     "200" GET \
-    ".aufnr" "1000000"
+    ".aufnr" "000000100000"
 
   check "material returns mtart" \
-    "${BASE_URL}/material/10000001" \
-    "200" GET \
-    ".mtart" "FERT"
+    "${BASE_URL}/material/000000000100000001" \
+    "200" GET
 
   check "stock with werks returns items" \
-    "${BASE_URL}/stock/10000001?werks=1000" \
+    "${BASE_URL}/stock/000000000100000001?werks=1000" \
     "200" GET
 
   check "stock without werks returns 400" \
-    "${BASE_URL}/stock/10000001" \
+    "${BASE_URL}/stock/000000000100000001" \
     "400" GET
 
   check "po-items returns ebeln" \
-    "${BASE_URL}/po/4500000001/items" \
+    "${BASE_URL}/po/2010000000/items" \
     "200" GET \
-    ".ebeln" "4500000001"
+    ".ebeln" "2010000000"
 
-  check "routing with werks returns plnnr" \
-    "${BASE_URL}/routing/10000001?werks=1000" \
-    "200" GET
+  # Routing: sapdev has NO PLNTY='R' entries (only 'N' network), so 404 is expected
+  check "routing with werks returns 404 (no routing data in sapdev)" \
+    "${BASE_URL}/routing/000000000100920000?werks=1000" \
+    "404" GET
 
   check "work-center with werks returns arbpl" \
-    "${BASE_URL}/work-center/TURN1?werks=1000" \
+    "${BASE_URL}/work-center/00310211?werks=1000" \
     "200" GET
 
   # Phase 5B write-back endpoints (hub mode only)
@@ -330,46 +338,46 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "201" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-conf-001" \
-    -d '{"orderid":"1000000","operation":"0010","yield":50}'
+    -d '{"orderid":"000000100000","operation":"0010","yield":50}'
 
   check "confirmation missing idempotency key returns 400" \
     "${BASE_URL}/confirmation" \
     "400" POST \
     -H "content-type: application/json" \
-    -d '{"orderid":"1000000","operation":"0010","yield":50}'
+    -d '{"orderid":"000000100000","operation":"0010","yield":50}'
 
   check "goods-receipt POST returns 201" \
     "${BASE_URL}/goods-receipt" \
     "201" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-gr-001" \
-    -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
+    -d '{"ebeln":"2010000000","ebelp":"00010","menge":100,"werks":"1000","lgort":"4111"}'
 
   check "goods-issue POST returns 201" \
     "${BASE_URL}/goods-issue" \
     "201" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-gi-001" \
-    -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}'
+    -d '{"orderid":"000000100000","matnr":"000000000100000001","menge":50,"werks":"1000","lgort":"4111"}'
 
   check "goods-receipt missing idempotency key returns 400" \
     "${BASE_URL}/goods-receipt" \
     "400" POST \
     -H "content-type: application/json" \
-    -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
+    -d '{"ebeln":"2010000000","ebelp":"00010","menge":100,"werks":"1000","lgort":"4111"}'
 
   check "goods-issue missing idempotency key returns 400" \
     "${BASE_URL}/goods-issue" \
     "400" POST \
     -H "content-type: application/json" \
-    -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}'
+    -d '{"orderid":"000000100000","matnr":"000000000100000001","menge":50,"werks":"1000","lgort":"4111"}'
 
   check "confirmation duplicate idempotency key returns 409" \
     "${BASE_URL}/confirmation" \
     "409" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-conf-001" \
-    -d '{"orderid":"1000000","operation":"0010","yield":50}'
+    -d '{"orderid":"000000100000","operation":"0010","yield":50}'
 
   check "confirmation same key different body returns 422" \
     "${BASE_URL}/confirmation" \
@@ -390,14 +398,14 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "400" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-zod-002" \
-    -d '{"ebeln":"","ebelp":"00010","menge":0,"werks":"1000","lgort":"0001"}'
+    -d '{"ebeln":"","ebelp":"00010","menge":0,"werks":"1000","lgort":"4111"}'
 
   check "goods-issue invalid body returns 400" \
     "${BASE_URL}/goods-issue" \
     "400" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-zod-003" \
-    -d '{"orderid":"","matnr":"20000001","menge":0,"werks":"1000","lgort":"0001"}'
+    -d '{"orderid":"","matnr":"000000000100000001","menge":0,"werks":"1000","lgort":"4111"}'
 
   # 405 Method Not Allowed tests
   echo ""
@@ -463,14 +471,14 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "409" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-gr-001" \
-    -d '{"ebeln":"4500000001","ebelp":"00010","menge":100,"werks":"1000","lgort":"0001"}'
+    -d '{"ebeln":"2010000000","ebelp":"00010","menge":100,"werks":"1000","lgort":"4111"}'
 
   check "goods-issue duplicate idempotency key returns 409" \
     "${BASE_URL}/goods-issue" \
     "409" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-gi-001" \
-    -d '{"orderid":"1000000","matnr":"20000001","menge":50,"werks":"1000","lgort":"0001"}'
+    -d '{"orderid":"000000100000","matnr":"000000000100000001","menge":50,"werks":"1000","lgort":"4111"}'
 
   # Invalid path-param test (hub validateParam rejects non-alphanumeric)
   check "po with invalid path-param returns 400" \
@@ -478,7 +486,7 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "400" GET
 
   # Body-too-large test (1.1 MB exceeds 1 MB limit)
-  OVERSIZED_BODY=$(python3 -c "import json; print(json.dumps({'orderid':'1000000','operation':'0010','yield':50,'padding':'x'*1100000}))")
+  OVERSIZED_BODY=$(python3 -c "import json; print(json.dumps({'orderid':'000000100000','operation':'0010','yield':50,'padding':'x'*1100000}))")
   check "oversized body returns 413" \
     "${BASE_URL}/confirmation" \
     "413" POST \
@@ -551,7 +559,7 @@ if [[ "$HUB_MODE" == "1" ]]; then
       -H 'content-type: application/json')
     if [[ "$REVOKED_RES" == "401" ]]; then
       echo "  PASS  revoked key returns 401"
-      ((pass++))
+      ((pass++)) || true
     else
       echo "  FAIL  revoked key expected 401, got ${REVOKED_RES}"
       ((fail++))
