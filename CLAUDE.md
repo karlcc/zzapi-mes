@@ -78,6 +78,10 @@ CORS is disabled by default. Set `HUB_CORS_ORIGIN` to a comma-separated list of 
 
 `getClientIp()` in `middleware/client-ip.ts` uses `@hono/node-server/conninfo` to get the unspoofable TCP peer address. Headers (`x-real-ip`, `x-forwarded-for`) are only honored when `HUB_TRUSTED_PROXY` is set to a comma-separated list of proxy IPs that match the peer. Without a trusted proxy config, header-based IP spoofing is impossible. The `isLoopbackPeer()` helper checks the real TCP peer for the `/metrics` localhost guard.
 
+### API Documentation
+
+`GET /docs` — public ReDoc HTML page (no JWT required). `GET /openapi.json` — raw spec as JSON. Disable with `HUB_NO_DOCS=1`. CSP headers adjusted for cdn.redoc.ly on `/docs`.
+
 ### Startup Validation
 
 The hub validates critical env vars on boot and exits with code 1 on misconfiguration:
@@ -87,6 +91,7 @@ The hub validates critical env vars on boot and exits with code 1 on misconfigur
 - `HUB_AUDIT_RETENTION_DAYS` must be > 0 (negative would prune ALL rows)
 - `SAP_CLIENT` must be > 0
 - `SAP_USER`, `SAP_PASS`, `SAP_HOST` must be set
+- `HUB_NO_DOCS` (optional) — set to `1` to disable `/docs` and `/openapi.json`
 
 ### Security Headers
 
@@ -121,13 +126,23 @@ All hub routes (both GET and POST) write to `audit_log` via `writeAudit()` (POST
 
 All GET route handlers use `validateParam()` from `routes/validate.ts` to enforce: non-empty, alphanumeric-only (`[A-Za-z0-9]+`), and maxLength per parameter. This prevents injection and invalid requests from reaching SAP. Write-back routes validate via Zod schemas instead.
 
+### Response Transform (GET routes)
+
+All 7 business GET routes return a **friendly response** by default via the transform pipeline in `apps/hub/src/transform/`:
+- `mappings.ts` — SAP DDIC → human-readable field name tables per entity (7 entities: po, poItems, prodOrder, material, stock, routing, workCenter)
+- `transform.ts` — `transformResponse()` wraps result in `{data, _links}` envelope, strips unmapped fields, formats dates (YYYYMMDD → ISO 8601)
+- Query params: `?format=raw` bypasses transform (backward compat), `?include=_source` adds original SAP response
+- HubClient auto-unwraps the envelope (`parseResponse` detects `data` + `_links` keys) so CLI/SDK consumers see friendly fields directly
+- HATEOAS `_links` are included in HTTP API responses but stripped by HubClient — they serve curl/Postman users, not CLI
+
 ### SAP Call Helper (GET routes)
 
-All 8 read-only hub routes delegate to `withSapCall()` in `routes/sap-call.ts`, which wraps:
+All 7 business GET routes delegate to `withSapCall()` in `routes/sap-call.ts`, which wraps:
 - Timing (`sap_duration_ms` metric)
 - Error mapping (any thrown `ZzapiMesHttpError` → appropriate HTTP status; non-ZzapiMesHttpError → 502). `ZzapiMesHttpError` carries `originalStatus` for 409 duplicates.
 - Audit logging (records key_id, path, sap_status, sap_duration_ms)
-- `Retry-After` header capture on 429 responses (both `SapClient` and `HubClient` extract it from response headers via `parseRetryAfter()`)
+- `Retry-After` header capture on 429 responses (both `SapClient` and `HubClient` extract it from response headers `parseRetryAfter()`)
+- Response transform (`transformResponse()` applies friendly format by default)
 
 ## Phase Roadmap
 
@@ -138,3 +153,4 @@ All 8 read-only hub routes delegate to `withSapCall()` in `routes/sap-call.ts`, 
 | 3 | Hub with JWT auth, SAP auth abstracted | Done |
 | 4 | Persistent API keys, admin CLI, request IDs, logs, metrics, rate limiting, spec codegen, e2e tests | Done |
 | 5 | MES business endpoints (5A read + 5B write-back with idempotency/audit) | Done |
+| 6 | Friendly response transform, ReDoc API docs, field mapping engine | Done |
