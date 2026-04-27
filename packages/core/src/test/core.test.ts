@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
+import { SapClient, ZzapiMesClient, ZzapiMesHttpError, ensureProtocol, parseRetryAfter, readResponseBody, PingResponseSchema, PoResponseSchema, ErrorResponseSchema, ProdOrderResponseSchema, MaterialResponseSchema, StockResponseSchema, PoItemsResponseSchema, RoutingResponseSchema, WorkCenterResponseSchema, ConfirmationRequestSchema, ConfirmationResponseSchema, GoodsReceiptRequestSchema, GoodsReceiptResponseSchema, GoodsIssueRequestSchema, GoodsIssueResponseSchema, TokenResponseSchema, HealthzResponseSchema, ALL_SCOPES } from "../index.js";
 
 const BASE = "http://sapdev.test:8000";
 const CFG = { host: BASE, client: 200, user: "u", password: "p", timeout: 5000 };
@@ -943,6 +943,103 @@ describe("SapClient empty-string host validation", () => {
       () => new SapClient({ host: "https://", client: 200, user: "u", password: "p" }),
       /non-empty|host/i,
       `"https://" should be rejected as an invalid host`,
+    );
+  });
+});
+
+describe("readResponseBody byte-length check for multi-byte UTF-8", () => {
+  it("rejects CJK response in no-reader fallback where byte length exceeds maxBytes but string length does not", async () => {
+    // CJK characters: 3 bytes in UTF-8 but 1 char in JS string length.
+    // 400 CJK chars = 400 string length but 1200 bytes > 500 limit.
+    const cjkBody = "漢".repeat(400);
+    assert.ok(cjkBody.length < 500, `string length ${cjkBody.length} should be under 500`);
+    const byteLen = new TextEncoder().encode(cjkBody).byteLength;
+    assert.ok(byteLen > 500, `byte length ${byteLen} should exceed 500`);
+
+    // Simulate a Response with no body (body=null → getReader() returns undefined)
+    // but text() returns CJK content. This hits the `if (!reader)` fallback path
+    // which incorrectly uses text.length instead of byte length.
+    const fakeRes = {
+      headers: new Headers(),
+      body: null,
+      text: async () => cjkBody,
+    } as unknown as Response;
+
+    await assert.rejects(
+      () => readResponseBody(fakeRes, 500),
+      (err: unknown) => {
+        assert(err instanceof ZzapiMesHttpError);
+        assert.equal(err.status, 502);
+        assert.match(err.message, /too large/);
+        return true;
+      },
+    );
+  });
+
+  it("accepts CJK response in no-reader fallback when byte length is within maxBytes", async () => {
+    const cjkBody = "字".repeat(100); // 100 chars × 3 bytes = 300 bytes
+    const fakeRes = {
+      headers: new Headers(),
+      body: null,
+      text: async () => cjkBody,
+    } as unknown as Response;
+
+    const text = await readResponseBody(fakeRes, 300);
+    assert.equal(text.length, 100);
+  });
+
+  it("rejects CJK response in stream-error fallback where byte length exceeds maxBytes", async () => {
+    const cjkBody = "漢".repeat(400); // 400 chars, 1200 bytes
+    // Create a ReadableStream that throws after returning some data,
+    // forcing the catch fallback path which uses text.length.
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("partial"));
+        controller.error(new Error("stream error"));
+      },
+    });
+    // After stream errors, res.text() won't work, so mock text() to return CJK
+    const origText = Response.prototype.text;
+    const fakeRes = {
+      headers: new Headers(),
+      body: stream,
+      get text() {
+        // After stream error, the real text() would fail; simulate the fallback
+        // scenario where a new read succeeds with CJK content.
+        return async () => cjkBody;
+      },
+    } as unknown as Response;
+
+    await assert.rejects(
+      () => readResponseBody(fakeRes, 500),
+      (err: unknown) => {
+        assert(err instanceof ZzapiMesHttpError);
+        assert.equal(err.status, 502);
+        return true;
+      },
+    );
+  });
+
+  it("accepts response where streaming byte length equals maxBytes exactly", async () => {
+    // ASCII: 1 byte per char — streaming path correctly uses byteLength
+    const body = "a".repeat(1_048_576);
+    const res = new Response(body, { status: 200 });
+    const text = await readResponseBody(res);
+    assert.equal(text.length, 1_048_576);
+  });
+
+  it("rejects streaming CJK response where byte length exceeds maxBytes", async () => {
+    // CJK through the streaming path — already uses byteLength correctly,
+    // this test confirms the streaming path rejects oversized CJK bodies.
+    const cjkBody = "漢".repeat(400_000); // 1_200_000 bytes
+    const res = new Response(cjkBody, { status: 200 });
+    await assert.rejects(
+      () => readResponseBody(res),
+      (err: unknown) => {
+        assert(err instanceof ZzapiMesHttpError);
+        assert.equal(err.status, 502);
+        return true;
+      },
     );
   });
 });

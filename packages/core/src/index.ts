@@ -182,8 +182,9 @@ export async function readResponseBody(res: Response, maxBytes: number = SAP_RES
   const reader = res.body?.getReader();
   if (!reader) {
     const text = await res.text();
-    if (text.length > maxBytes) {
-      throw new ZzapiMesHttpError(502, `SAP response too large (${text.length} bytes, limit ${maxBytes})`);
+    const byteLen = new TextEncoder().encode(text).byteLength;
+    if (byteLen > maxBytes) {
+      throw new ZzapiMesHttpError(502, `SAP response too large (${byteLen} bytes, limit ${maxBytes})`);
     }
     return text;
   }
@@ -203,8 +204,9 @@ export async function readResponseBody(res: Response, maxBytes: number = SAP_RES
   } catch (e) {
     if (e instanceof ZzapiMesHttpError) throw e;
     const text = await res.text();
-    if (text.length > maxBytes) {
-      throw new ZzapiMesHttpError(502, `SAP response too large (${text.length} bytes, limit ${maxBytes})`);
+    const byteLen = new TextEncoder().encode(text).byteLength;
+    if (byteLen > maxBytes) {
+      throw new ZzapiMesHttpError(502, `SAP response too large (${byteLen} bytes, limit ${maxBytes})`);
     }
     return text;
   }
