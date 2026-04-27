@@ -215,11 +215,33 @@ export async function readResponseBody(res: Response, maxBytes: number = SAP_RES
   return text;
 }
 
-/** Parse a Retry-After header value (seconds) into a number, or undefined. */
+/** Upper bound cap for Retry-After values (1 hour). Prevents absurdly large
+ *  values like 999999999s from locking clients out for decades. */
+const RETRY_AFTER_CAP = 3600;
+
+/** Parse a Retry-After header value into delta-seconds, or undefined.
+ *  Supports both delta-seconds (RFC 7231 §5.2) and HTTP-date formats.
+ *  HTTP-date is converted to delta-seconds relative to Date.now().
+ *  Values are capped at RETRY_AFTER_CAP to prevent client lock-out. */
 export function parseRetryAfter(value: string | null | undefined): number | undefined {
   if (!value) return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
+  const trimmed = value.trim();
+  const n = Number(trimmed);
+  // Numeric (delta-seconds) format
+  if (Number.isFinite(n) && n > 0) {
+    return Math.min(n, RETRY_AFTER_CAP);
+  }
+  // HTTP-date format (e.g. "Fri, 25 Apr 2026 02:00:00 GMT")
+  const dateMs = Date.parse(trimmed);
+  if (Number.isFinite(dateMs)) {
+    const delta = Math.ceil((dateMs - Date.now()) / 1000);
+    if (delta > 0) {
+      return Math.min(delta, RETRY_AFTER_CAP);
+    }
+    // Past date → already expired, no retry needed
+    return undefined;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
