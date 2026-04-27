@@ -418,6 +418,12 @@ export class SapClient {
       throw new ZzapiMesHttpError(res.status, `SAP redirect (HTTP ${res.status}) → ${location}`);
     }
 
+    // 204 No Content — no body to parse, return empty object.
+    // Some servers omit Content-Type on 204; treat as success without JSON parse.
+    if (res.status === 204) {
+      return {} as T;
+    }
+
     // Validate Content-Type — SAP ICF may return HTML login pages with 200
     // status when the service is not activated or auth fails silently.
     // Without this check, HTML is passed to JSON.parse which produces a

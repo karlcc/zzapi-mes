@@ -236,6 +236,10 @@ export class HubClient {
   }
 
   private async parseResponse<T>(res: Response): Promise<T> {
+    // 204 No Content — no body to parse, return empty object.
+    if (res.status === 204) {
+      return {} as T;
+    }
     const body = await readResponseBody(res);
     let json: Record<string, unknown>;
     try {
