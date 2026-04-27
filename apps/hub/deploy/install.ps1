@@ -56,6 +56,15 @@ if (-not (Test-Path $distDir)) {
 Write-Host "Setting up data directory at $DataDir..."
 New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
 
+# --- 2a. Windows Defender exclusion ---
+# Real-time scanning on SQLite WAL writes causes 2-5x I/O degradation.
+# Exclude the data directory from scanning to avoid this performance penalty.
+$defenderPrefs = Get-MpPreference -ErrorAction SilentlyContinue
+if ($defenderPrefs -and $DataDir -notin $defenderPrefs.ExclusionPath) {
+    Write-Host "Adding Windows Defender exclusion for $DataDir..."
+    Add-MpPreference -ExclusionPath $DataDir
+}
+
 # --- 3. DB migration ---
 Write-Host "Running DB migration..."
 $env:HUB_DB_PATH = Join-Path $DataDir "hub.db"
@@ -64,15 +73,16 @@ if ($LASTEXITCODE -ne 0) { Write-Error "DB migration failed (exit code $LASTEXIT
 
 # --- 4. Install nssm if missing ---
 $nssmPath = "C:\Windows\nssm.exe"
-# SHA-1 hash from https://nssm.cc/download (2014-08-31 release)
-$nssmHash = "be7b3577c6e3a280e5106a9e9db5b3775931cefc"
+# SHA-256 hash from https://nssm.cc/download (2014-08-31 release)
+# SHA-1 is cryptographically broken; SHA-256 provides collision resistance.
+$nssmHash = "09ddbc5abc1fb5abfd2be27a60462b6c8240f1f921eb70d1199982ddca9c736b"
 if (-not (Test-Path $nssmPath)) {
     Write-Host "Installing nssm..."
     $zipPath = Join-Path $env:TEMP "nssm.zip"
     $extractDir = Join-Path $env:TEMP "nssm"
     Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile $zipPath
-    # Verify download integrity before extracting
-    $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA1).Hash.ToLower()
+    # Verify download integrity before extracting (SHA-256, not SHA-1)
+    $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
     if ($actualHash -ne $nssmHash) {
         Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
         Write-Error "nssm download integrity check failed: expected $nssmHash, got $actualHash. Possible tampering or corrupted download."
