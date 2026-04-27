@@ -408,7 +408,19 @@ export class SapClient {
     try {
       json = JSON.parse(bodyText);
     } catch {
-      throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
+      // ABAP's zz_cl_json serializer with compress=true omits values for empty
+      // fields, producing invalid JSON like {"sakl":} or {"sakl":,} instead of
+      // {"sakl":null}. In valid JSON, after a key's closing quote + colon, the
+      // next char is always a value start: ", digit, t, f, n, {, or [. If we
+      // see }],, right after the colon, it's the ABAP empty-value bug.
+      // Only attempt repair on initial parse failure; if repair also fails,
+      // report the original error.
+      const repaired = bodyText.replace(/":(}|,|\])/g, '":null$1');
+      try {
+        json = JSON.parse(repaired);
+      } catch {
+        throw new ZzapiMesHttpError(res.status, `Non-JSON response (HTTP ${res.status})`);
+      }
     }
 
     if ("error" in json) {
