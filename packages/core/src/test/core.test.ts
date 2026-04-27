@@ -52,7 +52,30 @@ describe("SapClient", () => {
     });
   });
 
-  it("throws ZzapiMesHttpError on non-JSON response", async () => {
+  it("repairs ABAP zz_cl_json empty-value malformation (e.g. \"sakl\":})", async () => {
+    // SAP's zz_cl_json serializer with compress=true omits values for empty
+    // fields, producing invalid JSON like {"sakl":} instead of {"sakl":null}.
+    // SapClient should repair this common pattern rather than failing with
+    // "Non-JSON response".
+    globalThis.fetch = mockFetch(200, '{"arbpl":"00310211","werks":"1000","costCenters":[{"kostl":"0009552100","sakl":}]}');
+    const result = await new SapClient(CFG).getWorkCenter("00310211", "1000");
+    assert.equal((result as Record<string, unknown>).arbpl, "00310211");
+    // The repaired null value should be accessible
+    const ccs = ((result as Record<string, unknown>).costCenters ?? []) as Array<Record<string, unknown>>;
+    assert.ok(ccs.length > 0, "costCenters should have at least one entry");
+    const first = ccs[0]!;
+    assert.equal(first.sakl, null);
+  });
+
+  it("repairs ABAP zz_cl_json empty-value in middle of object (e.g. \"sakl\":,)", async () => {
+    // Variant where the empty value is followed by another key, not end-of-object
+    globalThis.fetch = mockFetch(200, '{"sakl":,"kostl":"123"}');
+    const result = await new SapClient(CFG).ping();
+    assert.equal((result as Record<string, unknown>).sakl, null);
+    assert.equal((result as Record<string, unknown>).kostl, "123");
+  });
+
+  it("throws on truly non-JSON (HTML) response even after repair attempt", async () => {
     globalThis.fetch = mockFetch(401, "<html>Unauthorized</html>");
     const c = new SapClient(CFG);
     await assert.rejects(() => c.ping(), (err: unknown) => {
