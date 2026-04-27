@@ -134,5 +134,5 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
       clientStatus as 409 | 422 | 429 | 502 | 504,
     );
   }
-  return c.json(result, sapStatus as 201);
+  return c.json(result, clientStatus as 201 | 202);
 }

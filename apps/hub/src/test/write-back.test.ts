@@ -84,6 +84,61 @@ describe("mapSapError all-branches unit test", () => {
   });
 });
 
+describe("withWriteBack returns 202 when HUB_WRITEBACK_DISABLED is set", () => {
+  // When HUB_WRITEBACK_DISABLED !== "0", the route should return 202 (suppressed)
+  // instead of 201. The bug was that sapStatus=0 was used as the HTTP status code,
+  // which is invalid (Hono rejects status 0 → 500 internal error).
+
+  it("confirmation returns 202 when write-back is disabled", async () => {
+    const { createApp } = await import("../server.js");
+    const { runMigrations, insertKey } = await import("../db/index.js");
+    const { _resetBucketsForTest } = await import("../middleware/rate-limit.js");
+    const { _resetSapHealthCacheForTest } = await import("../routes/health.js");
+    const { sign } = await import("hono/jwt");
+    const { SapClient } = await import("@zzapi-mes/core");
+    const argon2 = (await import("argon2")).default;
+    const Database = (await import("better-sqlite3")).default;
+
+    const JWT_SECRET = "test-secret-min-16-chars!!";
+    process.env.HUB_JWT_SECRET = JWT_SECRET;
+    process.env.HUB_JWT_TTL_SECONDS = "900";
+    // Deliberately NOT setting HUB_WRITEBACK_DISABLED="0" — default is disabled
+    delete process.env.HUB_WRITEBACK_DISABLED;
+
+    const db = new Database(":memory:");
+    runMigrations(db);
+    _resetBucketsForTest();
+    _resetSapHealthCacheForTest();
+
+    const keyId = "wb-test-key";
+    const plainKey = "wb-test-key-plaintext";
+    const hash = await argon2.hash(plainKey);
+    insertKey(db, { id: keyId, hash, label: "wb-test", scopes: "conf,gr,gi", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
+
+    // Pass a mock SapClient so createApp doesn't require SAP_* env vars
+    const mockSap = { ping: async () => ({ ok: true }), getPo: async () => ({} as never) } as unknown as typeof SapClient.prototype;
+    const { app } = createApp(mockSap as never, { db });
+    const token = await sign({ key_id: keyId, scopes: ["conf", "gr", "gi"], iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900, rate_limit_per_min: 60 }, JWT_SECRET);
+
+    const res = await app.request("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "wb-disabled-test-001",
+      },
+      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+    });
+    assert.equal(res.status, 202);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.status, "suppressed");
+
+    db.close();
+    delete process.env.HUB_JWT_SECRET;
+    delete process.env.HUB_JWT_TTL_SECONDS;
+  });
+});
+
 describe("withWriteBack crash-before-audit: pending idempotency blocks retry", () => {
   // When withWriteBack crashes after SAP succeeds but before the atomic
   // audit+idempotency transaction commits, the idempotency key stays at

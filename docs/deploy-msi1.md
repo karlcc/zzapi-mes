@@ -85,7 +85,7 @@ HUB_PORT=8080
 HUB_JWT_SECRET=<generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))">
 # HUB_JWT_TTL_SECONDS=900         # JWT lifetime (default 900 = 15 min)
 HUB_DB_PATH=C:\var\zzapi-mes-hub\hub.db
-HUB_CORS_ORIGIN=*
+# HUB_CORS_ORIGIN=https://example.com   # NO wildcard — code rejects "*"; set explicit origins only
 # HUB_AUDIT_RETENTION_DAYS=90     # prune audit_log rows older than N days on startup
 SAP_HOST=sapdev.fastcell.hk:8000
 SAP_CLIENT=200
