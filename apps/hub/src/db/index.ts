@@ -263,6 +263,14 @@ export function insertKey(
   db: Database.Database,
   record: Omit<ApiKeyRecord, "revoked_at">,
 ): void {
+  // Label validation: bound length and reject control characters.
+  const MAX_LABEL_LENGTH = 255;
+  if (record.label !== null && record.label.length > MAX_LABEL_LENGTH) {
+    throw new Error(`label must be at most ${MAX_LABEL_LENGTH} characters, got ${record.label.length}`);
+  }
+  if (record.label !== null && /[\x00-\x1f\x7f]/.test(record.label)) {
+    throw new Error("label must not contain control characters");
+  }
   // Application-level validation for rate_limit_per_min: SQLite v7 migration
   // is a no-op (ALTER TABLE ADD CHECK unsupported), so existing DBs lack the
   // CHECK constraint. Enforce here as a safety net.

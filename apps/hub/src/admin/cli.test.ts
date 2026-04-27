@@ -115,6 +115,35 @@ describe("Admin CLI", () => {
       assert.equal(code, 0);
       assert.match(stdout, /^[0-9a-f]{12}\./);
     });
+
+    it("rejects label exceeding 255 characters", async () => {
+      const longLabel = "x".repeat(256);
+      const { stderr, code } = await run(["keys", "create", "--label", longLabel]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("255"), `should mention 255 char limit: ${stderr}`);
+    });
+
+    it("accepts label at exactly 255 characters", async () => {
+      const maxLabel = "y".repeat(255);
+      const { stdout, code } = await run(["keys", "create", "--label", maxLabel]);
+      assert.equal(code, 0);
+      assert.match(stdout, /^[0-9a-f]{12}\./);
+    });
+
+    it("rejects control characters in label", async () => {
+      // Node's execFile rejects null bytes in args, so test with newline instead
+      const { stderr, code } = await run(["keys", "create", "--label", "bad\nlabel"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("control character"), `should mention control characters: ${stderr}`);
+    });
+
+    it("warns on duplicate label but still creates key", async () => {
+      await run(["keys", "create", "--label", "dup-label"]);
+      const { stdout, stderr, code } = await run(["keys", "create", "--label", "dup-label"]);
+      assert.equal(code, 0, "should succeed even with duplicate label");
+      assert.match(stdout, /^[0-9a-f]{12}\./);
+      assert.ok(stderr.includes("Warning"), `should warn about duplicate label: ${stderr}`);
+    });
   });
 
   describe("keys list", () => {
@@ -140,19 +169,10 @@ describe("Admin CLI", () => {
     });
 
     it("escapes tabs and newlines in label", async () => {
-      const { stdout: plaintext, code } = await run(["keys", "create", "--label", "lab\tel"]);
-      assert.equal(code, 0);
-      const { stdout } = await run(["keys", "list"]);
-      // Label containing tab should be escaped so output remains pipe-friendly
-      const lines = stdout.split("\n");
-      // Find the data line (skip header)
-      const dataLine = lines.find(l => l.includes("lab"));
-      assert.ok(dataLine, "should find line with label content");
-      // The label should NOT contain a raw tab — tabs are column delimiters
-      const fields = dataLine!.split("\t");
-      // label field (index 2) should have escaped tab, not raw tab
-      const labelField = fields[2]!;
-      assert.ok(!labelField.includes("\t") || labelField === "lab\\tel", `label should escape tabs: "${labelField}"`);
+      // Tab in label is now rejected by control-character validation at CLI level
+      const { stderr, code } = await run(["keys", "create", "--label", "lab\tel"]);
+      assert.notEqual(code, 0, "tab in label should be rejected");
+      assert.ok(stderr.includes("control character"), `should mention control characters: ${stderr}`);
     });
 
     it("supports --format json for structured output", async () => {
