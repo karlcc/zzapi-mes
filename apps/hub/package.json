@@ -23,7 +23,7 @@
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@zzapi-mes/core": "workspace:*",
-    "argon2": "^0.41.0",
+    "argon2": "^0.44.0",
     "better-sqlite3": "^11.0.0",
     "hono": "^4.6.0",
     "js-yaml": "^4.1.1",
