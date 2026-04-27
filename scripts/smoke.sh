@@ -175,10 +175,19 @@ else
   PO_POST_URL="${BASE_URL}${PO_PATH_PREFIX}?ebeln=3010000608"
 fi
 
-check "PO 3010000608 returns ebeln" \
-  "$PO_URL" \
-  "200" GET \
-  ".ebeln" "3010000608"
+if [[ "$HUB_MODE" == "1" ]]; then
+  # Hub returns friendly-format envelope: {data: {purchaseOrderNumber: "3010000608"}, _links: {...}}
+  check "PO 3010000608 returns ebeln" \
+    "$PO_URL" \
+    "200" GET \
+    ".data.purchaseOrderNumber" "3010000608"
+else
+  # Direct SAP returns raw DDIC fields: {ebeln: "3010000608", ...}
+  check "PO 3010000608 returns ebeln" \
+    "$PO_URL" \
+    "200" GET \
+    ".ebeln" "3010000608"
+fi
 
 check "PO 9999999999 returns 404 with error" \
   "$PO_NOTFOUND_URL" \
@@ -301,7 +310,7 @@ if [[ "$HUB_MODE" == "1" ]]; then
   check "prod-order returns aufnr" \
     "${BASE_URL}/prod-order/000000100000" \
     "200" GET \
-    ".aufnr" "000000100000"
+    ".data.productionOrderNumber" "000000100000"
 
   check "material returns mtart" \
     "${BASE_URL}/material/000000000100000001" \
@@ -318,7 +327,7 @@ if [[ "$HUB_MODE" == "1" ]]; then
   check "po-items returns ebeln" \
     "${BASE_URL}/po/2010000000/items" \
     "200" GET \
-    ".ebeln" "2010000000"
+    ".data.purchaseOrderNumber" "2010000000"
 
   # Routing: sapdev has NO PLNTY='R' entries (only 'N' network), so 404 is expected
   check "routing with werks returns 404 (no routing data in sapdev)" \
@@ -333,9 +342,9 @@ if [[ "$HUB_MODE" == "1" ]]; then
   echo ""
   echo "-- Phase 5B: confirmation, goods-receipt, goods-issue --"
 
-  check "confirmation POST returns 201" \
+  check "confirmation POST returns 202 (write-back disabled)" \
     "${BASE_URL}/confirmation" \
-    "201" POST \
+    "202" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-conf-001" \
     -d '{"orderid":"000000100000","operation":"0010","yield":50}'
@@ -346,16 +355,16 @@ if [[ "$HUB_MODE" == "1" ]]; then
     -H "content-type: application/json" \
     -d '{"orderid":"000000100000","operation":"0010","yield":50}'
 
-  check "goods-receipt POST returns 201" \
+  check "goods-receipt POST returns 202 (write-back disabled)" \
     "${BASE_URL}/goods-receipt" \
-    "201" POST \
+    "202" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-gr-001" \
     -d '{"ebeln":"2010000000","ebelp":"00010","menge":100,"werks":"1000","lgort":"4111"}'
 
-  check "goods-issue POST returns 201" \
+  check "goods-issue POST returns 202 (write-back disabled)" \
     "${BASE_URL}/goods-issue" \
-    "201" POST \
+    "202" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-gi-001" \
     -d '{"orderid":"000000100000","matnr":"000000000100000001","menge":50,"werks":"1000","lgort":"4111"}'
@@ -439,13 +448,20 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "${BASE_URL}/metrics" \
     "405" POST
 
-  # GET /metrics (localhost-only, but smoke runs from same host)
+  # GET /metrics (localhost-only on msi-1 — skip when running remotely)
   echo ""
   echo "-- /metrics endpoint (hub) --"
 
-  check "GET /metrics returns 200 with prometheus output" \
-    "${BASE_URL}/metrics" \
-    "200" GET
+  # /metrics is restricted to localhost connections. When smoke runs from a
+  # remote machine (macOS) the connection comes from a non-loopback IP, so
+  # the hub returns 403. Only test /metrics when running on the hub host itself.
+  if [[ "$HUB_URL" == *"localhost"* || "$HUB_URL" == *"127.0.0.1"* ]]; then
+    check "GET /metrics returns 200 with prometheus output" \
+      "${BASE_URL}/metrics" \
+      "200" GET
+  else
+    echo "  SKIP  GET /metrics (remote hub URL — localhost-only endpoint)"
+  fi
 
   # /auth/token with invalid credentials
   echo ""
@@ -486,13 +502,16 @@ if [[ "$HUB_MODE" == "1" ]]; then
     "400" GET
 
   # Body-too-large test (1.1 MB exceeds 1 MB limit)
-  OVERSIZED_BODY=$(python3 -c "import json; print(json.dumps({'orderid':'000000100000','operation':'0010','yield':50,'padding':'x'*1100000}))")
+  # Write to temp file to avoid "Argument list too long" on shells with low ARG_MAX
+  OVERSIZED_TMP=$(mktemp)
+  python3 -c "import json; print(json.dumps({'orderid':'000000100000','operation':'0010','yield':50,'padding':'x'*1100000}))" > "$OVERSIZED_TMP"
   check "oversized body returns 413" \
     "${BASE_URL}/confirmation" \
     "413" POST \
     -H "content-type: application/json" \
     -H "idempotency-key: smoke-413-001" \
-    -d "$OVERSIZED_BODY"
+    -d @"$OVERSIZED_TMP"
+  rm -f "$OVERSIZED_TMP"
 
   # Scope-based 403 test
   echo ""
