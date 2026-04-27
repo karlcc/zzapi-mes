@@ -20,6 +20,10 @@ The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go throug
 
 ## Commands
 
+### Known Test Issues
+
+3 CLI tests fail on main: `--mode flag`, `hub mode (missing creds)`, `confirm command`. These are pre-existing and not blocking. Hub and core tests pass clean.
+
 - `pnpm build` — compile core, SDK, CLI, and hub TypeScript packages.
 - `pnpm --filter @zzapi-mes/hub dev` — run the hub locally with tsx watch (reads `HUB_*` + `SAP_*` env).
 - `pnpm --filter @zzapi-mes/hub migrate` — apply SQLite migrations before first start / after schema changes.
@@ -34,6 +38,10 @@ The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go throug
 
 ## Deployment Model (important for edits to `abap/`)
 
+### Hub Production Deployment (msi-1)
+
+The hub runs on `msi-1` (Windows) as an nssm service (`zzapi-mes-hub`) on port 8080. Database: `C:\var\zzapi-mes-hub\hub.db` (`HUB_DB_PATH` env var). Deploy via `bash apps/hub/deploy/update-msi1.sh` (tar+scp, auto-rollback on failure). Access msi-1 via SSH or Parsec/RDP. Windows `bsdtar` silently drops some files during extraction — verify critical files post-deploy. The `nssm` `AppEnvironmentExtra` must NOT use `:` prefix when setting env vars via SSH (causes parsing failure).
+
 Editing a file in `abap/` **does not deploy it**. The round-trip is manual:
 
 1. Edit ABAP in SE24 on SAP (typically via `msi-1` Parsec/RDP → SAP GUI for Windows; SE24 also works in Java GUI and Web GUI, unlike SE80).
@@ -42,6 +50,10 @@ Editing a file in `abap/` **does not deploy it**. The round-trip is manual:
 4. Run `pnpm smoke` to verify.
 
 When adding a new handler class: follow the naming pattern `ZCL_ZZAPI_MES_*`, place the SICF node at `/sap/bc/zzapi/mes/*`, and add a `check` line to `scripts/smoke.sh`.
+
+### smoke.sh Portability
+
+smoke.sh must work on both macOS (BSD grep) and Linux (GNU grep). Do not use `grep -P` (Perl regex) — use `grep -Eo` instead. Large request bodies must use temp files (curl `@file`) to avoid shell ARG_MAX limits. Idempotency keys must be unique per run — stale keys from previous runs cause 409 errors.
 
 ## ABAP Handler Conventions
 
