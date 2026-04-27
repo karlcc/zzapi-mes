@@ -2790,12 +2790,15 @@ describe("GET route SAP error handling", () => {
     // Temporarily override ping to throw a plain Error
     const origPing = MockSapClient.prototype.ping;
     MockSapClient.prototype.ping = async () => { throw new Error("Network failure"); };
-    const token = await validToken(["ping"]);
-    const res = await fetchApi("/ping", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    assert.equal(res.status, 502);
-    MockSapClient.prototype.ping = origPing;
+    try {
+      const token = await validToken(["ping"]);
+      const res = await fetchApi("/ping", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      assert.equal(res.status, 502);
+    } finally {
+      MockSapClient.prototype.ping = origPing;
+    }
   });
 
   it("forwards Retry-After header from SAP 429 on GET routes", async () => {
@@ -3062,20 +3065,23 @@ describe("SAP 5xx error sanitization on write-back", () => {
   it("returns 502 on non-ZzapiMesHttpError from write-back route", async () => {
     const orig = MockSapClient.prototype.postConfirmation;
     MockSapClient.prototype.postConfirmation = async () => { throw new Error("Network failure"); };
-    const token = await validToken(["conf"]);
-    const res = await fetchApi("/confirmation", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        "idempotency-key": `non-zzapi-${Date.now()}`,
-      },
-      body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
-    });
-    assert.equal(res.status, 502);
-    const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "SAP upstream error");
-    MockSapClient.prototype.postConfirmation = orig;
+    try {
+      const token = await validToken(["conf"]);
+      const res = await fetchApi("/confirmation", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": `non-zzapi-${Date.now()}`,
+        },
+        body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+      });
+      assert.equal(res.status, 502);
+      const body = await res.json() as Record<string, unknown>;
+      assert.equal(body.error, "SAP upstream error");
+    } finally {
+      MockSapClient.prototype.postConfirmation = orig;
+    }
   });
 });
 
