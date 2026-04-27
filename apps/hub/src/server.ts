@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { SapClient } from "@zzapi-mes/core";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import yaml from "js-yaml";
 import { accessLog } from "./middleware/log.js";
 import { requestId } from "./middleware/request-id.js";
 import { securityHeaders } from "./middleware/security-headers.js";
@@ -203,6 +206,53 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   app.use("*", metricsMiddleware);
 
   // --- Public routes ---
+
+  // ReDoc API documentation — self-contained HTML with inline OpenAPI spec.
+  // No JWT required: API docs are discovery docs, not secrets.
+  // Disable with HUB_NO_DOCS=1 for locked-down deployments.
+  if (process.env.HUB_NO_DOCS !== "1") {
+    // Read and cache spec at startup — zero per-request I/O.
+    // Try pre-built JSON first (faster parse), then YAML source.
+    let specJson: Record<string, unknown> | undefined;
+    const specDir = join(__dirname, "..", "..", "..", "spec");
+    try {
+      specJson = JSON.parse(readFileSync(join(specDir, "openapi.json"), "utf-8"));
+    } catch {
+      try {
+        const yamlSrc = readFileSync(join(specDir, "openapi.yaml"), "utf-8");
+        specJson = yaml.load(yamlSrc) as Record<string, unknown>;
+      } catch (e) {
+        console.error(`Warning: Could not load OpenAPI spec for /docs: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    if (specJson) {
+      const specStr = JSON.stringify(specJson);
+      const redocHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <title>ZZAPI MES API Documentation</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>body { margin: 0; padding: 0; }</style>
+</head>
+<body>
+  <div id="redoc-container"></div>
+  <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+  <script>
+    const spec = ${specStr};
+    Redoc.init(spec, {
+      scrollYOffset: 60,
+      hideDownloadButton: false,
+    }, document.getElementById('redoc-container'));
+  </script>
+</body>
+</html>`;
+
+      app.get("/docs", (c) => c.html(redocHtml));
+      app.get("/openapi.json", (c) => c.json(specJson));
+    }
+  }
 
   // GET /metrics (no auth, but localhost-only — enforced inside the route)
   app.use("/metrics", methodGuard("GET"));

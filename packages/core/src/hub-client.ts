@@ -260,6 +260,13 @@ export class HubClient {
     if (res.status >= 400) {
       throw new ZzapiMesHttpError(res.status, `Hub error (HTTP ${res.status})`);
     }
+    // Unwrap friendly envelope: hub returns {data, _links, _source?} by default.
+    // Extract the `data` payload so CLI/SDK consumers see friendly-named fields directly.
+    // Check for both `data` AND `_links` to avoid misfiring on raw SAP responses
+    // that happen to have a top-level `data` key.
+    if ("data" in json && "_links" in json && typeof json.data === "object" && json.data !== null) {
+      return json.data as T;
+    }
     return json as T;
   }
 }

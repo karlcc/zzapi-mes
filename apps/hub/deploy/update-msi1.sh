@@ -3,14 +3,13 @@
 # Run from repo root:  bash apps/hub/deploy/update-msi1.sh
 #
 # What this does:
-#   1. Backs up the current build (for rollback)
-#   2. Stops the nssm service
-#   3. Clears the old repo on msi-1
-#   4. Copies the local repo via scp
-#   5. Runs pnpm install + build on msi-1
-#   6. Runs DB migration (idempotent)
-#   7. Starts the service
-#   8. Verifies healthz
+#   1. Stops the nssm service
+#   2. Backs up the current build (for rollback)
+#   3. Copies the local repo via tar+scp (avoids rsync Windows path issues)
+#   4. Runs pnpm install + build + spec:gen on msi-1
+#   5. Runs DB migration (idempotent)
+#   6. Starts the service
+#   7. Verifies /healthz, /docs, /openapi.json
 #
 # Rollback: if the new build fails to start, re-run with --rollback:
 #   bash apps/hub/deploy/update-msi1.sh --rollback
@@ -22,6 +21,7 @@ REMOTE_DIR="C:/Users/karlchow/code/zzapi-mes"
 BACKUP_DIR="C:/Users/karlchow/code/zzapi-mes-prev"
 NSSM="C:\\Windows\\nssm.exe"
 SERVICE="zzapi-mes-hub"
+TAR_FILE="/tmp/zzapi-mes-deploy.tar"
 
 # --- nssm pre-flight check ---
 if ! ssh $HOST "powershell -Command \"Test-Path '$NSSM'\"" | grep -q "True"; then
@@ -82,31 +82,27 @@ wait_for_service stop 10 || true
 echo "=== Backing up current build ==="
 ssh $HOST "powershell -Command \"Remove-Item -Recurse -Force '$BACKUP_DIR' -ErrorAction SilentlyContinue; Move-Item -Force '$REMOTE_DIR' '$BACKUP_DIR'; Write-Output 'Backup saved'\""
 
-echo "=== Clearing old repo on $HOST ==="
-ssh $HOST "powershell -Command \"Remove-Item -Recurse -Force '$REMOTE_DIR' -ErrorAction SilentlyContinue; Write-Output 'Cleared'\""
+echo "=== Creating target directory ==="
+ssh $HOST "powershell -Command \"New-Item -ItemType Directory -Force -Path '$REMOTE_DIR' | Out-Null; Write-Output 'Dir ready'\""
 
 echo "=== Copying repo to $HOST ==="
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-# Use rsync with --exclude to avoid copying .git, node_modules, and other
-# non-essential files that bloat transfer, leak git history, or may copy
-# .env with secrets. Falls back to scp if rsync unavailable.
-if command -v rsync >/dev/null 2>&1; then
-  rsync -az --delete \
-    --exclude '.git' \
-    --exclude 'node_modules' \
-    --exclude 'dist' \
-    --exclude '.env' \
-    --exclude '.env.local' \
-    --exclude '.DS_Store' \
-    --exclude '*.db' \
-    --exclude '*.db-wal' \
-    --exclude '*.db-shm' \
-    --exclude '.claude' \
-    "$REPO_ROOT/" "$HOST:$REMOTE_DIR/"
-else
-  echo "Warning: rsync not found, falling back to scp (copies .git, node_modules)" >&2
-  scp -r "$REPO_ROOT" "$HOST:$REMOTE_DIR"
-fi
+# Use tar+scp instead of rsync — rsync fails on Windows paths with msi-1
+tar cf "$TAR_FILE" \
+  --exclude='.git' \
+  --exclude='node_modules' \
+  --exclude='dist' \
+  --exclude='.env' \
+  --exclude='.env.local' \
+  --exclude='.DS_Store' \
+  --exclude='*.db' \
+  --exclude='*.db-wal' \
+  --exclude='*.db-shm' \
+  --exclude='.claude' \
+  -C "$REPO_ROOT" .
+scp "$TAR_FILE" "$HOST:$REMOTE_DIR/"
+ssh $HOST "powershell -Command \"Set-Location '$REMOTE_DIR'; tar xf $(basename $TAR_FILE); Remove-Item $(basename $TAR_FILE); Write-Output 'Extracted'\""
+rm -f "$TAR_FILE"
 
 echo "=== Installing dependencies and building on $HOST ==="
 ssh $HOST "powershell -Command \"\$env:CI='true'; Set-Location '$REMOTE_DIR'; pnpm install 2>&1 | Select-Object -Last 3; pnpm build 2>&1 | Select-Object -Last 3\""
@@ -118,8 +114,14 @@ echo "=== Starting service on $HOST ==="
 ssh $HOST "powershell -Command \"& '$NSSM' start $SERVICE 2>&1\""
 wait_for_service start 15 || true
 
-echo "=== Verifying healthz ==="
+echo "=== Verifying /healthz ==="
 ssh $HOST "powershell -Command \"(Invoke-WebRequest -Uri 'http://localhost:8080/healthz' -UseBasicParsing).Content\""
+
+echo "=== Verifying /docs ==="
+ssh $HOST "powershell -Command \"try { (Invoke-WebRequest -Uri 'http://localhost:8080/docs' -UseBasicParsing).StatusCode } catch { 'FAIL' }\""
+
+echo "=== Verifying /openapi.json ==="
+ssh $HOST "powershell -Command \"try { (Invoke-WebRequest -Uri 'http://localhost:8080/openapi.json' -UseBasicParsing).Content.Substring(0,50) } catch { 'FAIL' }\""
 
 echo ""
 echo "Update complete. Hub is running on $HOST."

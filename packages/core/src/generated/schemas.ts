@@ -17,11 +17,22 @@ const PoResponse = z
 const TokenResponse = z
   .object({ token: z.string(), expires_in: z.number().int() })
   .passthrough();
-const HealthzResponse = z
+const PoFriendlyData = z
   .object({
-    ok: z.boolean(),
-    error: z.string().optional(),
-    sap: z.string().optional(),
+    purchaseOrderNumber: z.string().max(10),
+    createdAt: z.string(),
+    vendorNumber: z.string().max(10),
+    deliveryDate: z.string(),
+  })
+  .passthrough();
+const PoFriendlyResponse = z
+  .object({
+    data: PoFriendlyData,
+    _links: z
+      .object({ self: z.string(), items: z.string() })
+      .partial()
+      .passthrough(),
+    _source: PoResponse.optional(),
   })
   .passthrough();
 const ProdOrderOperation = z
@@ -124,6 +135,196 @@ const WorkCenterResponse = z
     kostl: z.string().max(10).optional(),
   })
   .passthrough();
+const ProdOrderFriendlyData = z
+  .object({
+    productionOrderNumber: z.string().max(12),
+    orderType: z.string().max(4),
+    plant: z.string().max(4),
+    materialNumber: z.string().max(18),
+    totalQuantity: z.number(),
+    baseUnit: z.string().max(3).optional(),
+    scheduledStartDate: z.string(),
+    scheduledFinishDate: z.string(),
+    operations: z
+      .array(
+        z
+          .object({
+            operationNumber: z.string(),
+            operationDescription: z.string(),
+            workCenterId: z.string(),
+            standardValue: z.number(),
+          })
+          .partial()
+          .passthrough()
+      )
+      .optional(),
+    components: z
+      .array(
+        z
+          .object({
+            materialNumber: z.string(),
+            requiredQuantity: z.number(),
+            unit: z.string(),
+            plant: z.string(),
+            storageLocation: z.string(),
+          })
+          .partial()
+          .passthrough()
+      )
+      .optional(),
+  })
+  .passthrough();
+const ProdOrderFriendlyResponse = z
+  .object({
+    data: ProdOrderFriendlyData,
+    _links: z.object({ self: z.string() }).partial().passthrough(),
+    _source: ProdOrderResponse.optional(),
+  })
+  .passthrough();
+const MaterialFriendlyData = z
+  .object({
+    materialNumber: z.string().max(18),
+    materialType: z.string().max(4),
+    description: z.string().optional(),
+    baseUnit: z.string().max(3),
+    plant: z.string().max(4).optional(),
+    mrpController: z.string().max(3).optional(),
+  })
+  .passthrough();
+const MaterialFriendlyResponse = z
+  .object({
+    data: MaterialFriendlyData,
+    _links: z
+      .object({ self: z.string(), stock: z.string() })
+      .partial()
+      .passthrough(),
+    _source: MaterialResponse.optional(),
+  })
+  .passthrough();
+const StockFriendlyData = z
+  .object({
+    materialNumber: z.string().max(18),
+    plant: z.string().max(4),
+    storageLocations: z
+      .array(
+        z
+          .object({
+            storageLocation: z.string(),
+            batchNumber: z.string(),
+            unrestrictedStock: z.number(),
+            availableQuantity: z.number(),
+            createdDate: z.string(),
+          })
+          .partial()
+          .passthrough()
+      )
+      .optional(),
+  })
+  .passthrough();
+const StockFriendlyResponse = z
+  .object({
+    data: StockFriendlyData,
+    _links: z
+      .object({ self: z.string(), material: z.string() })
+      .partial()
+      .passthrough(),
+    _source: StockResponse.optional(),
+  })
+  .passthrough();
+const PoItemFriendlyData = z
+  .object({
+    itemNumber: z.string(),
+    materialNumber: z.string(),
+    description: z.string(),
+    quantity: z.number(),
+    unit: z.string(),
+    netPrice: z.number(),
+    deliveryDate: z.string(),
+    plant: z.string().max(4),
+    companyCode: z.string().max(4),
+    materialType: z.string().max(4),
+    netValue: z.number(),
+    changedDate: z.string(),
+    priceDate: z.string(),
+    purchaseRequisition: z.string().max(10),
+    status: z.string(),
+  })
+  .partial()
+  .passthrough();
+const PoItemScheduleFriendlyData = z
+  .object({
+    itemNumber: z.string(),
+    deliveryDate: z.string(),
+    quantity: z.number(),
+    orderDate: z.string(),
+    goodsReceiptQuantity: z.number(),
+  })
+  .partial()
+  .passthrough();
+const PoItemsFriendlyResponse = z
+  .object({
+    data: z
+      .object({
+        purchaseOrderNumber: z.string(),
+        items: z.array(PoItemFriendlyData),
+        schedule: z.array(PoItemScheduleFriendlyData),
+      })
+      .partial()
+      .passthrough(),
+    _links: z
+      .object({ self: z.string(), purchaseOrder: z.string() })
+      .partial()
+      .passthrough(),
+    _source: PoItemsResponse.optional(),
+  })
+  .passthrough();
+const RoutingFriendlyData = z
+  .object({
+    materialNumber: z.string().max(18),
+    plant: z.string().max(4),
+    taskListGroup: z.string().max(8),
+    groupCounter: z.string().max(2).optional(),
+    operations: z.array(
+      z
+        .object({
+          operationNumber: z.string(),
+          operationDescription: z.string(),
+          workCenterId: z.string(),
+          standardValue: z.number(),
+          timeUnit: z.string(),
+        })
+        .partial()
+        .passthrough()
+    ),
+  })
+  .passthrough();
+const RoutingFriendlyResponse = z
+  .object({
+    data: RoutingFriendlyData,
+    _links: z
+      .object({ self: z.string(), material: z.string() })
+      .partial()
+      .passthrough(),
+    _source: RoutingResponse.optional(),
+  })
+  .passthrough();
+const WorkCenterFriendlyData = z
+  .object({
+    workCenterId: z.string().max(8),
+    plant: z.string().max(4),
+    description: z.string().optional(),
+    controlKey: z.string().max(4).optional(),
+    capacityId: z.string().max(8).optional(),
+    costCenter: z.string().max(10).optional(),
+  })
+  .passthrough();
+const WorkCenterFriendlyResponse = z
+  .object({
+    data: WorkCenterFriendlyData,
+    _links: z.object({ self: z.string() }).partial().passthrough(),
+    _source: WorkCenterResponse.optional(),
+  })
+  .passthrough();
 const ConfirmationRequest = z.object({
   orderid: z.string().min(1).max(12),
   operation: z.string().min(1).max(4),
@@ -196,13 +397,28 @@ const GoodsIssueResponse = z
     message: z.string().optional(),
   })
   .passthrough();
+const HealthzResponse = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+    sap: z.string().optional(),
+  })
+  .passthrough();
+const FriendlyEnvelope = z
+  .object({
+    data: z.object({}).partial().passthrough(),
+    _links: z.record(z.string()),
+    _source: z.object({}).partial().passthrough().optional(),
+  })
+  .passthrough();
 
 export const schemas = {
   PingResponse,
   ErrorResponse,
   PoResponse,
   TokenResponse,
-  HealthzResponse,
+  PoFriendlyData,
+  PoFriendlyResponse,
   ProdOrderOperation,
   ProdOrderComponent,
   ProdOrderResponse,
@@ -214,12 +430,27 @@ export const schemas = {
   RoutingOperationSchema,
   RoutingResponse,
   WorkCenterResponse,
+  ProdOrderFriendlyData,
+  ProdOrderFriendlyResponse,
+  MaterialFriendlyData,
+  MaterialFriendlyResponse,
+  StockFriendlyData,
+  StockFriendlyResponse,
+  PoItemFriendlyData,
+  PoItemScheduleFriendlyData,
+  PoItemsFriendlyResponse,
+  RoutingFriendlyData,
+  RoutingFriendlyResponse,
+  WorkCenterFriendlyData,
+  WorkCenterFriendlyResponse,
   ConfirmationRequest,
   ConfirmationResponse,
   GoodsReceiptRequest,
   GoodsReceiptResponse,
   GoodsIssueRequest,
   GoodsIssueResponse,
+  HealthzResponse,
+  FriendlyEnvelope,
 };
 
 // Re-export with Schema suffix for consumers that depend on the XxxSchema naming convention

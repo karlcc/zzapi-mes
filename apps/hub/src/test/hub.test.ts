@@ -417,7 +417,7 @@ describe("Protected routes with valid JWT", () => {
 
   it("GET /po/:ebeln proxies to SAP", async () => {
     const token = await validToken();
-    const res = await fetchApi("/po/3010000608", {
+    const res = await fetchApi("/po/3010000608?format=raw", {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 200);
@@ -561,6 +561,168 @@ describe("GET /healthz", () => {
     assert.equal(res.status, 400);
     const body = await res.json() as Record<string, unknown>;
     assert.match(body.error as string, /unknown.*check/i);
+  });
+});
+
+describe("GET /docs and /openapi.json", () => {
+  it("GET /docs returns HTML with ReDoc", async () => {
+    const res = await fetchApi("/docs");
+    assert.equal(res.status, 200);
+    const ct = res.headers.get("content-type") ?? "";
+    assert.ok(ct.includes("text/html"), `expected html, got ${ct}`);
+    const html = await res.text();
+    assert.ok(html.includes("redoc-container"), "should contain ReDoc container");
+    assert.ok(html.includes("cdn.redoc.ly"), "should load ReDoc from CDN");
+  });
+
+  it("GET /openapi.json returns spec as JSON", async () => {
+    const res = await fetchApi("/openapi.json");
+    assert.equal(res.status, 200);
+    const ct = res.headers.get("content-type") ?? "";
+    assert.ok(ct.includes("application/json"), `expected json, got ${ct}`);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(typeof body.openapi === "string" && body.openapi.startsWith("3.0"), `expected OpenAPI 3.0.x, got ${body.openapi}`);
+    assert.ok(body.paths, "spec should have paths");
+  });
+
+  it("GET /docs returns 404 when HUB_NO_DOCS=1", async () => {
+    const orig = process.env.HUB_NO_DOCS;
+    process.env.HUB_NO_DOCS = "1";
+    try {
+      const noDocsDb = new Database(":memory:");
+      runMigrations(noDocsDb);
+      const noDocsApp = createApp(new MockSapClient() as unknown as SapClient, { db: noDocsDb }).app;
+      const res = await noDocsApp.fetch(new Request("http://localhost/docs"));
+      assert.equal(res.status, 404);
+      const res2 = await noDocsApp.fetch(new Request("http://localhost/openapi.json"));
+      assert.equal(res2.status, 404);
+      noDocsDb.close();
+    } finally {
+      if (orig !== undefined) process.env.HUB_NO_DOCS = orig;
+      else delete process.env.HUB_NO_DOCS;
+    }
+  });
+});
+
+describe("Friendly response format (default)", () => {
+  it("GET /po/:ebeln returns friendly envelope", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/po/3010000608", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    // Envelope shape
+    assert.ok("data" in body, "should have data key");
+    assert.ok("_links" in body, "should have _links key");
+    assert.equal("_source" in body, false, "should not have _source by default");
+    // Friendly field names
+    const data = body.data as Record<string, unknown>;
+    assert.equal(data.purchaseOrderNumber, "3010000608");
+    assert.equal(data.createdAt, "2017-03-06");
+    assert.equal(data.vendorNumber, "0000500340");
+    assert.equal(data.deliveryDate, "2017-06-30");
+    // No raw SAP field leaks
+    assert.equal("ebeln" in data, false);
+    assert.equal("aedat" in data, false);
+    // HATEOAS links
+    const links = body._links as Record<string, string>;
+    assert.equal(links.self, "/po/3010000608");
+    assert.equal(links.items, "/po/3010000608/items");
+  });
+
+  it("GET /po/:ebeln with ?include=_source includes raw SAP data", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/po/3010000608?include=_source", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok("_source" in body, "should have _source");
+    const source = body._source as Record<string, unknown>;
+    assert.equal(source.ebeln, "3010000608");
+    assert.equal(source.aedat, "20170306");
+  });
+
+  it("GET /po/:ebeln/items returns friendly envelope with mapped items", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/po/4500000001/items", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok("data" in body);
+    assert.ok("_links" in body);
+    const data = body.data as Record<string, unknown>;
+    assert.equal(data.purchaseOrderNumber, "4500000001");
+    const items = data.items as Array<Record<string, unknown>>;
+    assert.equal(items[0]!.itemNumber, "00010");
+    assert.equal(items[0]!.materialNumber, "10000001");
+    assert.equal(items[0]!.quantity, 100);
+    assert.equal(items[0]!.unit, "EA");
+    // No raw SAP field leaks in items
+    assert.equal("ebelp" in items[0]!, false);
+    assert.equal("mandt" in items[0]!, false);
+    // HATEOAS links
+    const links = body._links as Record<string, string>;
+    assert.equal(links.self, "/po/4500000001/items");
+    assert.equal(links.purchaseOrder, "/po/4500000001");
+  });
+
+  it("GET /prod-order/:aufnr returns friendly envelope", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/prod-order/1000000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    const data = body.data as Record<string, unknown>;
+    assert.equal(data.productionOrderNumber, "1000000");
+    assert.equal(data.orderType, "PP01");
+    assert.equal(data.scheduledStartDate, "2026-04-01");
+    assert.equal(data.scheduledFinishDate, "2026-04-15");
+    assert.equal("aufnr" in data, false);
+  });
+
+  it("GET /material/:matnr returns friendly envelope", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/material/10000001", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    const data = body.data as Record<string, unknown>;
+    assert.equal(data.materialNumber, "10000001");
+    assert.equal(data.materialType, "FERT");
+    assert.equal(data.description, "Test material");
+    assert.equal("matnr" in data, false);
+  });
+
+  it("GET /work-center/:arbpl returns friendly envelope", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/work-center/TURN1?werks=1000", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    const data = body.data as Record<string, unknown>;
+    assert.equal(data.workCenterId, "TURN1");
+    assert.equal(data.controlKey, "PP01");
+    assert.equal("arbpl" in data, false);
+    assert.equal("steus" in data, false);
+  });
+
+  it("GET /po/:ebeln?format=raw returns raw SAP response without envelope", async () => {
+    const token = await validToken();
+    const res = await fetchApi("/po/3010000608?format=raw", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    // Raw format: no envelope, original field names
+    assert.equal("data" in body, false);
+    assert.equal(body.ebeln, "3010000608");
+    assert.equal(body.aedat, "20170306");
   });
 });
 
@@ -837,7 +999,7 @@ describe("Metrics", () => {
 describe("Phase 5A routes", () => {
   it("GET /prod-order/:aufnr proxies to SAP", async () => {
     const token = await validToken();
-    const res = await fetchApi("/prod-order/1000000", {
+    const res = await fetchApi("/prod-order/1000000?format=raw", {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 200);
@@ -847,7 +1009,7 @@ describe("Phase 5A routes", () => {
 
   it("GET /material/:matnr proxies to SAP", async () => {
     const token = await validToken();
-    const res = await fetchApi("/material/10000001", {
+    const res = await fetchApi("/material/10000001?format=raw", {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 200);
@@ -873,7 +1035,7 @@ describe("Phase 5A routes", () => {
 
   it("GET /po/:ebeln/items proxies to SAP", async () => {
     const token = await validToken();
-    const res = await fetchApi("/po/4500000001/items", {
+    const res = await fetchApi("/po/4500000001/items?format=raw", {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 200);
@@ -907,7 +1069,7 @@ describe("Phase 5A routes", () => {
 
   it("GET /work-center/:arbpl with werks proxies to SAP", async () => {
     const token = await validToken();
-    const res = await fetchApi("/work-center/TURN1?werks=1000", {
+    const res = await fetchApi("/work-center/TURN1?werks=1000&format=raw", {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(res.status, 200);

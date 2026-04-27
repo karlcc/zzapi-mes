@@ -267,8 +267,8 @@ describe("E2E integration against mock SAP", () => {
     assert.equal(pingBody.ok, true);
     assert.ok(pingBody.sap_time);
 
-    // 3. PO lookup
-    const poRes = await app.fetch(new Request("http://localhost/po/4500000001", {
+    // 3. PO lookup (format=raw to get raw SAP field names)
+    const poRes = await app.fetch(new Request("http://localhost/po/4500000001?format=raw", {
       headers: { authorization: `Bearer ${token}` },
     }));
     assert.equal(poRes.status, 200);
@@ -291,15 +291,15 @@ describe("E2E integration against mock SAP", () => {
     const healthRes = await app.fetch(new Request("http://localhost/healthz"));
     assert.equal(healthRes.status, 200);
 
-    // 7. Phase 5A endpoints
-    const prodOrderRes = await app.fetch(new Request("http://localhost/prod-order/1000000", {
+    // 7. Phase 5A endpoints (format=raw to check SAP field names directly)
+    const prodOrderRes = await app.fetch(new Request("http://localhost/prod-order/1000000?format=raw", {
       headers: { authorization: `Bearer ${token}` },
     }));
     assert.equal(prodOrderRes.status, 200);
     const prodOrderBody = await prodOrderRes.json() as Record<string, unknown>;
     assert.equal(prodOrderBody.aufnr, "1000000");
 
-    const materialRes = await app.fetch(new Request("http://localhost/material/10000001", {
+    const materialRes = await app.fetch(new Request("http://localhost/material/10000001?format=raw", {
       headers: { authorization: `Bearer ${token}` },
     }));
     assert.equal(materialRes.status, 200);
@@ -316,14 +316,14 @@ describe("E2E integration against mock SAP", () => {
     }));
     assert.equal(poItemsRes.status, 200);
 
-    const routingRes = await app.fetch(new Request("http://localhost/routing/10000001?werks=1000", {
+    const routingRes = await app.fetch(new Request("http://localhost/routing/10000001?werks=1000&format=raw", {
       headers: { authorization: `Bearer ${token}` },
     }));
     assert.equal(routingRes.status, 200);
     const routingBody = await routingRes.json() as Record<string, unknown>;
     assert.equal(routingBody.plnnr, "50000123");
 
-    const wcRes = await app.fetch(new Request("http://localhost/work-center/TURN1?werks=1000", {
+    const wcRes = await app.fetch(new Request("http://localhost/work-center/TURN1?werks=1000&format=raw", {
       headers: { authorization: `Bearer ${token}` },
     }));
     assert.equal(wcRes.status, 200);

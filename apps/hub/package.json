@@ -7,7 +7,9 @@
   "bin": {
     "zzapi-mes-hub-admin": "./dist/admin/cli.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
@@ -24,11 +26,13 @@
     "argon2": "^0.41.0",
     "better-sqlite3": "^11.0.0",
     "hono": "^4.6.0",
+    "js-yaml": "^4.1.1",
     "prom-client": "^15.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.4.0"

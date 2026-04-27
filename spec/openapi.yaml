@@ -146,8 +146,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /healthz:
+  /docs:
     get:
+      operationId: docs
+      summary: Interactive API documentation (ReDoc)
+      description: Self-contained HTML page with inline OpenAPI spec rendered by ReDoc. No authentication required — API docs are discovery docs, not secrets. Disable with `HUB_NO_DOCS=1` env var.
+      security: []
+      responses:
+        "200":
+          description: ReDoc HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: Docs disabled (HUB_NO_DOCS=1) or spec not found
+
+  /openapi.json:
+    get:
+      operationId: openapiJson
+      summary: OpenAPI specification as JSON
+      description: Returns the OpenAPI 3.0 spec as JSON for programmatic access (curl, code generators, etc.). No authentication required. Disable with `HUB_NO_DOCS=1` env var.
+      security: []
+      responses:
+        "200":
+          description: OpenAPI spec JSON
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Docs disabled (HUB_NO_DOCS=1) or spec not found
+
+  /healthz:
       operationId: healthz
       summary: Hub health check
       description: Lightweight probe — checks database connectivity. Add `?check=sap` to also verify SAP reachability (cached for 30s).
@@ -260,13 +291,15 @@ paths:
             maxLength: 10
             pattern: "^[A-Za-z0-9]+$"
           description: Purchasing document number
+        - $ref: "#/components/parameters/FormatParam"
+        - $ref: "#/components/parameters/IncludeParam"
       responses:
         "200":
           description: PO found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PoResponse"
+                $ref: "#/components/schemas/PoFriendlyResponse"
         "401":
           description: Missing or invalid token
           content:
@@ -647,13 +680,15 @@ paths:
             maxLength: 12
             pattern: "^[A-Za-z0-9]+$"
           description: Production order number
+        - $ref: "#/components/parameters/FormatParam"
+        - $ref: "#/components/parameters/IncludeParam"
       responses:
         "200":
           description: Production order found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProdOrderResponse"
+                $ref: "#/components/schemas/ProdOrderFriendlyResponse"
         "401":
           description: Missing or invalid token
           content:
@@ -733,13 +768,15 @@ paths:
             maxLength: 4
             pattern: "^[A-Za-z0-9]+$"
           description: Plant (optional)
+        - $ref: "#/components/parameters/FormatParam"
+        - $ref: "#/components/parameters/IncludeParam"
       responses:
         "200":
           description: Material found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MaterialResponse"
+                $ref: "#/components/schemas/MaterialFriendlyResponse"
         "401":
           description: Missing or invalid token
           content:
@@ -827,13 +864,15 @@ paths:
             maxLength: 4
             pattern: "^[A-Za-z0-9]+$"
           description: Storage location (optional)
+        - $ref: "#/components/parameters/FormatParam"
+        - $ref: "#/components/parameters/IncludeParam"
       responses:
         "200":
           description: Stock data found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StockResponse"
+                $ref: "#/components/schemas/StockFriendlyResponse"
         "401":
           description: Missing or invalid token
           content:
@@ -905,13 +944,15 @@ paths:
             maxLength: 10
             pattern: "^[A-Za-z0-9]+$"
           description: Purchasing document number
+        - $ref: "#/components/parameters/FormatParam"
+        - $ref: "#/components/parameters/IncludeParam"
       responses:
         "200":
           description: PO items found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PoItemsResponse"
+                $ref: "#/components/schemas/PoItemsFriendlyResponse"
         "401":
           description: Missing or invalid token
           content:
@@ -997,13 +1038,15 @@ paths:
             maxLength: 4
             pattern: "^[A-Za-z0-9]+$"
           description: Plant
+        - $ref: "#/components/parameters/FormatParam"
+        - $ref: "#/components/parameters/IncludeParam"
       responses:
         "200":
           description: Routing found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RoutingResponse"
+                $ref: "#/components/schemas/RoutingFriendlyResponse"
         "401":
           description: Missing or invalid token
           content:
@@ -1077,13 +1120,15 @@ paths:
             maxLength: 4
             pattern: "^[A-Za-z0-9]+$"
           description: Plant
+        - $ref: "#/components/parameters/FormatParam"
+        - $ref: "#/components/parameters/IncludeParam"
       responses:
         "200":
           description: Work center found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkCenterResponse"
+                $ref: "#/components/schemas/WorkCenterFriendlyResponse"
         "401":
           description: Missing or invalid token
           content:
@@ -1694,6 +1739,25 @@ components:
       description: Echoed on every response — UUID v4 auto-generated if not provided, or client-supplied (8-64 alphanumeric/hyphen/underscore chars)
       schema:
         type: string
+
+    FormatParam:
+      name: format
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [friendly, raw]
+        default: friendly
+      description: "Response format. `friendly` (default) returns human-readable field names in a `{data, _links}` envelope. `raw` returns original SAP field names without transformation."
+
+    IncludeParam:
+      name: include
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [_source]
+      description: "Include original SAP response under `_source` (only with friendly format). Use `?include=_source` for traceability."
 
   headers:
     XRequestId:
@@ -2342,3 +2406,508 @@ components:
           type: string
           description: Additional info
           example: "Goods issue posted"
+
+    # -----------------------------------------------------------------
+    # Friendly response schemas (hub transform layer)
+    # -----------------------------------------------------------------
+
+    FriendlyEnvelope:
+      type: object
+      required: [data, _links]
+      properties:
+        data:
+          type: object
+          description: Transformed response with human-readable field names and ISO 8601 dates
+        _links:
+          type: object
+          additionalProperties:
+            type: string
+          description: HATEOAS links to related resources
+        _source:
+          type: object
+          description: Original SAP response (included only when `?include=_source`)
+
+    PoFriendlyData:
+      type: object
+      required: [purchaseOrderNumber, createdAt, vendorNumber, deliveryDate]
+      properties:
+        purchaseOrderNumber:
+          type: string
+          maxLength: 10
+          description: Purchasing document number
+          example: "3010000608"
+        createdAt:
+          type: string
+          format: date
+          description: Creation date (ISO 8601)
+          example: "2017-03-06"
+        vendorNumber:
+          type: string
+          maxLength: 10
+          description: Vendor account number
+          example: "0000500340"
+        deliveryDate:
+          type: string
+          format: date
+          description: Delivery date (ISO 8601)
+          example: "2017-06-30"
+
+    PoFriendlyResponse:
+      type: object
+      required: [data, _links]
+      properties:
+        data:
+          $ref: "#/components/schemas/PoFriendlyData"
+        _links:
+          type: object
+          properties:
+            self:
+              type: string
+              example: "/po/3010000608"
+            items:
+              type: string
+              example: "/po/3010000608/items"
+        _source:
+          $ref: "#/components/schemas/PoResponse"
+
+    PoItemFriendlyData:
+      type: object
+      properties:
+        itemNumber:
+          type: string
+          description: PO item number
+          example: "00010"
+        materialNumber:
+          type: string
+          description: Material number
+          example: "10000001"
+        description:
+          type: string
+          description: Short text
+          example: "Raw material X"
+        quantity:
+          type: number
+          description: Order quantity
+          example: 100
+        unit:
+          type: string
+          description: Unit of measure
+          example: "EA"
+        netPrice:
+          type: number
+          description: Net price per unit
+          example: 12.50
+        deliveryDate:
+          type: string
+          format: date
+          description: Item delivery date (ISO 8601)
+          example: "2017-06-30"
+        plant:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        companyCode:
+          type: string
+          maxLength: 4
+          description: Company code
+          example: "1000"
+        materialType:
+          type: string
+          maxLength: 4
+          description: Material type
+          example: "Z020"
+        netValue:
+          type: number
+          description: Net value of item
+          example: 113332
+        changedDate:
+          type: string
+          format: date
+          description: Last changed date (ISO 8601)
+          example: "2018-02-09"
+        priceDate:
+          type: string
+          format: date
+          description: Pricing date (ISO 8601)
+          example: "2017-03-06"
+        purchaseRequisition:
+          type: string
+          maxLength: 10
+          description: Purchase requisition number
+          example: "1900007474"
+        status:
+          type: string
+          description: Item status
+          example: "F"
+
+    PoItemScheduleFriendlyData:
+      type: object
+      properties:
+        itemNumber:
+          type: string
+          description: PO item number
+          example: "20"
+        deliveryDate:
+          type: string
+          format: date
+          description: Schedule line delivery date (ISO 8601)
+          example: "2017-06-30"
+        quantity:
+          type: number
+          description: Scheduled quantity
+          example: 2
+        orderDate:
+          type: string
+          format: date
+          description: Order date (ISO 8601)
+          example: "2017-03-06"
+        goodsReceiptQuantity:
+          type: number
+          description: Goods receipt quantity
+          example: 2
+
+    PoItemsFriendlyResponse:
+      type: object
+      required: [data, _links]
+      properties:
+        data:
+          type: object
+          properties:
+            purchaseOrderNumber:
+              type: string
+              example: "3010000608"
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/PoItemFriendlyData"
+            schedule:
+              type: array
+              items:
+                $ref: "#/components/schemas/PoItemScheduleFriendlyData"
+        _links:
+          type: object
+          properties:
+            self:
+              type: string
+              example: "/po/3010000608/items"
+            purchaseOrder:
+              type: string
+              example: "/po/3010000608"
+        _source:
+          $ref: "#/components/schemas/PoItemsResponse"
+
+    ProdOrderFriendlyData:
+      type: object
+      required: [productionOrderNumber, orderType, plant, materialNumber, totalQuantity, scheduledStartDate, scheduledFinishDate]
+      properties:
+        productionOrderNumber:
+          type: string
+          maxLength: 12
+          description: Production order number
+          example: "1000000"
+        orderType:
+          type: string
+          maxLength: 4
+          description: Order type
+          example: "PP01"
+        plant:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        materialNumber:
+          type: string
+          maxLength: 18
+          description: Material number
+          example: "10000001"
+        totalQuantity:
+          type: number
+          description: Total order quantity
+          example: 1000
+        baseUnit:
+          type: string
+          maxLength: 3
+          description: Base unit of measure
+          example: "EA"
+        scheduledStartDate:
+          type: string
+          format: date
+          description: Scheduled start date (ISO 8601)
+          example: "2026-04-01"
+        scheduledFinishDate:
+          type: string
+          format: date
+          description: Scheduled finish date (ISO 8601)
+          example: "2026-04-15"
+        operations:
+          type: array
+          items:
+            type: object
+            properties:
+              operationNumber:
+                type: string
+                example: "0010"
+              operationDescription:
+                type: string
+                example: "Turning"
+              workCenterId:
+                type: string
+                example: "TURN1"
+              standardValue:
+                type: number
+                example: 2.5
+        components:
+          type: array
+          items:
+            type: object
+            properties:
+              materialNumber:
+                type: string
+                example: "20000001"
+              requiredQuantity:
+                type: number
+                example: 500
+              unit:
+                type: string
+                example: "EA"
+              plant:
+                type: string
+                example: "1000"
+              storageLocation:
+                type: string
+                example: "0001"
+
+    ProdOrderFriendlyResponse:
+      type: object
+      required: [data, _links]
+      properties:
+        data:
+          $ref: "#/components/schemas/ProdOrderFriendlyData"
+        _links:
+          type: object
+          properties:
+            self:
+              type: string
+              example: "/prod-order/1000000"
+        _source:
+          $ref: "#/components/schemas/ProdOrderResponse"
+
+    MaterialFriendlyData:
+      type: object
+      required: [materialNumber, materialType, baseUnit]
+      properties:
+        materialNumber:
+          type: string
+          maxLength: 18
+          description: Material number
+          example: "10000001"
+        materialType:
+          type: string
+          maxLength: 4
+          description: Material type
+          example: "FERT"
+        description:
+          type: string
+          description: Material description
+          example: "Finished product A"
+        baseUnit:
+          type: string
+          maxLength: 3
+          description: Base unit of measure
+          example: "EA"
+        plant:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        mrpController:
+          type: string
+          maxLength: 3
+          description: MRP controller
+          example: "001"
+
+    MaterialFriendlyResponse:
+      type: object
+      required: [data, _links]
+      properties:
+        data:
+          $ref: "#/components/schemas/MaterialFriendlyData"
+        _links:
+          type: object
+          properties:
+            self:
+              type: string
+              example: "/material/10000001"
+            stock:
+              type: string
+              example: "/stock/10000001"
+        _source:
+          $ref: "#/components/schemas/MaterialResponse"
+
+    StockFriendlyData:
+      type: object
+      required: [materialNumber, plant]
+      properties:
+        materialNumber:
+          type: string
+          maxLength: 18
+          description: Material number
+          example: "10000001"
+        plant:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        storageLocations:
+          type: array
+          description: Stock by storage location
+          items:
+            type: object
+            properties:
+              storageLocation:
+                type: string
+                example: "0001"
+              batchNumber:
+                type: string
+                example: "BATCH001"
+              unrestrictedStock:
+                type: number
+                example: 250
+              availableQuantity:
+                type: number
+                example: 200
+              createdDate:
+                type: string
+                format: date
+                example: "2009-03-20"
+
+    StockFriendlyResponse:
+      type: object
+      required: [data, _links]
+      properties:
+        data:
+          $ref: "#/components/schemas/StockFriendlyData"
+        _links:
+          type: object
+          properties:
+            self:
+              type: string
+              example: "/stock/10000001"
+            material:
+              type: string
+              example: "/material/10000001"
+        _source:
+          $ref: "#/components/schemas/StockResponse"
+
+    RoutingFriendlyData:
+      type: object
+      required: [materialNumber, plant, taskListGroup, operations]
+      properties:
+        materialNumber:
+          type: string
+          maxLength: 18
+          description: Material number
+          example: "10000001"
+        plant:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        taskListGroup:
+          type: string
+          maxLength: 8
+          description: Task list group
+          example: "50000123"
+        groupCounter:
+          type: string
+          maxLength: 2
+          description: Group counter
+          example: "01"
+        operations:
+          type: array
+          items:
+            type: object
+            properties:
+              operationNumber:
+                type: string
+                example: "0010"
+              operationDescription:
+                type: string
+                example: "Turning"
+              workCenterId:
+                type: string
+                example: "TURN1"
+              standardValue:
+                type: number
+                example: 2.5
+              timeUnit:
+                type: string
+                example: "H"
+
+    RoutingFriendlyResponse:
+      type: object
+      required: [data, _links]
+      properties:
+        data:
+          $ref: "#/components/schemas/RoutingFriendlyData"
+        _links:
+          type: object
+          properties:
+            self:
+              type: string
+              example: "/routing/10000001"
+            material:
+              type: string
+              example: "/material/10000001"
+        _source:
+          $ref: "#/components/schemas/RoutingResponse"
+
+    WorkCenterFriendlyData:
+      type: object
+      required: [workCenterId, plant]
+      properties:
+        workCenterId:
+          type: string
+          maxLength: 8
+          description: Work center
+          example: "TURN1"
+        plant:
+          type: string
+          maxLength: 4
+          description: Plant
+          example: "1000"
+        description:
+          type: string
+          description: Work center description
+          example: "CNC Turning Center"
+        controlKey:
+          type: string
+          maxLength: 4
+          description: Control key
+          example: "PP01"
+        capacityId:
+          type: string
+          maxLength: 8
+          description: Capacity ID
+          example: "10000001"
+        costCenter:
+          type: string
+          maxLength: 10
+          description: Cost center
+          example: "10001000"
+
+    WorkCenterFriendlyResponse:
+      type: object
+      required: [data, _links]
+      properties:
+        data:
+          $ref: "#/components/schemas/WorkCenterFriendlyData"
+        _links:
+          type: object
+          properties:
+            self:
+              type: string
+              example: "/work-center/TURN1"
+        _source:
+          $ref: "#/components/schemas/WorkCenterResponse"

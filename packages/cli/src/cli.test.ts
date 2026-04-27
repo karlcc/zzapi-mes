@@ -450,7 +450,7 @@ describe("CLI", () => {
     it("po command prints result on success", async () => {
       await startMockHub((url) => {
         if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
-        return { status: 200, body: { ebeln: "3010000608", aedat: "20170306", lifnr: "0000500340", eindt: "20170630" } };
+        return { status: 200, body: { data: { purchaseOrderNumber: "3010000608", createdAt: "2017-03-06", vendorNumber: "0000500340", deliveryDate: "2017-06-30" }, _links: { self: "/po/3010000608", items: "/po/3010000608/items" } } };
       });
       const { stdout, code } = await run(
         ["--mode", "hub", "po", "3010000608"],
@@ -458,13 +458,13 @@ describe("CLI", () => {
       );
       assert.equal(code, 0);
       const parsed = JSON.parse(stdout);
-      assert.equal(parsed.ebeln, "3010000608");
+      assert.equal(parsed.purchaseOrderNumber, "3010000608");
     });
 
     it("prod-order command prints result on success", async () => {
       await startMockHub((url) => {
         if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
-        return { status: 200, body: { aufnr: "1000000", auart: "PP01", werks: "1000", matnr: "10000001", gamng: 1000, gstrp: "20260401", gltrp: "20260415" } };
+        return { status: 200, body: { data: { productionOrderNumber: "1000000", orderType: "PP01", plant: "1000", materialNumber: "10000001", totalQuantity: 1000, scheduledStartDate: "2026-04-01", scheduledFinishDate: "2026-04-15" }, _links: { self: "/prod-order/1000000" } } };
       });
       const { stdout, code } = await run(
         ["--mode", "hub", "prod-order", "1000000"],
@@ -472,13 +472,13 @@ describe("CLI", () => {
       );
       assert.equal(code, 0);
       const parsed = JSON.parse(stdout);
-      assert.equal(parsed.aufnr, "1000000");
+      assert.equal(parsed.productionOrderNumber, "1000000");
     });
 
     it("material command prints result on success", async () => {
       await startMockHub((url) => {
         if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
-        return { status: 200, body: { matnr: "10000001", mtart: "FERT", meins: "EA", maktx: "Test material" } };
+        return { status: 200, body: { data: { materialNumber: "10000001", materialType: "FERT", baseUnit: "EA", description: "Test material" }, _links: { self: "/material/10000001", stock: "/stock/10000001" } } };
       });
       const { stdout, code } = await run(
         ["--mode", "hub", "material", "10000001"],
@@ -486,13 +486,13 @@ describe("CLI", () => {
       );
       assert.equal(code, 0);
       const parsed = JSON.parse(stdout);
-      assert.equal(parsed.matnr, "10000001");
+      assert.equal(parsed.materialNumber, "10000001");
     });
 
     it("stock command prints result on success", async () => {
       await startMockHub((url) => {
         if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
-        return { status: 200, body: { matnr: "10000001", werks: "1000", items: [{ lgort: "0001", clabs: 250, avail_qty: 200 }] } };
+        return { status: 200, body: { data: { materialNumber: "10000001", plant: "1000", storageLocations: [{ storageLocation: "0001", unrestrictedStock: 250, availableQuantity: 200 }] }, _links: { self: "/stock/10000001", material: "/material/10000001" } } };
       });
       const { stdout, code } = await run(
         ["--mode", "hub", "stock", "10000001", "--werks", "1000"],
@@ -500,13 +500,13 @@ describe("CLI", () => {
       );
       assert.equal(code, 0);
       const parsed = JSON.parse(stdout);
-      assert.equal(parsed.werks, "1000");
+      assert.equal(parsed.plant, "1000");
     });
 
     it("routing command prints result on success", async () => {
       await startMockHub((url) => {
         if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
-        return { status: 200, body: { matnr: "10000001", werks: "1000", plnnr: "50000123", operations: [{ vornr: "0010", ltxa1: "Turning" }] } };
+        return { status: 200, body: { data: { materialNumber: "10000001", plant: "1000", taskListGroup: "50000123", operations: [{ operationNumber: "0010", operationDescription: "Turning" }] }, _links: { self: "/routing/10000001", material: "/material/10000001" } } };
       });
       const { stdout, code } = await run(
         ["--mode", "hub", "routing", "10000001", "--werks", "1000"],
@@ -514,13 +514,13 @@ describe("CLI", () => {
       );
       assert.equal(code, 0);
       const parsed = JSON.parse(stdout);
-      assert.equal(parsed.plnnr, "50000123");
+      assert.equal(parsed.taskListGroup, "50000123");
     });
 
     it("work-center command prints result on success", async () => {
       await startMockHub((url) => {
         if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
-        return { status: 200, body: { arbpl: "TURN1", werks: "1000", ktext: "CNC Turning Center", steus: "PP01" } };
+        return { status: 200, body: { data: { workCenterId: "TURN1", plant: "1000", description: "CNC Turning Center", controlKey: "PP01" }, _links: { self: "/work-center/TURN1" } } };
       });
       const { stdout, code } = await run(
         ["--mode", "hub", "work-center", "TURN1", "--werks", "1000"],
@@ -528,13 +528,13 @@ describe("CLI", () => {
       );
       assert.equal(code, 0);
       const parsed = JSON.parse(stdout);
-      assert.equal(parsed.arbpl, "TURN1");
+      assert.equal(parsed.workCenterId, "TURN1");
     });
 
     it("po-items command prints result on success", async () => {
       await startMockHub((url) => {
         if (url === "/auth/token") return { status: 200, body: { token: "jwt-test", expires_in: 900 } };
-        return { status: 200, body: { ebeln: "4500000001", items: [{ ebelp: "00010", matnr: "10000001", menge: 100, meins: "EA" }] } };
+        return { status: 200, body: { data: { purchaseOrderNumber: "4500000001", items: [{ itemNumber: "00010", materialNumber: "10000001", quantity: 100, unit: "EA" }] }, _links: { self: "/po/4500000001/items", purchaseOrder: "/po/4500000001" } } };
       });
       const { stdout, code } = await run(
         ["--mode", "hub", "po-items", "4500000001"],
@@ -542,7 +542,7 @@ describe("CLI", () => {
       );
       assert.equal(code, 0);
       const parsed = JSON.parse(stdout);
-      assert.equal(parsed.ebeln, "4500000001");
+      assert.equal(parsed.purchaseOrderNumber, "4500000001");
     });
   });
 });

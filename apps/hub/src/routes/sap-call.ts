@@ -3,6 +3,7 @@ import { ZzapiMesHttpError } from "@zzapi-mes/core";
 import { sapDuration } from "../metrics.js";
 import type { HubVariables } from "../types.js";
 import { writeAudit } from "../db/index.js";
+import { transformResponse, parseTransformOpts } from "../transform/transform.js";
 
 /** Execute a SAP call with timing, metrics, error mapping, and audit logging.
  *  Deduplicates the try/catch + metrics + error mapping across all GET routes. */
@@ -41,7 +42,10 @@ export async function withSapCall<T>(
       }
     }
 
-    return c.json(result);
+    // Transform SAP response: friendly names by default, ?format=raw for legacy
+    const transformOpts = parseTransformOpts((n) => c.req.query(n));
+    const output = transformResponse(result, route, transformOpts);
+    return c.json(output);
   } catch (err) {
     const sapDurationMs = performance.now() - start;
 
