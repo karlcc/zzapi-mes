@@ -926,6 +926,16 @@ describe("HubClient double-401 error hint", () => {
 });
 
 describe("HubClient parseResponse edge cases", () => {
+  it("returns empty object for 204 No Content", async () => {
+    globalThis.fetch = mockFetch((url) => {
+      if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
+      return new Response(null, { status: 204 });
+    });
+    const client = new HubClient({ url: BASE, apiKey: API_KEY });
+    const result = await client.ping();
+    assert.deepStrictEqual(result, {} as PingResponse);
+  });
+
   it("throws ZzapiMesHttpError on non-JSON body", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
