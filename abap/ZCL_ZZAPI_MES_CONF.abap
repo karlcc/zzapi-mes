@@ -117,6 +117,10 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
           REPLACE ALL OCCURRENCES OF ',' IN lv_yield_str WITH '.'.
           lv_scrap_str = lv_scrap.
           REPLACE ALL OCCURRENCES OF ',' IN lv_scrap_str WITH '.'.
+          " scrap=0 produces empty string after CONCATENATE — use '0' instead.
+          IF lv_scrap_str IS INITIAL.
+            lv_scrap_str = '0'.
+          ENDIF.
           CONCATENATE '{"orderid":"' lv_orderid '","operation":"' lv_operation '",'
             '"yield":' lv_yield_str ',"scrap":' lv_scrap_str ','
             '"confNo":"' lv_conf_no '","confCnt":"' lv_conf_cnt '",'
