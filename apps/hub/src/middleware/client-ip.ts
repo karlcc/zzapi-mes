@@ -56,6 +56,67 @@ function normalizeIp(ip: string): string {
   return ip;
 }
 
+/** Parse an IPv4 address into a 32-bit unsigned integer. */
+function ipv4ToUint(ip: string): number | null {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return null;
+  let n = 0;
+  for (const p of parts) {
+    const v = Number(p);
+    if (!Number.isFinite(v) || v < 0 || v > 255 || p !== String(v)) return null;
+    n = (n << 8) | v;
+  }
+  return n >>> 0; // unsigned
+}
+
+/** Check whether `ip` falls within the CIDR range `cidr` (e.g. "10.0.0.0/8"). */
+function isInCidr(ip: string, cidr: string): boolean {
+  const slashIdx = cidr.indexOf("/");
+  if (slashIdx < 0) return false; // not a CIDR
+  const prefixBits = Number(cidr.slice(slashIdx + 1));
+  if (!Number.isFinite(prefixBits) || prefixBits < 0 || prefixBits > 32) return false;
+  const netAddr = cidr.slice(0, slashIdx);
+  const ipNum = ipv4ToUint(normalizeIp(ip));
+  const netNum = ipv4ToUint(normalizeIp(netAddr));
+  if (ipNum === null || netNum === null) return false;
+  if (prefixBits === 0) return true; // /0 matches everything
+  const mask = (~0 << (32 - prefixBits)) >>> 0;
+  return ((ipNum & mask) >>> 0) === ((netNum & mask) >>> 0);
+}
+
+/** Check whether `ip` matches any entry in `trusted` (exact or CIDR). */
+function isTrustedProxy(ip: string, trusted: string[]): boolean {
+  const normalized = normalizeIp(ip);
+  for (const entry of trusted) {
+    if (entry.includes("/")) {
+      if (isInCidr(normalized, entry)) return true;
+    } else if (normalizeIp(entry) === normalized) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Validate HUB_TRUSTED_PROXY entries on startup. Returns an error message
+ * for the first invalid entry, or null if all are valid.
+ */
+export function validateTrustedProxy(entries: string[]): string | null {
+  for (const entry of entries) {
+    if (entry.includes("/")) {
+      const slashIdx = entry.indexOf("/");
+      const netAddr = entry.slice(0, slashIdx);
+      const bits = Number(entry.slice(slashIdx + 1));
+      const normNet = normalizeIp(netAddr);
+      if (ipv4ToUint(normNet) === null) return `invalid CIDR network address: ${entry}`;
+      if (!Number.isFinite(bits) || bits < 0 || bits > 32) return `invalid CIDR prefix length: ${entry}`;
+    } else {
+      if (ipv4ToUint(normalizeIp(entry)) === null) return `invalid IP address: ${entry}`;
+    }
+  }
+  return null;
+}
+
 /**
  * Pure resolver used by the production branch of `getClientIp`. Exported for
  * unit testing the trusted-proxy logic without a real TCP socket.
@@ -66,10 +127,7 @@ export function resolveIpWithPeer(
   xRealIp: string | undefined,
   xForwardedFor: string | undefined,
 ): string {
-  const normalizedPeer = normalizeIp(peer);
-  const normalizedTrusted = trusted.map(normalizeIp);
-
-  if (normalizedTrusted.length > 0 && normalizedPeer && normalizedTrusted.includes(normalizedPeer)) {
+  if (trusted.length > 0 && peer && isTrustedProxy(peer, trusted)) {
     if (xRealIp) return xRealIp.trim();
     if (xForwardedFor) {
       // Use the rightmost (last) X-Forwarded-For entry — it was appended by

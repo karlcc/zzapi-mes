@@ -31,7 +31,7 @@ import { randomBytes } from "node:crypto";
 import type Database from "better-sqlite3";
 import { openDb, runMigrations } from "./db/index.js";
 import { verifyApiKey } from "./auth/verify.js";
-import { getClientIp } from "./middleware/client-ip.js";
+import { getClientIp, validateTrustedProxy } from "./middleware/client-ip.js";
 
 function requireEnv(name: string): string {
   const val = process.env[name];
@@ -75,6 +75,14 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
   _clearAuthBucketsForTest: () => void;
 } {
   const jwtSecret = requireEnvMin("HUB_JWT_SECRET", 16);
+
+  // Validate HUB_TRUSTED_PROXY entries (exact IPs and CIDR) on startup
+  const trustedProxyRaw = (process.env.HUB_TRUSTED_PROXY ?? "").split(",").map(s => s.trim()).filter(Boolean);
+  const proxyErr = validateTrustedProxy(trustedProxyRaw);
+  if (proxyErr) {
+    console.error(`HUB_TRUSTED_PROXY: ${proxyErr}`);
+    process.exit(1);
+  }
   const jwtTtl = process.env.HUB_JWT_TTL_SECONDS !== undefined && process.env.HUB_JWT_TTL_SECONDS !== ""
     ? Number(process.env.HUB_JWT_TTL_SECONDS)
     : 900;

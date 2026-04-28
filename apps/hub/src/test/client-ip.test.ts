@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
-import { getClientIp, isLoopbackPeer, resolveIpWithPeer, isLoopbackAddr } from "../middleware/client-ip.js";
+import { getClientIp, isLoopbackPeer, resolveIpWithPeer, isLoopbackAddr, validateTrustedProxy } from "../middleware/client-ip.js";
 
 // Build a minimal Hono context for testing
 function makeContext(headers: Record<string, string> = {}): unknown {
@@ -165,6 +165,78 @@ describe("resolveIpWithPeer (production branch unit tests)", () => {
     // peer is plain IPv4, trusted list has IPv4-mapped form
     const result = resolveIpWithPeer("10.0.0.1", ["::ffff:10.0.0.1"], "1.2.3.4", undefined);
     assert.equal(result, "1.2.3.4", "plain IPv4 peer should match IPv4-mapped trusted entry");
+  });
+
+  it("matches peer within CIDR range (10.0.0.0/8)", () => {
+    const result = resolveIpWithPeer("10.0.0.1", ["10.0.0.0/8"], "1.2.3.4", undefined);
+    assert.equal(result, "1.2.3.4", "peer in CIDR range should be treated as trusted");
+  });
+
+  it("rejects peer outside CIDR range", () => {
+    const result = resolveIpWithPeer("192.168.1.1", ["10.0.0.0/8"], "1.2.3.4", undefined);
+    assert.equal(result, "192.168.1.1", "peer outside CIDR should not be trusted");
+  });
+
+  it("matches peer within /16 CIDR", () => {
+    const result = resolveIpWithPeer("192.168.5.100", ["192.168.0.0/16"], "1.2.3.4", undefined);
+    assert.equal(result, "1.2.3.4", "peer in /16 CIDR should be trusted");
+  });
+
+  it("rejects peer just outside /16 CIDR boundary", () => {
+    const result = resolveIpWithPeer("192.169.0.1", ["192.168.0.0/16"], "1.2.3.4", undefined);
+    assert.equal(result, "192.169.0.1", "peer just outside /16 should not be trusted");
+  });
+
+  it("mixes exact IPs and CIDR ranges in trusted list", () => {
+    const result = resolveIpWithPeer("172.16.0.5", ["10.0.0.1", "172.16.0.0/12"], "1.2.3.4", undefined);
+    assert.equal(result, "1.2.3.4", "peer matching CIDR entry should be trusted");
+  });
+
+  it("normalizes IPv4-mapped peer before CIDR match", () => {
+    const result = resolveIpWithPeer("::ffff:10.0.0.5", ["10.0.0.0/8"], "1.2.3.4", undefined);
+    assert.equal(result, "1.2.3.4", "IPv4-mapped peer should match plain IPv4 CIDR");
+  });
+
+  it("/32 CIDR matches exact single IP", () => {
+    const result = resolveIpWithPeer("10.0.0.1", ["10.0.0.1/32"], "1.2.3.4", undefined);
+    assert.equal(result, "1.2.3.4", "/32 should match exact IP");
+  });
+});
+
+describe("validateTrustedProxy", () => {
+  it("returns null for valid exact IPs", () => {
+    assert.equal(validateTrustedProxy(["10.0.0.1", "192.168.1.1"]), null);
+  });
+
+  it("returns null for valid CIDR ranges", () => {
+    assert.equal(validateTrustedProxy(["10.0.0.0/8", "192.168.0.0/16"]), null);
+  });
+
+  it("returns null for /32 CIDR", () => {
+    assert.equal(validateTrustedProxy(["10.0.0.1/32"]), null);
+  });
+
+  it("returns null for IPv4-mapped IPv6 exact IP", () => {
+    assert.equal(validateTrustedProxy(["::ffff:10.0.0.1"]), null);
+  });
+
+  it("returns error for invalid IP address", () => {
+    const err = validateTrustedProxy(["not-an-ip"]);
+    assert.ok(err?.includes("invalid IP address"), err ?? "expected error");
+  });
+
+  it("returns error for invalid CIDR prefix length", () => {
+    const err = validateTrustedProxy(["10.0.0.0/33"]);
+    assert.ok(err?.includes("invalid CIDR prefix length"), err ?? "expected error");
+  });
+
+  it("returns error for invalid CIDR network address", () => {
+    const err = validateTrustedProxy(["not-an-ip/8"]);
+    assert.ok(err?.includes("invalid CIDR network address"), err ?? "expected error");
+  });
+
+  it("returns null for empty list", () => {
+    assert.equal(validateTrustedProxy([]), null);
   });
 });
 
