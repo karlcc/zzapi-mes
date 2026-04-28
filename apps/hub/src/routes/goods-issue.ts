@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { SapClient } from "@zzapi-mes/core";
-import { GoodsIssueRequestSchema } from "@zzapi-mes/core";
+import { GoodsIssueRequestSchema, GoodsIssueResponseSchema } from "@zzapi-mes/core";
 import type { HubVariables } from "../types.js";
 import { withWriteBack } from "./write-back.js";
 
@@ -12,6 +12,7 @@ export function createGoodsIssueRouter(sap: SapClient) {
       route: "/goods-issue",
       schema: GoodsIssueRequestSchema,
       fn: (data) => sap.postGoodsIssue(data) as Promise<Record<string, unknown>>,
+      responseSchema: GoodsIssueResponseSchema,
       errorField: "orderid",
     }),
   );
