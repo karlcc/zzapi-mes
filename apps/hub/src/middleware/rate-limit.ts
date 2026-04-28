@@ -13,11 +13,11 @@ const IDLE_TIMEOUT_MS = 10 * 60_000; // Evict buckets idle for 10+ minutes
 // burst of previously-throttled traffic after deployment. This is an accepted
 // trade-off vs. the complexity of persisting buckets to SQLite.
 const buckets = new Map<string, Bucket>();
-let lastSweep = Date.now();
+let lastSweep = performance.now();
 const SWEEP_INTERVAL_MS = 60_000; // Sweep once per minute at most
 
 function getTokens(keyId: string, rpm: number): { allowed: boolean; retryAfter: number } {
-  const now = Date.now();
+  const now = performance.now();
   let bucket = buckets.get(keyId);
 
   if (!bucket) {
@@ -47,7 +47,7 @@ function getTokens(keyId: string, rpm: number): { allowed: boolean; retryAfter: 
 
 /** Remove buckets that haven't been accessed in a while. */
 function sweepIdleBuckets(): void {
-  const now = Date.now();
+  const now = performance.now();
   if (now - lastSweep < SWEEP_INTERVAL_MS) return;
   lastSweep = now;
   for (const [keyId, bucket] of buckets) {
@@ -88,7 +88,7 @@ export const rateLimit = createMiddleware<{ Variables: HubVariables }>(async (c,
 /** Reset in-memory buckets for test isolation. */
 export function _resetBucketsForTest(): void {
   buckets.clear();
-  lastSweep = Date.now();
+  lastSweep = performance.now();
 }
 
 /** Test-only: seed a bucket with a specific lastRefill timestamp (to simulate idle). */
@@ -103,7 +103,11 @@ export function _bucketCountForTest(): number {
 
 /** Test-only: force a sweep regardless of SWEEP_INTERVAL_MS. */
 export function _forceSweepForTest(): void {
-  lastSweep = 0;
+  // Set lastSweep far enough in the past that the throttle check passes.
+  // With performance.now() (monotonic ms since process start), 0 is recent,
+  // not "ancient" like with Date.now(). Use a negative value so
+  // performance.now() - lastSweep is always > SWEEP_INTERVAL_MS.
+  lastSweep = -(SWEEP_INTERVAL_MS + 1);
   sweepIdleBuckets();
 }
 
@@ -115,4 +119,14 @@ export function _trySweepForTest(): void {
 /** Test-only: get lastSweep timestamp. */
 export function _lastSweepForTest(): number {
   return lastSweep;
+}
+
+/** Test-only: set lastSweep timestamp directly (for throttle tests). */
+export function _setLastSweepForTest(value: number): void {
+  lastSweep = value;
+}
+
+/** Test-only: get lastRefill for a specific bucket. */
+export function _lastRefillForTest(keyId: string): number | undefined {
+  return buckets.get(keyId)?.lastRefill;
 }
