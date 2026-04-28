@@ -35,7 +35,6 @@ jobs:
         run: |
           pnpm --filter @zzapi-mes/hub exec node --test --experimental-test-coverage src/test/rate-limit.test.ts 2>&1 || true
       - name: Validate OpenAPI spec
-      - name: Validate OpenAPI spec
         run: npx @redocly/cli lint spec/openapi.yaml --skip-rule security-overwrite-to-more-specific || true
       - name: Dependency audit
         run: pnpm audit --audit-level moderate || true
