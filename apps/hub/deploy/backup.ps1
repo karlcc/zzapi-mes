@@ -17,7 +17,7 @@ if (-not (Get-Command sqlite3.exe -ErrorAction SilentlyContinue)) {
 $Db = if ($env:HUB_DB_PATH) { $env:HUB_DB_PATH } else { 'C:\var\zzapi-mes-hub\hub.db' }
 $BackupDir = if ($env:HUB_BACKUP_DIR) { $env:HUB_BACKUP_DIR } else { 'C:\var\zzapi-mes-hub\backups' }
 
-if (-not (Test-Path $Db)) {
+if (-not (Test-Path -LiteralPath $Db)) {
     Write-Error "database file not found: $Db"
     exit 1
 }
@@ -40,7 +40,12 @@ trap {
 
 New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
 
-& sqlite3.exe $Db ".backup '$Dest'"
+# Quote $Db in single quotes inside the .backup command to handle paths with
+# spaces (e.g. "C:\Program Files\...\hub.db"). Escape any existing single
+# quotes in the path by doubling them (PowerShell single-quote escaping).
+$EscapedDb = $Db -replace "'", "''"
+$EscapedDest = $Dest -replace "'", "''"
+& sqlite3.exe $Db ".backup '$EscapedDest'"
 if ($LASTEXITCODE -ne 0) { throw "sqlite backup failed: exit $LASTEXITCODE" }
 
 $check = & sqlite3.exe $Dest 'PRAGMA integrity_check;'
