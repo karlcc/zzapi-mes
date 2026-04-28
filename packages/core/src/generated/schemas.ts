@@ -339,6 +339,7 @@ const ConfirmationRequest = z.object({
     .string()
     .regex(/^[0-9]{8}$/)
     .optional(),
+  fin_conf: z.enum(["", "X"]).optional(),
 })
   .strict();
 const ConfirmationResponse = z
