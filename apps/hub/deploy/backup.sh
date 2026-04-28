@@ -36,6 +36,14 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
+# Pre-flight: remove stale partial backups from prior crashed runs.
+# A prior run that died mid-gzip leaves a partial .gz that the old cleanup
+# trap can't reach (different timestamp). Remove any uncompressed .db files
+# (shouldn't exist — only .db.gz survives a successful run) and any .gz
+# files from the last 60 seconds (likely from a just-crashed run).
+find "$BACKUP_DIR" -name 'hub-*.db' -delete 2>/dev/null || true
+find "$BACKUP_DIR" -name 'hub-*.db.gz' -mmin -1 -delete 2>/dev/null || true
+
 # Cleanup trap — remove partial backup on exit/err
 cleanup() {
   if [ -f "$DEST" ]; then
@@ -48,6 +56,10 @@ cleanup() {
 trap cleanup EXIT
 
 # Set busy_timeout on the source DB so .backup waits for locks instead of failing
+# Trap SIGPIPE — if output is piped to head/less, sqlite3 may receive SIGPIPE
+# and exit non-zero even though the backup succeeded. Ignore SIGPIPE so the
+# rest of the script (integrity check, gzip) still runs.
+trap '' PIPE
 sqlite3 "$DB" "PRAGMA busy_timeout = 5000;" ".backup '$DEST'"
 
 # Integrity check — any non-'ok' line aborts.
@@ -57,6 +69,15 @@ if ! sqlite3 "$DEST" "PRAGMA integrity_check;" | grep -q '^ok$'; then
 fi
 
 gzip "$DEST"
+
+# Verify compressed integrity — gzip -t checks CRC and decompresses
+# internally; no data is written to disk. If the CRC check fails,
+# the archive is corrupt and the backup is worthless.
+if ! gzip -t "${DEST}.gz"; then
+  echo "compressed backup failed integrity check: ${DEST}.gz" >&2
+  rm -f "${DEST}.gz"
+  exit 1
+fi
 
 # Remove the trap after successful gzip — we only want cleanup on failure
 trap - EXIT

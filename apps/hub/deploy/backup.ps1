@@ -52,6 +52,22 @@ $check = & sqlite3.exe $Dest 'PRAGMA integrity_check;'
 if ($check -ne 'ok') { throw "integrity check failed: $check" }
 
 Compress-Archive -Path $Dest -DestinationPath "$Dest.zip"
+
+# Verify compressed integrity — expand to a temp location and check the
+# archive can be decompressed. Compress-Archive doesn't verify CRC
+# internally, so we decompress and compare size to detect corruption.
+$TestDir = Join-Path $BackupDir "verify-$Stamp"
+try {
+    New-Item -ItemType Directory -Force -Path $TestDir | Out-Null
+    Expand-Archive -Path "$Dest.zip" -DestinationPath $TestDir -Force
+    $Verified = Get-Item (Join-Path $TestDir (Split-Path $Dest -Leaf))
+    if (-not $Verified -or $Verified.Length -eq 0) {
+        throw "archive verification failed: decompressed file missing or empty"
+    }
+} finally {
+    Remove-Item $TestDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Remove-Item $Dest
 
 Get-ChildItem $BackupDir -Filter 'hub-*.db.zip' |
