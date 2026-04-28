@@ -3757,3 +3757,86 @@ describe("SAP_PING_TIMEOUT_MS validation", () => {
       "validation expression should accept valid integer");
   });
 });
+
+describe("Per-request timeout middleware", () => {
+  it("aborts in-flight SAP call when HUB_SAP_REQUEST_TIMEOUT_MS expires", async () => {
+    // Create a slow mock that delays longer than the timeout
+    const origPing = MockSapClient.prototype.ping;
+    let abortFired = false;
+    MockSapClient.prototype.ping = async function(signal?: AbortSignal) {
+      // Listen for abort to verify signal propagation
+      const p = new Promise<void>((resolve) => {
+        if (signal?.aborted) { abortFired = true; resolve(); return; }
+        const onAbort = () => { abortFired = true; resolve(); };
+        signal?.addEventListener("abort", onAbort, { once: true });
+        // Timeout fallback — if abort never fires, resolve after 5s
+        setTimeout(resolve, 5000);
+      });
+      await p;
+      throw new ZzapiMesHttpError(408, `Request timeout after 50ms`);
+    };
+
+    // Set a very short timeout
+    process.env.HUB_SAP_REQUEST_TIMEOUT_MS = "50";
+    const token = await validToken(["ping"]);
+    try {
+      const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${token}` } });
+      // The 408 from SapClient is mapped to 504 by withSapCall
+      assert.equal(res.status, 504);
+      assert.ok(abortFired, "AbortSignal should have fired on the SAP call");
+    } finally {
+      MockSapClient.prototype.ping = origPing;
+      delete process.env.HUB_SAP_REQUEST_TIMEOUT_MS;
+    }
+  });
+
+  it("passes signal through to GET route SAP calls", async () => {
+    // Verify signal is present on normal (non-timed-out) calls
+    const origGetPo = MockSapClient.prototype.getPo;
+    let signalReceived: AbortSignal | undefined;
+    MockSapClient.prototype.getPo = async function(ebeln: string, opts?: { signal?: AbortSignal }) {
+      signalReceived = opts?.signal;
+      return origGetPo.call(this, ebeln);
+    };
+
+    process.env.HUB_SAP_REQUEST_TIMEOUT_MS = "60000";
+    const token = await validToken(["po"]);
+    try {
+      const res = await fetchApi("/po/3010000608", { headers: { authorization: `Bearer ${token}` } });
+      assert.equal(res.status, 200);
+      assert.ok(signalReceived instanceof AbortSignal, "SapClient should receive an AbortSignal");
+      assert.ok(!signalReceived!.aborted, "Signal should not be aborted on successful call");
+    } finally {
+      MockSapClient.prototype.getPo = origGetPo;
+      delete process.env.HUB_SAP_REQUEST_TIMEOUT_MS;
+    }
+  });
+
+  it("passes signal through to POST route SAP calls", async () => {
+    const origPostConf = MockSapClient.prototype.postConfirmation;
+    let signalReceived: AbortSignal | undefined;
+    MockSapClient.prototype.postConfirmation = async function(data: ConfirmationRequest, signal?: AbortSignal) {
+      signalReceived = signal;
+      return origPostConf.call(this, data);
+    };
+
+    process.env.HUB_SAP_REQUEST_TIMEOUT_MS = "60000";
+    const token = await validToken(["conf"]);
+    try {
+      const res = await fetchApi("/confirmation", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "idempotency-key": `timeout-signal-${Date.now()}`,
+        },
+        body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
+      });
+      assert.equal(res.status, 201);
+      assert.ok(signalReceived instanceof AbortSignal, "SapClient POST should receive an AbortSignal");
+    } finally {
+      MockSapClient.prototype.postConfirmation = origPostConf;
+      delete process.env.HUB_SAP_REQUEST_TIMEOUT_MS;
+    }
+  });
+});

@@ -22,4 +22,5 @@ export type HubVariables = {
   idempotencyKey?: string;
   db?: Database.Database;
   sap?: SapClient;
+  sapSignal?: AbortSignal;
 };

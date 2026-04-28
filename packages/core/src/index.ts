@@ -274,66 +274,66 @@ export class SapClient {
   }
 
   /** Health check — no DB hit, safe for monitoring probes. */
-  async ping(): Promise<PingResponse> {
-    return this.request<PingResponse>({ path: "/sap/bc/zzapi/mes/ping" });
+  async ping(signal?: AbortSignal): Promise<PingResponse> {
+    return this.request<PingResponse>({ path: "/sap/bc/zzapi/mes/ping", signal });
   }
 
   /** Look up a purchase order by ebeln. */
-  async getPo(ebeln: string): Promise<PoResponse> {
-    return this.request<PoResponse>({ path: "/sap/bc/zzapi/mes/handler", params: { ebeln } });
+  async getPo(ebeln: string, opts?: { signal?: AbortSignal }): Promise<PoResponse> {
+    return this.request<PoResponse>({ path: "/sap/bc/zzapi/mes/handler", params: { ebeln }, signal: opts?.signal });
   }
 
   /** Look up a production order by aufnr. */
-  async getProdOrder(aufnr: string): Promise<ProdOrderResponse> {
-    return this.request<ProdOrderResponse>({ path: "/sap/bc/zzapi/mes/prod_order", params: { aufnr } });
+  async getProdOrder(aufnr: string, opts?: { signal?: AbortSignal }): Promise<ProdOrderResponse> {
+    return this.request<ProdOrderResponse>({ path: "/sap/bc/zzapi/mes/prod_order", params: { aufnr }, signal: opts?.signal });
   }
 
   /** Look up material master by matnr, optionally filtered by plant. */
-  async getMaterial(matnr: string, werks?: string): Promise<MaterialResponse> {
+  async getMaterial(matnr: string, werks?: string, opts?: { signal?: AbortSignal }): Promise<MaterialResponse> {
     const params: Record<string, string> = { matnr };
     if (werks) params.werks = werks;
-    return this.request<MaterialResponse>({ path: "/sap/bc/zzapi/mes/material", params });
+    return this.request<MaterialResponse>({ path: "/sap/bc/zzapi/mes/material", params, signal: opts?.signal });
   }
 
   /** Look up stock/availability for a material at a plant. */
-  async getStock(matnr: string, werks: string, lgort?: string): Promise<StockResponse> {
+  async getStock(matnr: string, werks: string, lgort?: string, opts?: { signal?: AbortSignal }): Promise<StockResponse> {
     const params: Record<string, string> = { matnr, werks };
     if (lgort) params.lgort = lgort;
-    return this.request<StockResponse>({ path: "/sap/bc/zzapi/mes/stock", params });
+    return this.request<StockResponse>({ path: "/sap/bc/zzapi/mes/stock", params, signal: opts?.signal });
   }
 
   /** Look up PO line items by ebeln. */
-  async getPoItems(ebeln: string): Promise<PoItemsResponse> {
-    return this.request<PoItemsResponse>({ path: "/sap/bc/zzapi/mes/po_items", params: { ebeln } });
+  async getPoItems(ebeln: string, opts?: { signal?: AbortSignal }): Promise<PoItemsResponse> {
+    return this.request<PoItemsResponse>({ path: "/sap/bc/zzapi/mes/po_items", params: { ebeln }, signal: opts?.signal });
   }
 
   /** Look up routing/recipe for a material at a plant. */
-  async getRouting(matnr: string, werks: string): Promise<RoutingResponse> {
-    return this.request<RoutingResponse>({ path: "/sap/bc/zzapi/mes/routing", params: { matnr, werks } });
+  async getRouting(matnr: string, werks: string, opts?: { signal?: AbortSignal }): Promise<RoutingResponse> {
+    return this.request<RoutingResponse>({ path: "/sap/bc/zzapi/mes/routing", params: { matnr, werks }, signal: opts?.signal });
   }
 
   /** Look up work center details. */
-  async getWorkCenter(arbpl: string, werks: string): Promise<WorkCenterResponse> {
-    return this.request<WorkCenterResponse>({ path: "/sap/bc/zzapi/mes/wc", params: { arbpl, werks } });
+  async getWorkCenter(arbpl: string, werks: string, opts?: { signal?: AbortSignal }): Promise<WorkCenterResponse> {
+    return this.request<WorkCenterResponse>({ path: "/sap/bc/zzapi/mes/wc", params: { arbpl, werks }, signal: opts?.signal });
   }
 
   /** Post a production order confirmation. */
-  async postConfirmation(data: ConfirmationRequest): Promise<ConfirmationResponse> {
-    return this.postRequest<ConfirmationResponse>("/sap/bc/zzapi/mes/conf", ConfirmationRequestSchema.parse(data));
+  async postConfirmation(data: ConfirmationRequest, signal?: AbortSignal): Promise<ConfirmationResponse> {
+    return this.postRequest<ConfirmationResponse>("/sap/bc/zzapi/mes/conf", ConfirmationRequestSchema.parse(data), signal);
   }
 
   /** Post a goods receipt against a purchase order. */
-  async postGoodsReceipt(data: GoodsReceiptRequest): Promise<GoodsReceiptResponse> {
-    return this.postRequest<GoodsReceiptResponse>("/sap/bc/zzapi/mes/gr", GoodsReceiptRequestSchema.parse(data));
+  async postGoodsReceipt(data: GoodsReceiptRequest, signal?: AbortSignal): Promise<GoodsReceiptResponse> {
+    return this.postRequest<GoodsReceiptResponse>("/sap/bc/zzapi/mes/gr", GoodsReceiptRequestSchema.parse(data), signal);
   }
 
   /** Post a goods issue for a production order. */
-  async postGoodsIssue(data: GoodsIssueRequest): Promise<GoodsIssueResponse> {
-    return this.postRequest<GoodsIssueResponse>("/sap/bc/zzapi/mes/gi", GoodsIssueRequestSchema.parse(data));
+  async postGoodsIssue(data: GoodsIssueRequest, signal?: AbortSignal): Promise<GoodsIssueResponse> {
+    return this.postRequest<GoodsIssueResponse>("/sap/bc/zzapi/mes/gi", GoodsIssueRequestSchema.parse(data), signal);
   }
 
-  private async request<T>(opts: { path: string; params?: Record<string, string> }): Promise<T> {
-    const { path, params = {} } = opts;
+  private async request<T>(opts: { path: string; params?: Record<string, string>; signal?: AbortSignal }): Promise<T> {
+    const { path, params = {}, signal: externalSignal } = opts;
     const query = new URLSearchParams({ ...params, "sap-client": String(this.client) });
     const url = `${this.host}${path}?${query}`;
 
@@ -341,6 +341,12 @@ export class SapClient {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
+    // Forward external abort to the internal controller
+    if (externalSignal?.aborted) {
+      controller.abort();
+    } else if (externalSignal) {
+      externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
     const start = performance.now();
 
     let res: Response;
@@ -367,7 +373,7 @@ export class SapClient {
     return this.interpretSapResponse<T>(res);
   }
 
-  private async postRequest<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  private async postRequest<T>(path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
     const query = new URLSearchParams({ "sap-client": String(this.client) });
     const url = `${this.host}${path}?${query}`;
 
@@ -375,6 +381,12 @@ export class SapClient {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
+    // Forward external abort to the internal controller
+    if (signal?.aborted) {
+      controller.abort();
+    } else if (signal) {
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
     const start = performance.now();
 
     let res: Response;

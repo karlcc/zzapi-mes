@@ -17,7 +17,7 @@ export function createWorkCenterRouter(sap: SapClient) {
     }
     const badW = validateParam(c, "werks", werks, 4, "query");
     if (badW) return badW;
-    return withSapCall(c, "/work-center/:arbpl", () => sap.getWorkCenter(arbpl, werks));
+    return withSapCall(c, "/work-center/:arbpl", () => sap.getWorkCenter(arbpl, werks, { signal: c.get("sapSignal") }));
   });
 
   return router;

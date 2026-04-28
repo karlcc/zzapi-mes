@@ -11,7 +11,7 @@ export function createConfirmationRouter(sap: SapClient) {
     withWriteBack(c, {
       route: "/confirmation",
       schema: ConfirmationRequestSchema,
-      fn: (data) => sap.postConfirmation(data) as Promise<Record<string, unknown>>,
+      fn: (data) => sap.postConfirmation(data, c.get("sapSignal")) as Promise<Record<string, unknown>>,
       responseSchema: ConfirmationResponseSchema,
       errorField: "orderid",
     }),

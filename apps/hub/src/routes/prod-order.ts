@@ -11,7 +11,7 @@ export function createProdOrderRouter(sap: SapClient) {
     const aufnr = c.req.param("aufnr");
     const bad = validateParam(c, "aufnr", aufnr, 12);
     if (bad) return bad;
-    return withSapCall(c, "/prod-order/:aufnr", () => sap.getProdOrder(aufnr));
+    return withSapCall(c, "/prod-order/:aufnr", () => sap.getProdOrder(aufnr, { signal: c.get("sapSignal") }));
   });
 
   return router;

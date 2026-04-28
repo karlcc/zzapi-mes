@@ -16,7 +16,7 @@ export function createMaterialRouter(sap: SapClient) {
       const badW = validateParam(c, "werks", werks, 4, "query");
       if (badW) return badW;
     }
-    return withSapCall(c, "/material/:matnr", () => sap.getMaterial(matnr, werks));
+    return withSapCall(c, "/material/:matnr", () => sap.getMaterial(matnr, werks, { signal: c.get("sapSignal") }));
   });
 
   return router;

@@ -22,7 +22,7 @@ export function createStockRouter(sap: SapClient) {
       const badL = validateParam(c, "lgort", lgort, 4, "query");
       if (badL) return badL;
     }
-    return withSapCall(c, "/stock/:matnr", () => sap.getStock(matnr, werks, lgort));
+    return withSapCall(c, "/stock/:matnr", () => sap.getStock(matnr, werks, lgort, { signal: c.get("sapSignal") }));
   });
 
   return router;
