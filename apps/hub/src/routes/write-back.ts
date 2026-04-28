@@ -96,7 +96,6 @@ export async function withWriteBack<T extends z.ZodTypeAny>(
       retryAfter = mapped.retryAfter;
     }
   }
-  }
   const durationMs = performance.now() - start;
 
   // Audit log + idempotency status update in one atomic transaction.
