@@ -247,6 +247,22 @@ describe("POST /auth/token", () => {
     assert.notEqual(payload.jti, payload2.jti, "each token should have unique jti");
   });
 
+  it("issues JWT with explicit HS256 algorithm in header", async () => {
+    // sign() must pin "HS256" explicitly — if Hono changes its default algorithm,
+    // or a future developer mirrors the sign call without the third arg, tokens
+    // silently break or the alg:none trap opens. Verify the issued JWT header.
+    const res = await fetchApi("/auth/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api_key: testKeyPlaintext }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json() as Record<string, unknown>;
+    const parts = (body.token as string).split(".");
+    const header = JSON.parse(atob(parts[0]!));
+    assert.equal(header.alg, "HS256", "JWT header must specify alg=HS256 explicitly");
+  });
+
   it("rejects invalid API key with 401", async () => {
     const res = await fetchApi("/auth/token", {
       method: "POST",

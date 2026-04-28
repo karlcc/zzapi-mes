@@ -396,6 +396,7 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
         aud: "zzapi-mes-hub",
       },
       jwtSecret,
+      "HS256",
     );
     return c.json({ token, expires_in: jwtTtl });
   });
