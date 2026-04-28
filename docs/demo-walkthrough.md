@@ -184,17 +184,18 @@ curl -u "$SAP_USER:$SAP_PASS" \
 
 ## Phase 5B: Write-back Handlers (3 endpoints)
 
-These handlers call SAP BAPIs and support POST only. They require the helper include `ZIZZAPI_MES_EXTRACT_FORMS` (deploy first).
+These handlers call SAP BAPIs and support POST only. They require the helper class `ZCL_ZZAPI_MES_UTILS` (deploy first).
 
-### Helper: Deploy `ZIZZAPI_MES_EXTRACT_FORMS`
+### Helper: Deploy `ZCL_ZZAPI_MES_UTILS`
 
-This ABAP include contains shared form routines used by the write-back handlers.
+This ABAP class provides shared utility methods (e.g. `extract_field`) used by the write-back handlers.
 
-1. Transaction **SE38** (or SE80)
-2. Program name: `ZIZZAPI_MES_EXTRACT_FORMS`
+1. Transaction **SE24**
+2. Class name: `ZCL_ZZAPI_MES_UTILS`
 3. Click **Create**
-4. Paste the code from `abap/ZIZZAPI_MES_EXTRACT_FORMS.abap`
-5. **Activate**
+4. In **Interfaces** tab → add `IF_HTTP_EXTENSION` (required by SE24, methods are static)
+5. In **Methods** tab → paste the methods from `abap/ZCL_ZZAPI_MES_UTILS.abap`
+6. **Activate**
 
 ### Write-back Handler Table
 
@@ -261,7 +262,7 @@ curl -u "$SAP_USER:$SAP_PASS" -X POST \
 | 6 | `ZCL_ZZAPI_MES_PO_ITEMS` | `po_items` | ☐ |
 | 7 | `ZCL_ZZAPI_MES_ROUTING` | `routing` | ☐ |
 | 8 | `ZCL_ZZAPI_MES_WC` | `wc` | ☐ |
-| 9 | `ZIZZAPI_MES_EXTRACT_FORMS` | (include, no SICF) | ☐ |
+| 9 | `ZCL_ZZAPI_MES_UTILS` | (class, no SICF) | ☐ |
 | 10 | `ZCL_ZZAPI_MES_CONF` | `conf` | ☐ |
 | 11 | `ZCL_ZZAPI_MES_GR` | `gr` | ☐ |
 | 12 | `ZCL_ZZAPI_MES_GI` | `gi` | ☐ |
