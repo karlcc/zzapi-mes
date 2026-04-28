@@ -245,6 +245,48 @@ if [[ "$HUB_MODE" != "1" ]]; then
     "${BASE_URL}/sap/bc/zzapi/mes/wc?arbpl=00310211&werks=1000" \
     "200" GET
 
+  # 405 method guard checks for Phase 5A direct SAP endpoints
+  echo ""
+  echo "-- 405 Method Not Allowed (direct SAP) --"
+
+  check "POST /prod_order rejected with 405" \
+    "${BASE_URL}/sap/bc/zzapi/mes/prod_order" \
+    "405" POST \
+    ".error" "Method not allowed"
+
+  check "POST /material rejected with 405" \
+    "${BASE_URL}/sap/bc/zzapi/mes/material" \
+    "405" POST
+
+  check "POST /stock rejected with 405" \
+    "${BASE_URL}/sap/bc/zzapi/mes/stock" \
+    "405" POST
+
+  check "POST /po_items rejected with 405" \
+    "${BASE_URL}/sap/bc/zzapi/mes/po_items" \
+    "405" POST
+
+  check "POST /routing rejected with 405" \
+    "${BASE_URL}/sap/bc/zzapi/mes/routing" \
+    "405" POST
+
+  check "POST /wc rejected with 405" \
+    "${BASE_URL}/sap/bc/zzapi/mes/wc" \
+    "405" POST
+
+  # GET on Phase 5B write-back endpoints should also return 405
+  check "GET /conf rejected with 405" \
+    "${BASE_URL}/sap/bc/zzapi/mes/conf" \
+    "405" GET
+
+  check "GET /gr rejected with 405" \
+    "${BASE_URL}/sap/bc/zzapi/mes/gr" \
+    "405" GET
+
+  check "GET /gi rejected with 405" \
+    "${BASE_URL}/sap/bc/zzapi/mes/gi" \
+    "405" GET
+
   # Phase 5B direct SAP write-back endpoints
   echo ""
   echo "-- Phase 5B: confirmation, goods-receipt, goods-issue (direct) --"
