@@ -6,8 +6,10 @@
  *   keys create --label <str> [--scopes ping,po] [--rate-limit N]
  *   keys list
  *   keys revoke <id>
+ *   keys rotate <id>
+ *   keys delete <id>
  */
-import { openDb, runMigrations, insertKey, listKeys, listKeysPage, countKeys, revokeKey, pruneAuditLog, evictIdempotencyKeys } from "../db/index.js";
+import { openDb, runMigrations, insertKey, listKeys, listKeysPage, countKeys, revokeKey, findById, updateKeyHash, deleteKey, pruneAuditLog, evictIdempotencyKeys } from "../db/index.js";
 import { ALL_SCOPES } from "@zzapi-mes/core";
 import argon2 from "argon2";
 import { randomBytes } from "node:crypto";
@@ -17,6 +19,8 @@ function usage(): never {
   zzapi-mes-hub-admin keys create --label <str> [--scopes ping,po] [--rate-limit N]
   zzapi-mes-hub-admin keys list [--format tsv|json] [--limit N] [--offset N]
   zzapi-mes-hub-admin keys revoke <id>
+  zzapi-mes-hub-admin keys rotate <id>
+  zzapi-mes-hub-admin keys delete <id>
   zzapi-mes-hub-admin audit prune --days <N>
   zzapi-mes-hub-admin idempotency evict --max-age-seconds <N>`);
   process.exit(1);
@@ -163,6 +167,35 @@ async function main(args: string[]): Promise<void> {
         console.log(`Key ${id} revoked.`);
       } else {
         console.error(`Key ${id} not found or already revoked.`);
+        process.exitCode = 1;
+      }
+    } else if (subcommand === "rotate") {
+      const id = args[2];
+      if (!id) usage();
+      const existing = findById(db, id);
+      if (!existing) {
+        console.error(`Key ${id} not found.`);
+        process.exitCode = 1;
+        return;
+      }
+      if (existing.revoked_at !== null) {
+        console.error(`Key ${id} is revoked. Cannot rotate a revoked key.`);
+        process.exitCode = 1;
+        return;
+      }
+      const secret = randomBytes(32).toString("base64url");
+      const plaintext = `${id}.${secret}`;
+      const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+      updateKeyHash(db, id, hash);
+      console.log(plaintext);
+    } else if (subcommand === "delete") {
+      const id = args[2];
+      if (!id) usage();
+      const ok = deleteKey(db, id);
+      if (ok) {
+        console.log(`Key ${id} deleted.`);
+      } else {
+        console.error(`Key ${id} not found.`);
         process.exitCode = 1;
       }
     } else if (command === "audit" && subcommand === "prune") {

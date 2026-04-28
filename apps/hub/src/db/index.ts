@@ -258,6 +258,12 @@ const LIST_KEYS_PAGE = `
   SELECT id, hash, label, scopes, rate_limit_per_min, created_at, revoked_at
   FROM api_keys ORDER BY created_at DESC LIMIT ? OFFSET ?`;
 
+const UPDATE_KEY_HASH = `
+  UPDATE api_keys SET hash = ? WHERE id = ? AND revoked_at IS NULL`;
+
+const DELETE_KEY = `
+  DELETE FROM api_keys WHERE id = ?`;
+
 const REVOKE_KEY = `
   UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`;
 
@@ -324,6 +330,18 @@ export function revokeKey(db: Database.Database, id: string): boolean {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Failed to revoke key '${id}': ${msg}`);
   }
+}
+
+/** Update the hash of an active (non-revoked) key. Returns true if updated. */
+export function updateKeyHash(db: Database.Database, id: string, newHash: string): boolean {
+  const result = db.prepare(UPDATE_KEY_HASH).run(newHash, id);
+  return result.changes > 0;
+}
+
+/** Hard-delete a key. Returns true if deleted. */
+export function deleteKey(db: Database.Database, id: string): boolean {
+  const result = db.prepare(DELETE_KEY).run(id);
+  return result.changes > 0;
 }
 
 // ---------------------------------------------------------------------------

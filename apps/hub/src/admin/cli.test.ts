@@ -299,6 +299,94 @@ describe("Admin CLI", () => {
     });
   });
 
+  describe("keys rotate", () => {
+    it("rotates a key and prints new plaintext", async () => {
+      const { stdout: plaintext1 } = await run(["keys", "create", "--label", "rotate-me"]);
+      const keyId = plaintext1.split(".")[0]!;
+
+      const { stdout: plaintext2, code } = await run(["keys", "rotate", keyId]);
+      assert.equal(code, 0);
+      assert.match(plaintext2, /^[0-9a-f]{12}\./);
+      // New plaintext should differ from old
+      assert.notEqual(plaintext2, plaintext1);
+      // Key ID should be preserved
+      assert.equal(plaintext2.split(".")[0], keyId);
+
+      // Verify old hash is replaced in DB
+      const db = new Database(dbPath);
+      const row = db.prepare("SELECT hash FROM api_keys WHERE id = ?").get(keyId) as { hash: string } | undefined;
+      db.close();
+      assert.ok(row);
+      // New plaintext should verify against the new hash
+      const valid = await argon2.verify(row!.hash, plaintext2);
+      assert.ok(valid, "new plaintext should verify against updated hash");
+    });
+
+    it("reports failure for non-existent key", async () => {
+      const { stderr, code } = await run(["keys", "rotate", "nonexistent"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("not found"), `should report not found: ${stderr}`);
+    });
+
+    it("reports failure for revoked key", async () => {
+      const { stdout: plaintext } = await run(["keys", "create", "--label", "rotate-revoked"]);
+      const keyId = plaintext.split(".")[0]!;
+      await run(["keys", "revoke", keyId]);
+
+      const { stderr, code } = await run(["keys", "rotate", keyId]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("revoked"), `should reject rotation of revoked key: ${stderr}`);
+    });
+
+    it("rejects rotate with no key ID", async () => {
+      const { code } = await run(["keys", "rotate"]);
+      assert.notEqual(code, 0);
+    });
+  });
+
+  describe("keys delete", () => {
+    it("hard-deletes a key", async () => {
+      const { stdout: plaintext } = await run(["keys", "create", "--label", "delete-me"]);
+      const keyId = plaintext.split(".")[0]!;
+
+      const { stdout, code } = await run(["keys", "delete", keyId]);
+      assert.equal(code, 0);
+      assert.ok(stdout.includes("deleted"), `should confirm deletion: ${stdout}`);
+
+      // Verify key no longer in DB
+      const db = new Database(dbPath);
+      const row = db.prepare("SELECT id FROM api_keys WHERE id = ?").get(keyId);
+      db.close();
+      assert.equal(row, undefined, "key should be removed from DB");
+    });
+
+    it("reports failure for non-existent key", async () => {
+      const { stderr, code } = await run(["keys", "delete", "nonexistent"]);
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("not found"), `should report not found: ${stderr}`);
+    });
+
+    it("can delete a revoked key", async () => {
+      const { stdout: plaintext } = await run(["keys", "create", "--label", "del-revoked"]);
+      const keyId = plaintext.split(".")[0]!;
+      await run(["keys", "revoke", keyId]);
+
+      const { stdout, code } = await run(["keys", "delete", keyId]);
+      assert.equal(code, 0);
+      assert.ok(stdout.includes("deleted"));
+
+      const db = new Database(dbPath);
+      const row = db.prepare("SELECT id FROM api_keys WHERE id = ?").get(keyId);
+      db.close();
+      assert.equal(row, undefined);
+    });
+
+    it("rejects delete with no key ID", async () => {
+      const { code } = await run(["keys", "delete"]);
+      assert.notEqual(code, 0);
+    });
+  });
+
   describe("edge cases", () => {
     it("handles unknown command", async () => {
       const { stderr, code } = await run(["bogus"]);
