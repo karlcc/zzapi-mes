@@ -2271,10 +2271,15 @@ describe("JWT rate_limit_per_min type validation", () => {
 
 describe("Idempotency guard DB read failure", () => {
   it("proceeds without idempotency protection when checkIdempotency throws", async () => {
-    // Drop idempotency_keys table to force checkIdempotency to throw
-    db.exec("DROP TABLE idempotency_keys");
+    // Use an isolated DB to avoid flaky interactions with --test-concurrency=2.
+    // Dropping idempotency_keys on the shared module-level `db` can race with
+    // another test's beforeEach which recreates `db`, or with a concurrent
+    // test that depends on the table existing.
+    const isolatedDb = new Database(":memory:");
+    runMigrations(isolatedDb);
+    isolatedDb.exec("DROP TABLE idempotency_keys");
     const token = await validToken(["conf"]);
-    const res = await fetchApi("/confirmation", {
+    const req = new Request("http://localhost/confirmation", {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -2283,11 +2288,13 @@ describe("Idempotency guard DB read failure", () => {
       },
       body: JSON.stringify({ orderid: "1000000", operation: "0010", yield: 50 }),
     });
+    const res = await createApp(new MockSapClient() as unknown as SapClient, { db: isolatedDb }).app.fetch(req);
     // Request should still succeed (SAP call goes through) even though
     // idempotency protection is degraded
     assert.equal(res.status, 201);
     const body = await res.json() as Record<string, unknown>;
     assert.equal(body.status, "confirmed");
+    isolatedDb.close();
   });
 });
 
