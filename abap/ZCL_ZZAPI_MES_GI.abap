@@ -131,13 +131,21 @@ CLASS zcl_zzapi_mes_gi IMPLEMENTATION.
 
         IF lv_has_error = abap_true.
           CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
-          DATA: lt_err_return TYPE TABLE OF bapiret2.
+          " Serialize only TYPE+MESSAGE from bapiret2 — strip SAP internals
+          TYPES: BEGIN OF lty_bapi_msg,
+                   type    TYPE bapiret2-type,
+                   message TYPE bapiret2-message,
+                 END OF lty_bapi_msg.
+          DATA: lt_err_msg TYPE TABLE OF lty_bapi_msg,
+                ls_err_msg TYPE lty_bapi_msg.
           LOOP AT lt_return INTO ls_return WHERE type = 'E' OR type = 'A'.
-            APPEND ls_return TO lt_err_return.
+            ls_err_msg-type    = ls_return-type.
+            ls_err_msg-message = ls_return-message.
+            APPEND ls_err_msg TO lt_err_msg.
           ENDLOOP.
           DATA: lv_err_json TYPE string.
           lv_err_json = zz_cl_json=>serialize(
-            data        = lt_err_return
+            data        = lt_err_msg
             compress    = abap_true
             pretty_name = zz_cl_json=>pretty_mode-camel_case ).
           CONCATENATE '{"orderid":"' lv_orderid '","matnr":"' lv_matnr '","status":"error","errors":' lv_err_json '}'
