@@ -28,6 +28,15 @@ CLASS zcl_zzapi_mes_wc IMPLEMENTATION.
           RETURN.
         ENDIF.
 
+        " Reject special characters — prevents injection for direct SAP callers.
+        IF zcl_zzapi_mes_utils=>is_valid_id( lv_arbpl ) = abap_false
+          OR zcl_zzapi_mes_utils=>is_valid_id( lv_werks ) = abap_false.
+          server->response->set_status( code = 400 reason = 'Bad Request' ).
+          server->response->set_content_type( 'application/json' ).
+          server->response->set_cdata( '{"error":"Invalid characters in query parameter"}' ).
+          RETURN.
+        ENDIF.
+
         " --- Work center header (CRHD) ---
         DATA: ls_crhd TYPE crhd.
         " CRHD uses LVORM (deletion indicator), not LOEKZ

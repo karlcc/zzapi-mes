@@ -5,6 +5,10 @@ CLASS zcl_zzapi_mes_utils DEFINITION
       IMPORTING iv_json  TYPE string
                 iv_field TYPE string
       CHANGING  cv_value TYPE string.
+
+    CLASS-METHODS: is_valid_id
+      IMPORTING iv_value TYPE string
+      RETURNING VALUE(rv_valid) TYPE abap_bool.
 ENDCLASS.
 
 CLASS zcl_zzapi_mes_utils IMPLEMENTATION.
@@ -98,5 +102,33 @@ CLASS zcl_zzapi_mes_utils IMPLEMENTATION.
 
     " No top-level match found
     CLEAR cv_value.
+  ENDMETHOD.
+
+  METHOD is_valid_id.
+    " Validate that a query parameter value contains only safe characters.
+    " Matches hub validateParam: alphanumeric, hyphens, underscores.
+    " Prevents injection and invalid requests from reaching SAP SELECT.
+    IF iv_value IS INITIAL.
+      rv_valid = abap_true.  " Empty is handled by IS INITIAL checks
+      RETURN.
+    ENDIF.
+    DATA: lv_len  TYPE i,
+          lv_pos  TYPE i,
+          lv_char TYPE c.
+    lv_len = strlen( iv_value ).
+    DO lv_len TIMES.
+      lv_pos = sy-index - 1.
+      lv_char = iv_value+lv_pos(1).
+      " Alphanumeric (A-Z, a-z, 0-9), hyphen, underscore only
+      IF NOT ( ( lv_char >= 'A' AND lv_char <= 'Z' )
+            OR ( lv_char >= 'a' AND lv_char <= 'z' )
+            OR ( lv_char >= '0' AND lv_char <= '9' )
+            OR lv_char = '-'
+            OR lv_char = '_' ).
+        rv_valid = abap_false.
+        RETURN.
+      ENDIF.
+    ENDDO.
+    rv_valid = abap_true.
   ENDMETHOD.
 ENDCLASS.

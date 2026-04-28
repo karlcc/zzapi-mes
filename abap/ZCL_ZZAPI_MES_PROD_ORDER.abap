@@ -27,6 +27,14 @@ CLASS zcl_zzapi_mes_prod_order IMPLEMENTATION.
           RETURN.
         ENDIF.
 
+        " Reject special characters — prevents injection for direct SAP callers.
+        IF zcl_zzapi_mes_utils=>is_valid_id( lv_aufnr ) = abap_false.
+          server->response->set_status( code = 400 reason = 'Bad Request' ).
+          server->response->set_content_type( 'application/json' ).
+          server->response->set_cdata( '{"error":"Invalid characters in parameter: aufnr"}' ).
+          RETURN.
+        ENDIF.
+
         " --- Order header ---
         DATA: ls_aufk TYPE aufk,
               ls_afko TYPE afko,
