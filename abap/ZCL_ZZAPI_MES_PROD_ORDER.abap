@@ -44,9 +44,32 @@ CLASS zcl_zzapi_mes_prod_order IMPLEMENTATION.
         SELECT SINGLE * INTO ls_afpo FROM afpo WHERE aufnr = lv_aufnr.
 
         " --- Build header JSON ---
+        " Include AUFK fields (autyp, objnr, erdat) alongside AFKO —
+        " AFKO alone loses order-type/category/timestamp context.
+        DATA: BEGIN OF ls_header,
+                aufnr TYPE aufk-aufnr,
+                autyp TYPE aufk-autyp,
+                objnr TYPE aufk-objnr,
+                erdat TYPE aufk-erdat,
+                aufpl TYPE afko-aufpl,
+                gamng TYPE afko-gamng,
+                gmein TYPE afko-gmein,
+                plnbez TYPE afko-plnbez,
+                plnal TYPE afko-plnal,
+              END OF ls_header.
+        ls_header-aufnr = ls_aufk-aufnr.
+        ls_header-autyp = ls_aufk-autyp.
+        ls_header-objnr = ls_aufk-objnr.
+        ls_header-erdat = ls_aufk-erdat.
+        ls_header-aufpl = ls_afko-aufpl.
+        ls_header-gamng = ls_afko-gamng.
+        ls_header-gmein = ls_afko-gmein.
+        ls_header-plnbez = ls_afko-plnbez.
+        ls_header-plnal = ls_afko-plnal.
+
         DATA: lv_header_json TYPE string.
         lv_header_json = zz_cl_json=>serialize(
-          data        = ls_afko
+          data        = ls_header
           compress    = abap_true
           pretty_name = zz_cl_json=>pretty_mode-camel_case ).
 
