@@ -11,7 +11,7 @@ export function createPoItemsRouter(sap: SapClient) {
     const ebeln = c.req.param("ebeln");
     const bad = validateParam(c, "ebeln", ebeln, 10);
     if (bad) return bad;
-    return withSapCall(c, "/po/:ebeln/items", () => sap.getPoItems(ebeln));
+    return withSapCall(c, "/po/:ebeln/items", () => sap.getPoItems(ebeln, { signal: c.get("sapSignal") }));
   });
 
   return router;

@@ -11,7 +11,7 @@ export function createGoodsIssueRouter(sap: SapClient) {
     withWriteBack(c, {
       route: "/goods-issue",
       schema: GoodsIssueRequestSchema,
-      fn: (data) => sap.postGoodsIssue(data) as Promise<Record<string, unknown>>,
+      fn: (data) => sap.postGoodsIssue(data, c.get("sapSignal")) as Promise<Record<string, unknown>>,
       responseSchema: GoodsIssueResponseSchema,
       errorField: "orderid",
     }),

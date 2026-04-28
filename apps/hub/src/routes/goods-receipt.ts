@@ -11,7 +11,7 @@ export function createGoodsReceiptRouter(sap: SapClient) {
     withWriteBack(c, {
       route: "/goods-receipt",
       schema: GoodsReceiptRequestSchema,
-      fn: (data) => sap.postGoodsReceipt(data) as Promise<Record<string, unknown>>,
+      fn: (data) => sap.postGoodsReceipt(data, c.get("sapSignal")) as Promise<Record<string, unknown>>,
       responseSchema: GoodsReceiptResponseSchema,
       errorField: "ebeln",
     }),

@@ -17,7 +17,7 @@ export function createRoutingRouter(sap: SapClient) {
     }
     const badW = validateParam(c, "werks", werks, 4, "query");
     if (badW) return badW;
-    return withSapCall(c, "/routing/:matnr", () => sap.getRouting(matnr, werks));
+    return withSapCall(c, "/routing/:matnr", () => sap.getRouting(matnr, werks, { signal: c.get("sapSignal") }));
   });
 
   return router;

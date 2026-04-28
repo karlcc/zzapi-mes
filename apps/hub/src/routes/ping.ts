@@ -7,7 +7,7 @@ export function createPingRouter(sap: SapClient) {
   const router = new Hono<{ Variables: HubVariables }>();
 
   router.get("/ping", async (c) =>
-    withSapCall(c, "/ping", () => sap.ping()),
+    withSapCall(c, "/ping", () => sap.ping(c.get("sapSignal"))),
   );
 
   return router;

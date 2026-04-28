@@ -9,6 +9,7 @@ import { requestId } from "./middleware/request-id.js";
 import { securityHeaders } from "./middleware/security-headers.js";
 import { requireJwt, requireScope, methodGuard } from "./middleware/jwt.js";
 import { rateLimit } from "./middleware/rate-limit.js";
+import { sapTimeout } from "./middleware/sap-timeout.js";
 import { metricsMiddleware } from "./middleware/metrics.js";
 import type { HubVariables } from "./types.js";
 import health from "./routes/health.js";
@@ -407,18 +408,18 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
 
   // --- Protected routes (JWT + scope + rate limit) ---
   // GET-only routes: methodGuard rejects non-GET before JWT check
-  app.use("/ping", methodGuard("GET"), requireJwt, requireScope("ping"), rateLimit);
-  app.use("/po/*", methodGuard("GET"), requireJwt, requireScope("po"), rateLimit);
-  app.use("/prod-order/*", methodGuard("GET"), requireJwt, requireScope("prod_order"), rateLimit);
-  app.use("/material/*", methodGuard("GET"), requireJwt, requireScope("material"), rateLimit);
-  app.use("/stock/*", methodGuard("GET"), requireJwt, requireScope("stock"), rateLimit);
-  app.use("/routing/*", methodGuard("GET"), requireJwt, requireScope("routing"), rateLimit);
-  app.use("/work-center/*", methodGuard("GET"), requireJwt, requireScope("work_center"), rateLimit);
+  app.use("/ping", methodGuard("GET"), requireJwt, requireScope("ping"), sapTimeout, rateLimit);
+  app.use("/po/*", methodGuard("GET"), requireJwt, requireScope("po"), sapTimeout, rateLimit);
+  app.use("/prod-order/*", methodGuard("GET"), requireJwt, requireScope("prod_order"), sapTimeout, rateLimit);
+  app.use("/material/*", methodGuard("GET"), requireJwt, requireScope("material"), sapTimeout, rateLimit);
+  app.use("/stock/*", methodGuard("GET"), requireJwt, requireScope("stock"), sapTimeout, rateLimit);
+  app.use("/routing/*", methodGuard("GET"), requireJwt, requireScope("routing"), sapTimeout, rateLimit);
+  app.use("/work-center/*", methodGuard("GET"), requireJwt, requireScope("work_center"), sapTimeout, rateLimit);
 
   // Write-back routes: methodGuard rejects non-POST before JWT/idempotency
-  app.use("/confirmation", methodGuard("POST"), requireJwt, requireScope("conf"), idempotencyGuard, rateLimit);
-  app.use("/goods-receipt", methodGuard("POST"), requireJwt, requireScope("gr"), idempotencyGuard, rateLimit);
-  app.use("/goods-issue", methodGuard("POST"), requireJwt, requireScope("gi"), idempotencyGuard, rateLimit);
+  app.use("/confirmation", methodGuard("POST"), requireJwt, requireScope("conf"), sapTimeout, idempotencyGuard, rateLimit);
+  app.use("/goods-receipt", methodGuard("POST"), requireJwt, requireScope("gr"), sapTimeout, idempotencyGuard, rateLimit);
+  app.use("/goods-issue", methodGuard("POST"), requireJwt, requireScope("gi"), sapTimeout, idempotencyGuard, rateLimit);
   app.route("/", createPingRouter(client));         // GET /ping
   app.route("/", createPoRouter(client));            // GET /po/:ebeln
   app.route("/", createPoItemsRouter(client));       // GET /po/:ebeln/items
