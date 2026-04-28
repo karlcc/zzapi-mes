@@ -247,9 +247,11 @@ Environment (hub mode):
       const yieldIdx = args.indexOf("--yield");
       const yieldQty = yieldIdx !== -1 ? Number(args[yieldIdx + 1]) : die("--yield is required");
       if (!Number.isFinite(yieldQty)) die(`--yield must be a number (got ${args[yieldIdx + 1]})`);
+      if (yieldQty <= 0) die(`--yield must be positive (got ${yieldQty})`);
       const scrapIdx = args.indexOf("--scrap");
       const scrap = scrapIdx !== -1 ? Number(args[scrapIdx + 1]) : undefined;
       if (scrapIdx !== -1 && !Number.isFinite(scrap)) die(`--scrap must be a number (got ${args[scrapIdx + 1]})`);
+      if (scrapIdx !== -1 && scrap! < 0) die(`--scrap must be non-negative (got ${scrap})`);
       const waIdx = args.indexOf("--work-actual");
       const workActual = waIdx !== -1 ? Number(args[waIdx + 1]) : undefined;
       if (waIdx !== -1 && !Number.isFinite(workActual!)) die(`--work-actual must be a number (got ${args[waIdx + 1]})`);
@@ -273,6 +275,7 @@ Environment (hub mode):
       const mengeIdx = args.indexOf("--menge");
       const menge = mengeIdx !== -1 ? Number(args[mengeIdx + 1]) : die("--menge is required");
       if (!Number.isFinite(menge)) die(`--menge must be a number (got ${args[mengeIdx + 1]})`);
+      if (menge <= 0) die(`--menge must be positive (got ${menge})`);
       const werksIdx = args.indexOf("--werks");
       const werks = werksIdx !== -1 ? args[werksIdx + 1]! : die("--werks is required");
       const lgortIdx = args.indexOf("--lgort");
@@ -300,6 +303,7 @@ Environment (hub mode):
       const mengeIdx = args.indexOf("--menge");
       const menge = mengeIdx !== -1 ? Number(args[mengeIdx + 1]) : die("--menge is required");
       if (!Number.isFinite(menge)) die(`--menge must be a number (got ${args[mengeIdx + 1]})`);
+      if (menge <= 0) die(`--menge must be positive (got ${menge})`);
       const werksIdx = args.indexOf("--werks");
       const werks = werksIdx !== -1 ? args[werksIdx + 1]! : die("--werks is required");
       const lgortIdx = args.indexOf("--lgort");
