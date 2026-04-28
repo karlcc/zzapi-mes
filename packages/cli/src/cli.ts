@@ -55,7 +55,7 @@ function readConfig() {
     process.exit(EXIT_AUTH);
   }
 
-  return { host, client, user, password };
+  return { host, client, user, password, csrf: process.env.SAP_CSRF === "1" };
 }
 
 function readHubConfig() {

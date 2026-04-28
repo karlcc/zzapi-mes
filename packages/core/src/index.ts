@@ -100,6 +100,11 @@ export interface SapClientConfig {
   password: string;
   /** Request timeout in ms (default 30000) */
   timeout?: number;
+  /** Enable SAP ICF CSRF token handling for POST requests.
+   *  When true, SapClient fetches a CSRF token via GET before the first POST,
+   *  caches it, and includes it in subsequent POST requests. If SAP returns 403
+   *  (token expired), the token is re-fetched and the POST is retried once. */
+  csrf?: boolean;
   /** Hook called before each SAP request */
   onRequest?: (ctx: { url: string; method: string }) => void;
   /** Hook called after each SAP response */
@@ -255,6 +260,8 @@ export class SapClient {
   private client: number;
   private auth: string;
   private timeout: number;
+  private csrfEnabled: boolean;
+  private csrfToken: string | null = null;
   private onRequest?: SapClientConfig["onRequest"];
   private onResponse?: SapClientConfig["onResponse"];
 
@@ -269,6 +276,7 @@ export class SapClient {
     this.client = config.client;
     this.auth = btoa(`${config.user}:${config.password}`);
     this.timeout = config.timeout ?? 30_000;
+    this.csrfEnabled = config.csrf === true;
     this.onRequest = config.onRequest;
     this.onResponse = config.onResponse;
   }
@@ -373,15 +381,20 @@ export class SapClient {
     return this.interpretSapResponse<T>(res);
   }
 
-  private async postRequest<T>(path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  /** Fetch a CSRF token from SAP by issuing a GET request with the
+   *  X-CSRF-Token: Fetch header. SAP ICF responds with the token in the
+   *  x-csrf-token response header. The token is cached for reuse across
+   *  POST requests. */
+  private async fetchCsrfToken(signal?: AbortSignal): Promise<void> {
+    // Reuse the ping endpoint for CSRF token fetch — any GET endpoint works.
+    const path = "/sap/bc/zzapi/mes/ping";
     const query = new URLSearchParams({ "sap-client": String(this.client) });
     const url = `${this.host}${path}?${query}`;
 
-    this.onRequest?.({ url, method: "POST" });
+    this.onRequest?.({ url, method: "GET" });
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);
-    // Forward external abort to the internal controller
     if (signal?.aborted) {
       controller.abort();
     } else if (signal) {
@@ -392,11 +405,97 @@ export class SapClient {
     let res: Response;
     try {
       res = await fetch(url, {
-        method: "POST",
         headers: {
           Authorization: `Basic ${this.auth}`,
-          "Content-Type": "application/json",
+          "X-CSRF-Token": "Fetch",
         },
+        signal: controller.signal,
+        redirect: "manual",
+      });
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new ZzapiMesHttpError(408, `CSRF token fetch timeout after ${this.timeout}ms`);
+      }
+      if (e instanceof TypeError) {
+        throw new ZzapiMesHttpError(502, `Network error during CSRF fetch: ${(e as TypeError).message}`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
+
+    // If the CSRF fetch itself failed (auth error, etc.), propagate the error
+    if (res.status >= 400) {
+      // Use interpretSapResponse to get the proper error message
+      try {
+        await this.interpretSapResponse<void>(res);
+      } catch (e) {
+        throw e;
+      }
+    }
+
+    const token = res.headers.get("x-csrf-token");
+    if (!token) {
+      // Token missing — likely CSRF protection not enabled on this ICF node,
+      // or SAP didn't return the header. Throw so the caller knows something
+      // is wrong rather than sending a POST that will definitely fail.
+      throw new ZzapiMesHttpError(502, "SAP did not return x-csrf-token header on Fetch request");
+    }
+    this.csrfToken = token;
+  }
+
+  private async postRequest<T>(path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+    // Fetch CSRF token if enabled and not yet cached
+    if (this.csrfEnabled && !this.csrfToken) {
+      await this.fetchCsrfToken(signal);
+    }
+
+    const result = await this.doPost<T>(path, body, signal);
+
+    // If SAP returns 403 (CSRF token expired), re-fetch token and retry once
+    if (this.csrfEnabled && result.status === 403) {
+      this.csrfToken = null;
+      await this.fetchCsrfToken(signal);
+      return this.doPost<T>(path, body, signal).then(res => {
+        return this.interpretSapResponse<T>(res);
+      });
+    }
+
+    return this.interpretSapResponse<T>(result);
+  }
+
+  /** Raw POST execution — returns the Response object without interpretation,
+   *  so the caller can inspect the status before deciding whether to retry. */
+  private async doPost<T>(path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
+    const query = new URLSearchParams({ "sap-client": String(this.client) });
+    const url = `${this.host}${path}?${query}`;
+
+    this.onRequest?.({ url, method: "POST" });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+    if (signal?.aborted) {
+      controller.abort();
+    } else if (signal) {
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+    const start = performance.now();
+
+    const headers: Record<string, string> = {
+      Authorization: `Basic ${this.auth}`,
+      "Content-Type": "application/json",
+    };
+    if (this.csrfToken) {
+      headers["X-CSRF-Token"] = this.csrfToken;
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers,
         redirect: "manual",
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -415,7 +514,7 @@ export class SapClient {
 
     this.onResponse?.({ url, status: res.status, durationMs: performance.now() - start });
 
-    return this.interpretSapResponse<T>(res);
+    return res;
   }
 
   /** Shared response interpretation: redirect detection, Content-Type check,

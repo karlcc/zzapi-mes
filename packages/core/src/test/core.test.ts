@@ -1082,3 +1082,206 @@ describe("ZzapiMesHttpError message length cap", () => {
       `truncated message should end with ellipsis or be within cap`);
   });
 });
+
+describe("SapClient CSRF token handling", () => {
+  const CSRF_CFG = { ...CFG, csrf: true };
+
+  it("fetches CSRF token before first POST when csrf=true", async () => {
+    let callCount = 0;
+    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      callCount++;
+      const method = (init?.method ?? "GET").toUpperCase();
+      const headers = init?.headers as Record<string, string> | undefined;
+      // First call: CSRF token fetch (GET with X-CSRF-Token: Fetch)
+      if (method === "GET" && headers?.["X-CSRF-Token"] === "Fetch") {
+        return new Response('{"ok":true,"sap_time":"20260422163000"}', {
+          status: 200,
+          headers: { "content-type": "application/json", "x-csrf-token": "token-abc123" },
+        });
+      }
+      // Second call: actual POST with CSRF token
+      if (method === "POST") {
+        return new Response(
+          '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}',
+          { status: 201, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const client = new SapClient(CSRF_CFG);
+    const res = await client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    assert.equal(callCount, 2, "should make token-fetch GET then POST");
+    assert.equal(res.status, "confirmed");
+  });
+
+  it("includes X-CSRF-Token header in POST request when csrf=true", async () => {
+    let postHeaders: Record<string, string> | undefined;
+    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const headers = init?.headers as Record<string, string> | undefined;
+      if (method === "GET" && headers?.["X-CSRF-Token"] === "Fetch") {
+        return new Response('{"ok":true,"sap_time":"20260422163000"}', {
+          status: 200,
+          headers: { "content-type": "application/json", "x-csrf-token": "my-csrf-token" },
+        });
+      }
+      if (method === "POST") {
+        postHeaders = headers;
+        return new Response(
+          '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}',
+          { status: 201, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const client = new SapClient(CSRF_CFG);
+    await client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    assert.equal(postHeaders?.["X-CSRF-Token"], "my-csrf-token");
+  });
+
+  it("caches CSRF token across multiple POSTs", async () => {
+    let fetchCount = 0;
+    let csrfFetchCount = 0;
+    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      fetchCount++;
+      const method = (init?.method ?? "GET").toUpperCase();
+      const headers = init?.headers as Record<string, string> | undefined;
+      if (method === "GET" && headers?.["X-CSRF-Token"] === "Fetch") {
+        csrfFetchCount++;
+        return new Response('{"ok":true,"sap_time":"20260422163000"}', {
+          status: 200,
+          headers: { "content-type": "application/json", "x-csrf-token": "cached-token" },
+        });
+      }
+      return new Response(
+        '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}',
+        { status: 201, headers: { "content-type": "application/json" } },
+      );
+    };
+    const client = new SapClient(CSRF_CFG);
+    await client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    await client.postGoodsReceipt({ ebeln: "4500000001", ebelp: "00010", menge: 100, werks: "1000", lgort: "0001" });
+    // 1 token fetch + 2 POSTs = 3 total fetch calls
+    assert.equal(csrfFetchCount, 1, "should fetch CSRF token only once");
+    assert.equal(fetchCount, 3, "should make 3 total fetch calls");
+  });
+
+  it("re-fetches CSRF token on 403 and retries POST", async () => {
+    let postAttempt = 0;
+    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const headers = init?.headers as Record<string, string> | undefined;
+      // CSRF token fetch
+      if (method === "GET" && headers?.["X-CSRF-Token"] === "Fetch") {
+        return new Response('{"ok":true,"sap_time":"20260422163000"}', {
+          status: 200,
+          headers: { "content-type": "application/json", "x-csrf-token": "refreshed-token" },
+        });
+      }
+      // POST: first attempt gets 403 (token expired), second succeeds
+      if (method === "POST") {
+        postAttempt++;
+        if (postAttempt === 1) {
+          return new Response('{"error":"CSRF token validation failed"}', {
+            status: 403,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return new Response(
+          '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}',
+          { status: 201, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const client = new SapClient(CSRF_CFG);
+    const res = await client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    assert.equal(res.status, "confirmed");
+    assert.equal(postAttempt, 2, "should retry POST after re-fetching token");
+  });
+
+  it("throws ZzapiMesHttpError if CSRF token fetch fails", async () => {
+    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const headers = init?.headers as Record<string, string> | undefined;
+      if (method === "GET" && headers?.["X-CSRF-Token"] === "Fetch") {
+        return new Response('{"error":"Unauthorized"}', {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const client = new SapClient(CSRF_CFG);
+    await assert.rejects(
+      () => client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 401,
+    );
+  });
+
+  it("does not send CSRF token when csrf is not set", async () => {
+    let postHeaders: Record<string, string> | undefined;
+    globalThis.fetch = mockFetch(201, '{"orderid":"1000000","operation":"0010","yield":50,"scrap":0,"confNo":"00000100","confCnt":"0001","status":"confirmed"}');
+    const client = new SapClient(CFG); // no csrf flag
+    await client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 });
+    postHeaders = capturedOpts?.headers as Record<string, string>;
+    assert.equal(postHeaders?.["X-CSRF-Token"], undefined, "should not send CSRF token when csrf not enabled");
+  });
+
+  it("does not retry non-403 errors even when csrf=true", async () => {
+    let postAttempt = 0;
+    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const headers = init?.headers as Record<string, string> | undefined;
+      if (method === "GET" && headers?.["X-CSRF-Token"] === "Fetch") {
+        return new Response('{"ok":true,"sap_time":"20260422163000"}', {
+          status: 200,
+          headers: { "content-type": "application/json", "x-csrf-token": "tok" },
+        });
+      }
+      if (method === "POST") {
+        postAttempt++;
+        return new Response('{"error":"Order already confirmed"}', {
+          status: 422,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const client = new SapClient(CSRF_CFG);
+    await assert.rejects(
+      () => client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 422,
+    );
+    assert.equal(postAttempt, 1, "should not retry on non-403 error");
+  });
+
+  it("only retries 403 once (prevents infinite loop on persistent 403)", async () => {
+    let postAttempt = 0;
+    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const headers = init?.headers as Record<string, string> | undefined;
+      if (method === "GET" && headers?.["X-CSRF-Token"] === "Fetch") {
+        return new Response('{"ok":true,"sap_time":"20260422163000"}', {
+          status: 200,
+          headers: { "content-type": "application/json", "x-csrf-token": "always-expired" },
+        });
+      }
+      if (method === "POST") {
+        postAttempt++;
+        return new Response('{"error":"CSRF token validation failed"}', {
+          status: 403,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const client = new SapClient(CSRF_CFG);
+    await assert.rejects(
+      () => client.postConfirmation({ orderid: "1000000", operation: "0010", yield: 50 }),
+      (e: unknown) => e instanceof ZzapiMesHttpError && e.status === 403,
+    );
+    // 1 initial POST + 1 retry after token refresh = 2 POSTs total
+    assert.equal(postAttempt, 2, "should retry 403 exactly once");
+  });
+});
