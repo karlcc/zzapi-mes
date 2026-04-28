@@ -14,6 +14,11 @@ import { ALL_SCOPES } from "@zzapi-mes/core";
 import argon2 from "argon2";
 import { randomBytes } from "node:crypto";
 
+/** Argon2 hash options — fast params when NODE_ENV=test to avoid CI timeout. */
+const hashOpts: argon2.Options = process.env.NODE_ENV === "test"
+  ? { type: argon2.argon2id, parallelism: 1, memoryCost: 1024, timeCost: 2 }
+  : { type: argon2.argon2id };
+
 function usage(): never {
   console.error(`Usage:
   zzapi-mes-hub-admin keys create --label <str> [--scopes ping,po] [--rate-limit N]
@@ -111,7 +116,7 @@ async function main(args: string[]): Promise<void> {
       const secret = randomBytes(32).toString("base64url");
       const plaintext = `${keyId}.${secret}`;
 
-      const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+      const hash = await argon2.hash(plaintext, hashOpts);
       const now = Math.floor(Date.now() / 1000);
 
       insertKey(db, {
@@ -185,7 +190,7 @@ async function main(args: string[]): Promise<void> {
       }
       const secret = randomBytes(32).toString("base64url");
       const plaintext = `${id}.${secret}`;
-      const hash = await argon2.hash(plaintext, { type: argon2.argon2id });
+      const hash = await argon2.hash(plaintext, hashOpts);
       updateKeyHash(db, id, hash);
       console.log(plaintext);
     } else if (subcommand === "delete") {

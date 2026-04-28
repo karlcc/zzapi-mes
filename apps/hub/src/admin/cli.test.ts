@@ -16,7 +16,7 @@ let tmpDir: string;
 function run(args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
     const proc = execFile("node", [CLI, ...args], {
-      env: { ...process.env, HUB_DB_PATH: dbPath },
+      env: { ...process.env, HUB_DB_PATH: dbPath, NODE_ENV: "test" },
       timeout: 5000,
     }, (err, stdout, stderr) => {
       resolve({
