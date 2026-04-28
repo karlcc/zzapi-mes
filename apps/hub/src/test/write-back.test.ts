@@ -97,6 +97,7 @@ describe("withWriteBack returns 202 when HUB_WRITEBACK_DISABLED is set", () => {
     const { sign } = await import("hono/jwt");
     const { SapClient } = await import("@zzapi-mes/core");
     const argon2 = (await import("argon2")).default;
+    const { _setHashOptionsForTest, _resetHashOptionsForTest, _getHashOptionsForTest } = await import("../auth/verify.js");
     const Database = (await import("better-sqlite3")).default;
 
     const JWT_SECRET = "test-secret-min-16-chars!!";
@@ -105,6 +106,7 @@ describe("withWriteBack returns 202 when HUB_WRITEBACK_DISABLED is set", () => {
     // Deliberately NOT setting HUB_WRITEBACK_DISABLED="0" — default is disabled
     delete process.env.HUB_WRITEBACK_DISABLED;
 
+    _setHashOptionsForTest({ type: argon2.argon2id, parallelism: 1, memoryCost: 1024, timeCost: 2 });
     const db = new Database(":memory:");
     runMigrations(db);
     _resetBucketsForTest();
@@ -112,7 +114,7 @@ describe("withWriteBack returns 202 when HUB_WRITEBACK_DISABLED is set", () => {
 
     const keyId = "wb-test-key";
     const plainKey = "wb-test-key-plaintext";
-    const hash = await argon2.hash(plainKey);
+    const hash = await argon2.hash(plainKey, _getHashOptionsForTest() ?? { type: argon2.argon2id });
     insertKey(db, { id: keyId, hash, label: "wb-test", scopes: "conf,gr,gi", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
 
     // Pass a mock SapClient so createApp doesn't require SAP_* env vars
@@ -134,6 +136,7 @@ describe("withWriteBack returns 202 when HUB_WRITEBACK_DISABLED is set", () => {
     assert.equal(body.status, "suppressed");
 
     db.close();
+    _resetHashOptionsForTest();
     delete process.env.HUB_JWT_SECRET;
     delete process.env.HUB_JWT_TTL_SECONDS;
   });
