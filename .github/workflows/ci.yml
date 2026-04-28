@@ -26,6 +26,7 @@ jobs:
       - run: sudo apt-get install -y --no-install-recommends g++
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm -r exec tsc --noEmit
       - run: pnpm spec:gen
       - run: git diff --exit-code
       - run: pnpm test
