@@ -46,6 +46,18 @@ export const requireJwt = createMiddleware<{ Variables: HubVariables }>(async (c
     if (typeof payload.iat === "number" && payload.iat > nowSec + iatLeeway) {
       return c.json({ error: "Invalid token: future iat" }, 401);
     }
+    // Validate aud claim if present — prevents cross-instance token confusion
+    // when multiple hub instances share a JWT secret. Tokens issued by this
+    // hub always have aud="zzapi-mes-hub".
+    if (payload.aud !== undefined && payload.aud !== "zzapi-mes-hub") {
+      return c.json({ error: "Invalid token: wrong audience" }, 401);
+    }
+    // Validate iss claim if HUB_JWT_ISSUER is configured — prevents tokens
+    // minted by a different hub instance from being accepted.
+    const expectedIssuer = process.env.HUB_JWT_ISSUER;
+    if (expectedIssuer && payload.iss !== undefined && payload.iss !== expectedIssuer) {
+      return c.json({ error: "Invalid token: wrong issuer" }, 401);
+    }
     c.set("jwtPayload", payload);
     await next();
   } catch {

@@ -2072,6 +2072,38 @@ describe("JWT edge cases", () => {
     assert.equal(res.status, 401);
   });
 
+  it("rejects JWT with wrong audience claim", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const wrongAudToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], iat: now, exp: now + 900, aud: "other-app" },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${wrongAudToken}` } });
+    assert.equal(res.status, 401);
+    const body = await res.json() as Record<string, unknown>;
+    assert.ok(body.error?.toString().includes("audience"), `error should mention audience: ${body.error}`);
+  });
+
+  it("accepts JWT with correct audience claim", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const correctAudToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], iat: now, exp: now + 900, aud: "zzapi-mes-hub" },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${correctAudToken}` } });
+    assert.equal(res.status, 200);
+  });
+
+  it("accepts JWT without audience claim (backward compat)", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const noAudToken = await sign(
+      { key_id: "testkey1234", scopes: ["ping"], iat: now, exp: now + 900 },
+      JWT_SECRET,
+    );
+    const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${noAudToken}` } });
+    assert.equal(res.status, 200);
+  });
+
   it("rate-limit fractional token boundary: 0.999 tokens rejects, 1.0 allows", async () => {
     // Use _seedBucketForTest to set up a bucket just below and at the boundary
     const { _seedBucketForTest: seedBucket } = await import("../middleware/rate-limit.js");

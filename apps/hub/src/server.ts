@@ -383,6 +383,7 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
     }
 
     const now = Math.floor(Date.now() / 1000);
+    const hubIssuer = process.env.HUB_JWT_ISSUER ?? `zzapi-mes-hub:${process.env.HUB_PORT ?? 3000}`;
     const token = await sign(
       {
         key_id: verified.key_id,
@@ -391,6 +392,8 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
         exp: now + jwtTtl,
         rate_limit_per_min: verified.rate_limit_per_min,
         jti: randomBytes(8).toString("hex"),
+        iss: hubIssuer,
+        aud: "zzapi-mes-hub",
       },
       jwtSecret,
     );
