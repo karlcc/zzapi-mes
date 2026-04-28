@@ -3341,6 +3341,30 @@ describe("Chunked body + idempotency body-hash", () => {
     const auditRow = db.prepare("SELECT sap_status FROM audit_log WHERE req_id != '-' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number } | undefined;
     assert.ok(auditRow, "audit row should exist");
   });
+
+  it("idempotency guard does not consume body — downstream handler can read it", async () => {
+    // The idempotency guard calls c.req.text() for body hashing. If it
+    // doesn't re-attach the body, downstream withWriteBack's c.req.json()
+    // fails with "body already consumed". Verify the full write-back flow
+    // works after idempotency hashing — if body was consumed, the route
+    // handler would return 400 "Request body must be valid JSON" instead of
+    // a success/failure response.
+    const token = await validToken(["conf"]);
+    const body = JSON.stringify({ orderid: "2000000", operation: "0010", yield: 10 });
+    const res = await fetchApi("/confirmation", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        "idempotency-key": "body-not-consumed-1",
+      },
+      body,
+    });
+    // If body was consumed by idempotency hashing, c.req.json() fails and
+    // withWriteBack returns 400 "Request body must be valid JSON".
+    // Any non-400 status proves the body was readable downstream.
+    assert.ok(res.status !== 400, `body should not be consumed; got status ${res.status}`);
+  });
 });
 
 describe("Write-back DB transaction failure after SAP success", () => {
