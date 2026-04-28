@@ -29,6 +29,15 @@ CLASS zcl_zzapi_mes_handler IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    " Reject special characters in query parameters — prevents injection
+    " when direct SAP callers bypass hub validateParam.
+    IF zcl_zzapi_mes_utils=>is_valid_id( lv_ebeln ) = abap_false.
+      server->response->set_status( code = 400 reason = 'Bad Request' ).
+      server->response->set_content_type( 'application/json' ).
+      server->response->set_cdata( '{"error":"Invalid characters in parameter: ebeln"}' ).
+      RETURN.
+    ENDIF.
+
     CASE lv_method.
       WHEN 'GET'.
         SELECT SINGLE * INTO CORRESPONDING FIELDS OF wa_mes001
