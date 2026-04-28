@@ -17,6 +17,31 @@
 
 set -euo pipefail
 
+# --- Rollback state ---
+_ROLLBACK_DIST_BACKUP=""
+_ROLLBACK_NM_BACKUP=""
+
+cleanup_on_exit() {
+  # If a backup was taken and we're exiting due to an error (ERR trap),
+  # restore the backup. On success, the backup is removed in the normal
+  # flow (after rsync succeeds).
+  if [ -n "$_ROLLBACK_DIST_BACKUP" ] && [ -d "$_ROLLBACK_DIST_BACKUP" ]; then
+    echo "Restoring dist backup due to failure..." >&2
+    sudo rm -rf "$INSTALL_DIR/dist"
+    sudo mv "$_ROLLBACK_DIST_BACKUP" "$INSTALL_DIR/dist"
+    _ROLLBACK_DIST_BACKUP=""
+  fi
+  if [ -n "$_ROLLBACK_NM_BACKUP" ] && [ -d "$_ROLLBACK_NM_BACKUP" ]; then
+    echo "Restoring node_modules backup due to failure..." >&2
+    sudo rm -rf "$INSTALL_DIR/node_modules"
+    sudo mv "$_ROLLBACK_NM_BACKUP" "$INSTALL_DIR/node_modules"
+    _ROLLBACK_NM_BACKUP=""
+  fi
+}
+
+trap cleanup_on_exit ERR
+trap 'echo "Interrupted — cleaning up..." >&2; cleanup_on_exit; exit 130' INT TERM
+
 # --- Node version guard ---
 NODE_MAJOR=$(node --version 2>/dev/null | sed 's/^v\([0-9]*\).*/\1/')
 if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 20 ]; then
@@ -57,7 +82,27 @@ fi
 # --- 3. Copy to install dir ---
 echo "Installing to $INSTALL_DIR..."
 sudo mkdir -p "$INSTALL_DIR"
+
+# Back up existing dist/ before rsync --delete to allow rollback on failure.
+# If there is no existing installation, there is nothing to back up.
+if [ -d "$INSTALL_DIR/dist" ]; then
+  _ROLLBACK_DIST_BACKUP="$INSTALL_DIR/dist.rollback.$$"
+  echo "Backing up existing dist/ to $_ROLLBACK_DIST_BACKUP..."
+  sudo mv "$INSTALL_DIR/dist" "$_ROLLBACK_DIST_BACKUP"
+fi
+if [ -d "$INSTALL_DIR/node_modules" ]; then
+  _ROLLBACK_NM_BACKUP="$INSTALL_DIR/node_modules.rollback.$$"
+  echo "Backing up existing node_modules/ to $_ROLLBACK_NM_BACKUP..."
+  sudo mv "$INSTALL_DIR/node_modules" "$_ROLLBACK_NM_BACKUP"
+fi
+
 sudo rsync -a --delete --chown=root:zzapi-mes "$REPO_ROOT/apps/hub/dist/" "$INSTALL_DIR/dist/"
+
+# dist rsync succeeded — clear rollback flag and remove backup
+if [ -n "$_ROLLBACK_DIST_BACKUP" ] && [ -d "$_ROLLBACK_DIST_BACKUP" ]; then
+  sudo rm -rf "$_ROLLBACK_DIST_BACKUP"
+  _ROLLBACK_DIST_BACKUP=""
+fi
 
 # Copy node_modules needed at runtime
 if [ -d "$REPO_ROOT/apps/hub/node_modules" ]; then
@@ -69,6 +114,12 @@ else
   # Also need core's node_modules (zod)
   sudo rsync -a "$REPO_ROOT/packages/core/node_modules/" "$INSTALL_DIR/node_modules/"
   sudo rsync -a "$REPO_ROOT/packages/core/dist/" "$INSTALL_DIR/node_modules/@zzapi-mes/core/dist/"
+fi
+
+# node_modules rsync succeeded — clear rollback flag and remove backup
+if [ -n "$_ROLLBACK_NM_BACKUP" ] && [ -d "$_ROLLBACK_NM_BACKUP" ]; then
+  sudo rm -rf "$_ROLLBACK_NM_BACKUP"
+  _ROLLBACK_NM_BACKUP=""
 fi
 
 # --- 4. DB migration ---
