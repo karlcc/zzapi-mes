@@ -9,8 +9,8 @@ import { writeAudit, updateIdempotencyStatus } from "../db/index.js";
 export function mapSapError(e: unknown): { sapStatus: number; clientStatus: number; errorMsg: string; retryAfter?: number } {
   if (e instanceof ZzapiMesHttpError) {
     const sapStatus = e.status;
-    const clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : e.status === 429 ? 429 : e.status === 408 ? 504 : e.status === 404 ? 502 : e.status === 400 ? 502 : 502;
-    const errorMsg = (e.status === 409 || e.status === 422 || e.status === 429) ? e.message : e.status === 404 ? "SAP endpoint not found" : e.status === 400 ? "SAP rejected request" : "SAP upstream error";
+    const clientStatus = e.status === 409 ? 409 : e.status === 422 ? 422 : e.status === 429 ? 429 : e.status === 408 ? 504 : e.status === 404 ? 502 : e.status === 401 ? 502 : e.status === 400 ? 502 : 502;
+    const errorMsg = (e.status === 409 || e.status === 422 || e.status === 429) ? e.message : e.status === 404 ? "SAP endpoint not found" : e.status === 401 ? "SAP authentication failed" : e.status === 400 ? "SAP rejected request" : "SAP upstream error";
     const retryAfter = e.retryAfter;
     return { sapStatus, clientStatus, errorMsg, retryAfter };
   }
