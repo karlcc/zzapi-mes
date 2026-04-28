@@ -19,6 +19,16 @@ CLASS zcl_zzapi_mes_handler IMPLEMENTATION.
     lv_method = server->request->get_header_field( '~request_method' ).
     lv_ebeln  = server->request->get_form_field( 'ebeln' ).
 
+    " Validate required parameter — every other GET handler validates
+    " its required params, returning 400 for missing input.
+    " Without this check, empty ebeln returns 404 instead of 400.
+    IF lv_ebeln IS INITIAL.
+      server->response->set_status( code = 400 reason = 'Bad Request' ).
+      server->response->set_content_type( 'application/json' ).
+      server->response->set_cdata( '{"error":"Missing required parameter: ebeln"}' ).
+      RETURN.
+    ENDIF.
+
     CASE lv_method.
       WHEN 'GET'.
         SELECT SINGLE * INTO CORRESPONDING FIELDS OF wa_mes001
