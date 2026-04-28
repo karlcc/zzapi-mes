@@ -87,6 +87,26 @@ export async function withSapCall<T>(
         status as 400 | 404 | 405 | 429 | 502 | 504,
       );
     }
+    // Generic Error (network failure, DNS, etc.) — still write audit for forensics
+    c.set("sapStatus", 502);
+    c.set("sapDurationMs", Math.round(sapDurationMs));
+    sapDuration.labels({ route }).observe(sapDurationMs / 1000);
+
+    const db = c.get("db");
+    if (db) {
+      try {
+        writeAudit(db, {
+          req_id: reqId,
+          key_id: keyId,
+          method: "GET",
+          path: route,
+          sap_status: 502,
+          sap_duration_ms: Math.round(sapDurationMs),
+        });
+      } catch {
+        // Audit write failure must not break the read path
+      }
+    }
     return c.json({ error: "SAP upstream error" }, 502);
   }
 }

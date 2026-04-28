@@ -2845,6 +2845,22 @@ describe("GET route SAP error handling", () => {
     }
   });
 
+  it("writes audit log on non-ZzapiMesHttpError from SAP (GET route)", async () => {
+    const origPing = MockSapClient.prototype.ping;
+    MockSapClient.prototype.ping = async () => { throw new Error("DNS resolution failed"); };
+    try {
+      const token = await validToken(["ping"]);
+      await fetchApi("/ping", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const row = db.prepare("SELECT sap_status, path FROM audit_log WHERE path = '/ping' ORDER BY rowid DESC LIMIT 1").get() as { sap_status: number; path: string } | undefined;
+      assert.ok(row, "audit row must exist for generic Error on GET route");
+      assert.equal(row.sap_status, 502);
+    } finally {
+      MockSapClient.prototype.ping = origPing;
+    }
+  });
+
   it("forwards Retry-After header from SAP 429 on GET routes", async () => {
     mockPingError = new ZzapiMesHttpError(429, "Too many requests", 30);
     const token = await validToken(["ping"]);

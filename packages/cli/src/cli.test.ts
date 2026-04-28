@@ -236,6 +236,22 @@ describe("CLI", () => {
       assert.ok(stderr.includes("--yield"));
     });
 
+    it("rejects negative --yield", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "confirm", "1000000", "--yield", "-5"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("positive") || stderr.includes("--yield"));
+    });
+
+    it("rejects negative --scrap", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "confirm", "1000000", "--yield", "50", "--scrap", "-3"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("non-negative") || stderr.includes("--scrap"));
+    });
+
     it("exits if HUB_URL/HUB_API_KEY not set in hub mode", async () => {
       const { stderr, code } = await run(["--mode", "hub", "confirm", "1000000", "--yield", "50"], {
         HOME: "/nonexistent", USERPROFILE: "/nonexistent",
@@ -269,6 +285,14 @@ describe("CLI", () => {
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("--lgort"));
     });
+
+    it("rejects negative --menge", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "goods-receipt", "4500000001", "--menge", "-10", "--werks", "1000", "--lgort", "0001"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("positive") || stderr.includes("--menge"));
+    });
   });
 
   describe("goods-issue command", () => {
@@ -286,6 +310,14 @@ describe("CLI", () => {
       });
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("--menge"));
+    });
+
+    it("rejects negative --menge", async () => {
+      const { stderr, code } = await run(["--mode", "hub", "goods-issue", "1000000", "--matnr", "20000001", "--menge", "-5", "--werks", "1000", "--lgort", "0001"], {
+        HUB_URL: "http://localhost:8080", HUB_API_KEY: "test.key",
+      });
+      assert.notEqual(code, 0);
+      assert.ok(stderr.includes("positive") || stderr.includes("--menge"));
     });
 
     it("exits if --werks not provided", async () => {
