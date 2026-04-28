@@ -68,8 +68,8 @@ export const rateLimit = createMiddleware<{ Variables: HubVariables }>(async (c,
   const payload = c.get("jwtPayload");
   const keyId = payload.key_id;
   const rpm = payload.rate_limit_per_min ?? DEFAULT_RPM;
-  if (rpm <= 0) {
-    return c.json({ error: "Invalid rate_limit_per_min: must be positive" }, 400);
+  if (!Number.isFinite(rpm) || rpm <= 0) {
+    return c.json({ error: "Invalid rate_limit_per_min: must be a positive finite number" }, 400);
   }
 
   const { allowed, retryAfter } = getTokens(keyId, rpm);

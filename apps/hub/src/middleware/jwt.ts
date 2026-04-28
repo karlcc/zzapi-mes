@@ -33,8 +33,11 @@ export const requireJwt = createMiddleware<{ Variables: HubVariables }>(async (c
     // Validate rate_limit_per_min type — a compromised JWT secret or bug in
     // token signing could inject non-number values that bypass the ?? fallback
     // in rate-limit.ts, causing NaN arithmetic (DoS for that key).
+    // NaN and Infinity satisfy typeof === "number" but are not finite — they
+    // cause NaN/Infinity token-bucket arithmetic, either rate-limiting every
+    // request (NaN) or never rate-limiting (Infinity).
     const rpm = payload.rate_limit_per_min;
-    if (rpm !== undefined && rpm !== null && typeof rpm !== "number") {
+    if (rpm !== undefined && rpm !== null && (typeof rpm !== "number" || !Number.isFinite(rpm))) {
       return c.json({ error: "Invalid token: bad rate_limit_per_min" }, 401);
     }
     // Reject tokens minted far in the future — indicates clock skew or

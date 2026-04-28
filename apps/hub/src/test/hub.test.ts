@@ -2299,6 +2299,24 @@ describe("JWT rate_limit_per_min type validation", () => {
     const res = await fetchApi("/ping", { headers: { authorization: `Bearer ${noRpmToken}` } });
     assert.equal(res.status, 200);
   });
+
+  it("NaN rate_limit_per_min becomes null via JSON — defense-in-depth guard in rate-limit.ts", async () => {
+    // JSON.stringify(NaN) and JSON.stringify(Infinity) both produce null,
+    // so hono/jwt sign() serializes NaN/Infinity as null in the JWT payload.
+    // JSON.parse cannot revive NaN (it's not valid JSON per RFC 8259).
+    // Therefore NaN/Infinity cannot reach rate-limit.ts through normal JWT flow.
+    // The !Number.isFinite() guards in jwt.ts and rate-limit.ts are
+    // defense-in-depth against a future code change that might bypass
+    // JSON serialization (e.g. in-memory token creation, or a bug in verify()).
+    assert.strictEqual(JSON.stringify({ rpm: NaN }), '{"rpm":null}');
+    assert.strictEqual(JSON.stringify({ rpm: Infinity }), '{"rpm":null}');
+    assert.ok(!Number.isFinite(NaN), "NaN is not finite");
+    assert.ok(!Number.isFinite(Infinity), "Infinity is not finite");
+    // Without !Number.isFinite(), NaN <= 0 is false (NaN comparisons are always false),
+    // so the old `rpm <= 0` guard alone would NOT catch NaN.
+    assert.ok(NaN <= 0 === false, "NaN <= 0 is false — old guard alone misses NaN");
+    assert.ok(Infinity <= 0 === false, "Infinity <= 0 is false — old guard alone misses Infinity");
+  });
 });
 
 describe("Idempotency guard DB read failure", () => {
