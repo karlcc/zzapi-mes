@@ -65,6 +65,16 @@ describe("mapSapError all-branches unit test", () => {
     assert.equal(result.errorMsg, "SAP upstream error");
   });
 
+  it("401 → clientStatus 502, message 'SAP authentication failed'", () => {
+    // SAP 401 means hub's server-side SAP creds are invalid/rotated.
+    // Ops diagnosing a silent SAP credential rotation need a specific diagnostic,
+    // not generic "SAP upstream error".
+    const result = mapSapError(new ZzapiMesHttpError(401, "SAP logon failed"));
+    assert.equal(result.sapStatus, 401);
+    assert.equal(result.clientStatus, 502);
+    assert.equal(result.errorMsg, "SAP authentication failed");
+  });
+
   it("404 → clientStatus 502, message 'SAP endpoint not found'", () => {
     // Misconfigured ICF path returns 404 — should give a more specific
     // message than the generic "SAP upstream error".

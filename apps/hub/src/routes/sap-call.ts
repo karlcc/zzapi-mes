@@ -51,10 +51,13 @@ export async function withSapCall<T>(
 
     if (err instanceof ZzapiMesHttpError) {
       // Map SAP timeout (408) to gateway timeout (504) per OpenAPI spec.
-      // Sanitize 5xx errors to avoid leaking SAP internals (short dumps,
-      // table names, ABAP stack traces) to external clients — matches the
-      // write-back route behavior.
-      const isClientError = err.status >= 400 && err.status < 500;
+      // Map SAP 401/404 to 502 — SAP 401 means hub's server-side creds are
+      // invalid/rotated (not a client JWT issue), and SAP 404 means the ICF
+      // service node is missing (not that the business object doesn't exist).
+      // Passing 401 through causes endless client JWT retries; passing 404
+      // misleads clients into thinking the business object doesn't exist.
+      // This matches write-back route behavior (mapSapError in write-back.ts).
+      const isClientError = err.status >= 400 && err.status < 500 && err.status !== 401 && err.status !== 404;
       const status = err.status === 408 ? 504 : isClientError ? err.status : 502;
       const message = isClientError ? err.message : "SAP upstream error";
       c.set("sapStatus", err.status);

@@ -441,16 +441,20 @@ describe("Protected routes with valid JWT", () => {
     assert.equal(body.ebeln, "3010000608");
   });
 
-  it("passthrough SAP 404 as 404", async () => {
+  it("maps SAP 404 to 502 on GET route (SAP 404 = ICF node missing, not PO not found)", async () => {
+    // SAP 404 usually means the ICF service node is not registered, not that
+    // the business object (e.g. PO) doesn't exist. Map to 502 to prevent
+    // clients from misinterpreting as "PO not found". This matches write-back
+    // route behavior (mapSapError in write-back.ts).
     mockPoError = new ZzapiMesHttpError(404, "PO not found");
     mockPoResult = null;
     const token = await validToken();
     const res = await fetchApi("/po/999", {
       headers: { authorization: `Bearer ${token}` },
     });
-    assert.equal(res.status, 404);
+    assert.equal(res.status, 502);
     const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "PO not found");
+    assert.equal(body.error, "SAP upstream error");
   });
 });
 
@@ -2853,6 +2857,34 @@ describe("GET route SAP error handling", () => {
     assert.equal(res.status, 504);
   });
 
+  it("maps SAP 401 to 502 on GET route (not 401 — avoids endless client JWT retries)", async () => {
+    // SAP 401 means hub's server-side SAP creds are invalid/rotated, not that
+    // the client's JWT is bad. Passing 401 through causes the client to retry
+    // auth endlessly. Map to 502 so ops see it as a server-side SAP issue.
+    mockPingError = new ZzapiMesHttpError(401, "SAP logon failed");
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+  });
+
+  it("maps SAP 404 to 502 on GET route (not 404 — SAP 404 = ICF node missing)", async () => {
+    // SAP 404 usually means the ICF service node is not registered, not that
+    // the business object (e.g. PO) doesn't exist. Map to 502 to prevent
+    // clients from misinterpreting as "PO not found".
+    mockPingError = new ZzapiMesHttpError(404, "Not found");
+    const token = await validToken(["ping"]);
+    const res = await fetchApi("/ping", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 502);
+    const body = await res.json() as Record<string, unknown>;
+    assert.equal(body.error, "SAP upstream error");
+  });
+
   it("maps SAP 500 to 502 with sanitized message on /ping", async () => {
     mockPingError = new ZzapiMesHttpError(500, "SAP internal error");
     const token = await validToken(["ping"]);
@@ -3406,9 +3438,10 @@ describe("GET route audit write failure", () => {
     const res = await fetchApi("/po/1234567890", {
       headers: { authorization: `Bearer ${token}` },
     });
-    assert.equal(res.status, 404, "should return 404 even when audit write fails");
+    // SAP 404 is now mapped to 502 (ICF node missing, not business object not found)
+    assert.equal(res.status, 502, "should return 502 even when audit write fails");
     const body = await res.json() as Record<string, unknown>;
-    assert.equal(body.error, "PO not found");
+    assert.equal(body.error, "SAP upstream error");
   });
 });
 
