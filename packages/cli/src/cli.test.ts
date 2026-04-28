@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
@@ -52,6 +52,11 @@ function stopMockHub(): Promise<void> {
 }
 
 describe("CLI", () => {
+  // Safety net: ensure mockServer is stopped even if a test forgets afterEach.
+  // Without this, an orphaned HTTP server keeps the event loop alive and the
+  // process never exits (the root cause of the 15-minute CI timeout).
+  after(async () => { if (mockServer) await stopMockHub(); });
+
   describe("--help", () => {
     it("prints usage", async () => {
       const { stdout, code } = await run(["--help"]);
@@ -102,6 +107,8 @@ describe("CLI", () => {
   });
 
   describe("POSIX exit codes", () => {
+    afterEach(async () => { if (mockServer) await stopMockHub(); });
+
     it("exits 2 for usage error (unknown command)", async () => {
       const { code } = await run(["bogus"], {
         SAP_USER: "u", SAP_PASS: "p",
@@ -135,7 +142,9 @@ describe("CLI", () => {
     });
 
     it("exits 4 for auth error (missing HUB_URL/HUB_API_KEY)", async () => {
-      const { code } = await run(["--mode", "hub", "ping"]);
+      const { code } = await run(["--mode", "hub", "ping"], {
+        HOME: "/nonexistent", USERPROFILE: "/nonexistent",
+      });
       assert.equal(code, 4, "hub auth errors should exit 4");
     });
 
@@ -172,7 +181,9 @@ describe("CLI", () => {
     });
 
     it("accepts --mode=hub form and requires hub config", async () => {
-      const { stderr, code } = await run(["--mode=hub", "ping"]);
+      const { stderr, code } = await run(["--mode=hub", "ping"], {
+        HOME: "/nonexistent", USERPROFILE: "/nonexistent",
+      });
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("HUB_URL"));
     });
@@ -198,7 +209,9 @@ describe("CLI", () => {
 
   describe("hub mode (missing creds)", () => {
     it("exits if HUB_URL/HUB_API_KEY not set", async () => {
-      const { stderr, code } = await run(["--mode", "hub", "ping"]);
+      const { stderr, code } = await run(["--mode", "hub", "ping"], {
+        HOME: "/nonexistent", USERPROFILE: "/nonexistent",
+      });
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("HUB_URL"));
     });
@@ -224,7 +237,9 @@ describe("CLI", () => {
     });
 
     it("exits if HUB_URL/HUB_API_KEY not set in hub mode", async () => {
-      const { stderr, code } = await run(["--mode", "hub", "confirm", "1000000", "--yield", "50"]);
+      const { stderr, code } = await run(["--mode", "hub", "confirm", "1000000", "--yield", "50"], {
+        HOME: "/nonexistent", USERPROFILE: "/nonexistent",
+      });
       assert.notEqual(code, 0);
       assert.ok(stderr.includes("HUB_URL"));
     });
