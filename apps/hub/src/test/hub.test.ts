@@ -2277,6 +2277,11 @@ describe("Idempotency guard DB read failure", () => {
     // test that depends on the table existing.
     const isolatedDb = new Database(":memory:");
     runMigrations(isolatedDb);
+    // Seed the test API key so JWT verification succeeds against this DB
+    const keyId = "testkey1234";
+    const secret = "abc123xyz789def456ghi012jkl345mno678pqr";
+    const keyHash = await argon2.hash(`${keyId}.${secret}`, _getHashOptionsForTest() ?? { type: argon2.argon2id });
+    insertKey(isolatedDb, { id: keyId, hash: keyHash, label: "test key", scopes: "conf", rate_limit_per_min: null, created_at: Math.floor(Date.now() / 1000) });
     isolatedDb.exec("DROP TABLE idempotency_keys");
     const token = await validToken(["conf"]);
     const req = new Request("http://localhost/confirmation", {
