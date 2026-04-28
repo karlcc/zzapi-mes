@@ -436,6 +436,35 @@ describe("Zod schemas", () => {
     assert.equal(r.orderid, "1000000");
   });
 
+  it("ConfirmationRequestSchema accepts fin_conf='X' (final confirmation)", () => {
+    const r = ConfirmationRequestSchema.parse({
+      orderid: "1000000", operation: "0010", yield: 50, fin_conf: "X",
+    });
+    assert.equal(r.fin_conf, "X");
+  });
+
+  it("ConfirmationRequestSchema accepts fin_conf='' (partial confirmation)", () => {
+    const r = ConfirmationRequestSchema.parse({
+      orderid: "1000000", operation: "0010", yield: 50, fin_conf: "",
+    });
+    assert.equal(r.fin_conf, "");
+  });
+
+  it("ConfirmationRequestSchema omits fin_conf when not provided", () => {
+    const r = ConfirmationRequestSchema.parse({
+      orderid: "1000000", operation: "0010", yield: 50,
+    });
+    assert.equal(r.fin_conf, undefined);
+  });
+
+  it("ConfirmationRequestSchema rejects fin_conf with invalid value", () => {
+    assert.throws(
+      () => ConfirmationRequestSchema.parse({
+        orderid: "1000000", operation: "0010", yield: 50, fin_conf: "YES",
+      }),
+    );
+  });
+
   it("ConfirmationResponseSchema accepts valid response with confNo/confCnt", () => {
     const r = ConfirmationResponseSchema.parse({
       orderid: "1000000", operation: "0010", yield: 50, scrap: 0, confNo: "00000100", confCnt: "0001", status: "confirmed",

@@ -2216,6 +2216,11 @@ components:
           pattern: "^[0-9]{8}$"
           description: Posting date (YYYYMMDD)
           example: "20260422"
+        fin_conf:
+          type: string
+          enum: ["", "X"]
+          description: Final confirmation flag. "X" = final confirmation (default), "" = partial confirmation. When omitted, SAP defaults to final confirmation.
+          example: "X"
 
     ConfirmationResponse:
       type: object

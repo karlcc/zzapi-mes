@@ -36,7 +36,8 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
               lv_yield     TYPE gamng,
               lv_scrap     TYPE gamng,
               lv_work_act  TYPE vgwrt,
-              lv_postg_date TYPE budat.
+              lv_postg_date TYPE budat,
+              lv_fin_conf  TYPE string.
 
         " Simple JSON field extraction (SAP_BASIS 700 — no /UI2/CL_JSON)
         zcl_zzapi_mes_utils=>extract_field(
@@ -51,6 +52,8 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
           EXPORTING iv_json = lv_body iv_field = 'work_actual' CHANGING cv_value = lv_work_act ).
         zcl_zzapi_mes_utils=>extract_field(
           EXPORTING iv_json = lv_body iv_field = 'postg_date' CHANGING cv_value = lv_postg_date ).
+        zcl_zzapi_mes_utils=>extract_field(
+          EXPORTING iv_json = lv_body iv_field = 'fin_conf' CHANGING cv_value = lv_fin_conf ).
 
         IF lv_orderid IS INITIAL OR lv_operation IS INITIAL OR lv_yield IS INITIAL.
           server->response->set_status( code = 400 reason = 'Bad Request' ).
@@ -74,7 +77,18 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
         IF lv_postg_date IS NOT INITIAL.
           ls_timeticket-postg_date = lv_postg_date.
         ENDIF.
-        ls_timeticket-fin_conf     = abap_true.  " Final confirmation flag
+        " fin_conf: "X" = final confirmation, "" = partial confirmation.
+        " When omitted from request body, extract_field returns empty string.
+        " Default to final confirmation for backward compatibility.
+        " fin_conf is a char1 field on BAPI_PP_TIMETICKET — "X" means final.
+        IF lv_fin_conf IS INITIAL.
+          ls_timeticket-fin_conf = abap_true.  " Default: final confirmation
+        ELSEIF lv_fin_conf = 'X'.
+          ls_timeticket-fin_conf = abap_true.  " Explicit: final confirmation
+        ELSE.
+          " Any other value (e.g. explicit empty) — partial confirmation
+          ls_timeticket-fin_conf = lv_fin_conf.
+        ENDIF.
 
         CALL FUNCTION 'BAPI_PRODORDCONF_CREATE_TT'
           EXPORTING
