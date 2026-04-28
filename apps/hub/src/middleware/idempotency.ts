@@ -12,7 +12,13 @@ export const EVICTION_PROBABILITY = 0.01;
 /** Run eviction if the random check passes. Exported for unit testing. */
 export function maybeEvict(db: Database.Database | undefined, random: number): void {
   if (random < EVICTION_PROBABILITY && db) {
-    evictIdempotencyKeys(db, IDEMPOTENCY_MAX_AGE_SECONDS);
+    try {
+      evictIdempotencyKeys(db, IDEMPOTENCY_MAX_AGE_SECONDS);
+    } catch {
+      // Eviction is best-effort — a failed eviction must not kill the request.
+      // Table locked, disk error, or missing table (e.g. test with dropped table)
+      // are all non-fatal.
+    }
   }
 }
 
