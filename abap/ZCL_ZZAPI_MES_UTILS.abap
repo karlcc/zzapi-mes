@@ -18,6 +18,14 @@ CLASS zcl_zzapi_mes_utils IMPLEMENTATION.
     " Matches "field":"value" or "field": number/bool/null
     " Only matches top-level fields (depth 0 inside root object).
     " Size-limited: rejects JSON > 1 MB to prevent O(N*M) regex scan.
+    "
+    " IMPORTANT — Non-Unicode SAP_BASIS 700 limitation:
+    " On non-Unicode systems, STRING operations operate in the SAP
+    " codepage (often 1100 / ISO-8859-1). UTF-8 multibyte sequences
+    " (CJK, emoji, etc.) may be corrupted during extraction or regex
+    " matching. This is inherent to SAP_BASIS 700's non-Unicode kernel
+    " and cannot be worked around at the ABAP level. Unicode systems
+    " (SAP_BASIS >= 700 with UTF-8 at OS level) are unaffected.
 
     CONSTANTS: lc_max_json_size TYPE i VALUE 1048576.  " 1 MB
 
