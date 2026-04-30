@@ -6,6 +6,7 @@ import { homedir } from "os";
 import { randomBytes } from "node:crypto";
 
 type Mode = "direct" | "hub";
+type Format = "friendly" | "raw";
 
 interface RcFile {
   SAP_HOST?: string;
@@ -107,6 +108,28 @@ function parseMode(args: string[]): { mode: Mode; rest: string[] } {
   return { mode, rest: [...args.slice(0, modeIdx), ...args.slice(modeIdx + 2)] };
 }
 
+function parseFormat(args: string[]): { format: Format; rest: string[] } {
+  const formatIdx = args.indexOf("--format");
+  if (formatIdx === -1) {
+    const formatEq = args.find(a => a.startsWith("--format="));
+    if (formatEq) {
+      const format = formatEq.split("=")[1];
+      if (format !== "friendly" && format !== "raw") die(`Unknown format: ${format}. Use 'friendly' or 'raw'.`);
+      return { format: format as Format, rest: args.filter(a => a !== formatEq) };
+    }
+    return { format: "friendly", rest: args };
+  }
+  const secondFormat = args.indexOf("--format", formatIdx + 1);
+  const secondFormatEq = args.slice(formatIdx + 1).find(a => a.startsWith("--format="));
+  if (secondFormat !== -1 || secondFormatEq) {
+    die("Duplicate --format flag — specify only one format");
+  }
+  const format = args[formatIdx + 1];
+  if (!format) die("--format requires a value: 'friendly' or 'raw'");
+  if (format !== "friendly" && format !== "raw") die(`Unknown format: ${format}. Use 'friendly' or 'raw'.`);
+  return { format, rest: [...args.slice(0, formatIdx), ...args.slice(formatIdx + 2)] };
+}
+
 async function main() {
   // Register SIGINT handler for in-flight write-back requests.
   // Without this, Ctrl+C during a POST to SAP exits immediately — the user
@@ -122,15 +145,16 @@ async function main() {
     }
     console.error(`\nSIGINT received — in-flight write-back may be running. Press Ctrl+C again to force exit.`);
   });
-  // Parse --mode from all args first, then extract command from remaining
+  // Parse --mode and --format from all args first, then extract command from remaining
   const [, , ...allArgs] = process.argv;
-  const { mode, rest } = parseMode(allArgs);
+  const { mode, rest: restAfterMode } = parseMode(allArgs);
+  const { format, rest } = parseFormat(restAfterMode);
   const command = rest[0];
   const args = rest.slice(1);
 
   if (command === "--help" || command === "-h" || !command) {
     console.log(`zzapi-mes ${VERSION}
-Usage: zzapi-mes [--mode direct|hub] <command> [args]
+Usage: zzapi-mes [--mode direct|hub] [--format friendly|raw] <command> [args]
 
 Commands:
   ping                Health check
@@ -163,6 +187,10 @@ Modes:
   --mode direct  Talk to SAP directly (default)
   --mode hub     Talk to zzapi-mes hub (no SAP creds needed)
 
+Format (direct mode only):
+  --format friendly  Human-readable field names (default)
+  --format raw       SAP DDIC field names (ebeln, aedat, etc.)
+
 Environment (direct mode):
   SAP_HOST       SAP host (default: sapdev.fastcell.hk:8000)
   SAP_CLIENT     SAP client (default: 200)
@@ -180,7 +208,10 @@ Environment (hub mode):
     process.exit(0);
   }
 
-  const client = mode === "hub" ? new HubClient(readHubConfig()) : new ZzapiMesClient(readConfig());
+  // For direct mode, pass format to SapClient; hub mode always returns friendly format
+  const client = mode === "hub"
+    ? new HubClient(readHubConfig())
+    : new ZzapiMesClient({ ...readConfig(), format });
 
   switch (command) {
     case "ping": {

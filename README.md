@@ -79,11 +79,20 @@ const pong = await client.ping();
 // { ok: true, sap_time: "20260422163000" }
 
 const po = await client.getPo("3010000608");
-// { ebeln: "3010000608", aedat: "20170306", lifnr: "0000500340", eindt: "20170630" }
+// { purchaseOrderNumber: "3010000608", createdAt: "2017-03-06", vendorNumber: "0000500340", deliveryDate: "2017-06-30" }
 
 // SAP IDs must be 18-char padded (add leading zeros)
 const mat = await client.getMaterial("000000000100000001");
-// { matnr: "000000000100000001", maktx: "ATOS Software Upgr51", ... }
+// { materialNumber: "000000000100000001", description: "ATOS Software Upgr51", ... }
+
+// Use format: "raw" for original SAP DDIC field names
+const rawClient = new ZzapiMesClient({
+  host: "http://sapdev.fastcell.hk:8000",
+  client: 200,
+  user: process.env.SAP_USER!,
+  password: process.env.SAP_PASS!,
+  format: "raw", // returns { ebeln, aedat, ... }
+});
 ```
 
 ### Hub mode (API key, no SAP creds on client)
@@ -119,6 +128,14 @@ zzapi-mes --mode hub work-center TURN1 --werks 1000
 zzapi-mes ping
 zzapi-mes po 3010000608
 zzapi-mes material 000000000100000001
+
+# Direct mode with raw SAP field names
+zzapi-mes --format raw po 3010000608
+# { "ebeln": "3010000608", "aedat": "20170306", ... }
+
+# Default format is friendly (human-readable field names)
+zzapi-mes --format friendly po 3010000608
+# { "purchaseOrderNumber": "3010000608", "createdAt": "2017-03-06", ... }
 ```
 
 `~/.zzapirc` example:

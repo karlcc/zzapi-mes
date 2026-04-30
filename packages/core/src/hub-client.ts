@@ -60,49 +60,43 @@ export class HubClient {
 
   /** Look up a purchase order by ebeln via hub. */
   async getPo(ebeln: string): Promise<PoResponse> {
-    const envelope = await this.request<HubEnvelope<PoResponse>>(`/po/${encodeURIComponent(ebeln)}`);
-    return envelope.data;
+    // parseResponse unwraps the envelope; request returns data directly
+    return this.request<PoResponse>(`/po/${encodeURIComponent(ebeln)}`);
   }
 
   /** Look up a production order by aufnr via hub. */
   async getProdOrder(aufnr: string): Promise<ProdOrderResponse> {
-    const envelope = await this.request<HubEnvelope<ProdOrderResponse>>(`/prod-order/${encodeURIComponent(aufnr)}`);
-    return envelope.data;
+    return this.request<ProdOrderResponse>(`/prod-order/${encodeURIComponent(aufnr)}`);
   }
 
   /** Look up material master via hub. */
   async getMaterial(matnr: string, werks?: string): Promise<MaterialResponse> {
     const query = werks ? `?werks=${encodeURIComponent(werks)}` : "";
-    const envelope = await this.request<HubEnvelope<MaterialResponse>>(`/material/${encodeURIComponent(matnr)}${query}`);
-    return envelope.data;
+    return this.request<MaterialResponse>(`/material/${encodeURIComponent(matnr)}${query}`);
   }
 
   /** Look up stock/availability via hub. */
   async getStock(matnr: string, werks: string, lgort?: string): Promise<StockResponse> {
     const params = new URLSearchParams({ werks });
     if (lgort) params.set("lgort", lgort);
-    const envelope = await this.request<HubEnvelope<StockResponse>>(`/stock/${encodeURIComponent(matnr)}?${params}`);
-    return envelope.data;
+    return this.request<StockResponse>(`/stock/${encodeURIComponent(matnr)}?${params}`);
   }
 
   /** Look up PO line items via hub. */
   async getPoItems(ebeln: string): Promise<PoItemsResponse> {
-    const envelope = await this.request<HubEnvelope<PoItemsResponse>>(`/po/${encodeURIComponent(ebeln)}/items`);
-    return envelope.data;
+    return this.request<PoItemsResponse>(`/po/${encodeURIComponent(ebeln)}/items`);
   }
 
   /** Look up routing/recipe via hub. */
   async getRouting(matnr: string, werks: string): Promise<RoutingResponse> {
     const params = new URLSearchParams({ werks });
-    const envelope = await this.request<HubEnvelope<RoutingResponse>>(`/routing/${encodeURIComponent(matnr)}?${params}`);
-    return envelope.data;
+    return this.request<RoutingResponse>(`/routing/${encodeURIComponent(matnr)}?${params}`);
   }
 
   /** Look up work center via hub. */
   async getWorkCenter(arbpl: string, werks: string): Promise<WorkCenterResponse> {
     const params = new URLSearchParams({ werks });
-    const envelope = await this.request<HubEnvelope<WorkCenterResponse>>(`/work-center/${encodeURIComponent(arbpl)}?${params}`);
-    return envelope.data;
+    return this.request<WorkCenterResponse>(`/work-center/${encodeURIComponent(arbpl)}?${params}`);
   }
 
   /** Post a production order confirmation. */

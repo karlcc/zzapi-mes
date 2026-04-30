@@ -171,7 +171,7 @@ describe("HubClient", () => {
         return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
       }
       // Hub returns envelope { data, _links? } with friendly format
-      return jsonResponse(200, { data: { purchaseOrderNumber: "3010000608", createdAt: "2017-03-06", vendorNumber: "0000500340", deliveryDate: "2017-06-30" } });
+      return jsonResponse(200, { data: { purchaseOrderNumber: "3010000608", createdAt: "2017-03-06", vendorNumber: "0000500340", deliveryDate: "2017-06-30" }, _links: { self: "/po/3010000608" } });
     });
 
     const client = new HubClient({ url: BASE, apiKey: API_KEY });
@@ -253,8 +253,8 @@ describe("HubClient", () => {
   it("getProdOrder builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      // Hub returns envelope { data } with friendly format
-      return jsonResponse(200, { data: { productionOrderNumber: "1000000", orderType: "PP01", plant: "1000", materialNumber: "10000001", totalQuantity: 1000, scheduledStartDate: "2026-04-01", scheduledFinishDate: "2026-04-15" } });
+      // Hub returns envelope { data, _links } with friendly format
+      return jsonResponse(200, { data: { productionOrderNumber: "1000000", orderType: "PP01", plant: "1000", materialNumber: "10000001", totalQuantity: 1000, scheduledStartDate: "2026-04-01", scheduledFinishDate: "2026-04-15" }, _links: { self: "/prod-order/1000000" } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getProdOrder("1000000");
     assert.equal(result.productionOrderNumber, "1000000");
@@ -264,8 +264,8 @@ describe("HubClient", () => {
   it("getMaterial builds correct URL with optional werks", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      // Hub returns envelope { data } with friendly format
-      return jsonResponse(200, { data: { materialNumber: "10000001", materialType: "FERT", baseUnit: "EA" } });
+      // Hub returns envelope { data, _links } with friendly format
+      return jsonResponse(200, { data: { materialNumber: "10000001", materialType: "FERT", baseUnit: "EA" }, _links: { self: "/material/10000001" } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getMaterial("10000001", "1000");
     assert.equal(result.materialType, "FERT");
@@ -285,8 +285,8 @@ describe("HubClient", () => {
   it("getPoItems builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      // Hub returns envelope { data } with friendly format
-      return jsonResponse(200, { data: { purchaseOrderNumber: "4500000001", items: [{ itemNumber: "00010", materialNumber: "10000001", quantity: 100, unit: "EA" }] } });
+      // Hub returns envelope { data, _links } with friendly format
+      return jsonResponse(200, { data: { purchaseOrderNumber: "4500000001", items: [{ itemNumber: "00010", materialNumber: "10000001", quantity: 100, unit: "EA" }] }, _links: { self: "/po/4500000001/items", purchaseOrder: "/po/4500000001" } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getPoItems("4500000001");
     assert.equal(result.purchaseOrderNumber, "4500000001");
@@ -296,8 +296,8 @@ describe("HubClient", () => {
   it("getRouting builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      // Hub returns envelope { data } with friendly format
-      return jsonResponse(200, { data: { materialNumber: "10000001", plant: "1000", routingNumber: "50000123", operations: [{ operationNumber: "0010", operationDescription: "Turning" }] } });
+      // Hub returns envelope { data, _links } with friendly format
+      return jsonResponse(200, { data: { materialNumber: "10000001", plant: "1000", routingNumber: "50000123", operations: [{ operationNumber: "0010", operationDescription: "Turning" }] }, _links: { self: "/routing/10000001", material: "/material/10000001" } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getRouting("10000001", "1000");
     assert.equal(result.routingNumber, "50000123");
@@ -307,8 +307,8 @@ describe("HubClient", () => {
   it("getWorkCenter builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      // Hub returns envelope { data } with friendly format
-      return jsonResponse(200, { data: { workCenterId: "TURN1", plant: "1000", controlKey: "PP01" } });
+      // Hub returns envelope { data, _links } with friendly format
+      return jsonResponse(200, { data: { workCenterId: "TURN1", plant: "1000", controlKey: "PP01" }, _links: { self: "/work-center/TURN1" } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getWorkCenter("TURN1", "1000");
     assert.equal(result.controlKey, "PP01");
