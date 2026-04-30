@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  transformEntity,
+  ENTITY_MAPPINGS,
+} from "./transform/index.js";
+
+/** Response format option */
+export type Format = "friendly" | "raw";
 
 // ---------------------------------------------------------------------------
 // Zod schemas (source of truth: spec/openapi.yaml → generated/schemas.ts)
@@ -105,6 +112,8 @@ export interface SapClientConfig {
    *  caches it, and includes it in subsequent POST requests. If SAP returns 403
    *  (token expired), the token is re-fetched and the POST is retried once. */
   csrf?: boolean;
+  /** Response format - defaults to 'friendly' for human-readable field names */
+  format?: Format;
   /** Hook called before each SAP request */
   onRequest?: (ctx: { url: string; method: string }) => void;
   /** Hook called after each SAP response */
@@ -261,6 +270,7 @@ export class SapClient {
   private auth: string;
   private timeout: number;
   private csrfEnabled: boolean;
+  private format: Format;
   private csrfToken: string | null = null;
   private onRequest?: SapClientConfig["onRequest"];
   private onResponse?: SapClientConfig["onResponse"];
@@ -277,8 +287,21 @@ export class SapClient {
     this.auth = btoa(`${config.user}:${config.password}`);
     this.timeout = config.timeout ?? 30_000;
     this.csrfEnabled = config.csrf === true;
+    this.format = config.format ?? "friendly";
     this.onRequest = config.onRequest;
     this.onResponse = config.onResponse;
+  }
+
+  /** Apply friendly transform to raw SAP response */
+  private applyTransform<T>(raw: unknown, entityKey: keyof typeof ENTITY_MAPPINGS): T {
+    if (this.format === "raw") {
+      return raw as T;
+    }
+    const mapping = ENTITY_MAPPINGS[entityKey];
+    if (!mapping) {
+      return raw as T;
+    }
+    return transformEntity(raw as Record<string, unknown>, mapping) as T;
   }
 
   /** Health check — no DB hit, safe for monitoring probes. */
@@ -288,41 +311,48 @@ export class SapClient {
 
   /** Look up a purchase order by ebeln. */
   async getPo(ebeln: string, opts?: { signal?: AbortSignal }): Promise<PoResponse> {
-    return this.request<PoResponse>({ path: "/sap/bc/zzapi/mes/handler", params: { ebeln }, signal: opts?.signal });
+    const raw = await this.request<Record<string, unknown>>({ path: "/sap/bc/zzapi/mes/handler", params: { ebeln }, signal: opts?.signal });
+    return this.applyTransform<PoResponse>(raw, "po");
   }
 
   /** Look up a production order by aufnr. */
   async getProdOrder(aufnr: string, opts?: { signal?: AbortSignal }): Promise<ProdOrderResponse> {
-    return this.request<ProdOrderResponse>({ path: "/sap/bc/zzapi/mes/prod_order", params: { aufnr }, signal: opts?.signal });
+    const raw = await this.request<Record<string, unknown>>({ path: "/sap/bc/zzapi/mes/prod_order", params: { aufnr }, signal: opts?.signal });
+    return this.applyTransform<ProdOrderResponse>(raw, "prodOrder");
   }
 
   /** Look up material master by matnr, optionally filtered by plant. */
   async getMaterial(matnr: string, werks?: string, opts?: { signal?: AbortSignal }): Promise<MaterialResponse> {
     const params: Record<string, string> = { matnr };
     if (werks) params.werks = werks;
-    return this.request<MaterialResponse>({ path: "/sap/bc/zzapi/mes/material", params, signal: opts?.signal });
+    const raw = await this.request<Record<string, unknown>>({ path: "/sap/bc/zzapi/mes/material", params, signal: opts?.signal });
+    return this.applyTransform<MaterialResponse>(raw, "material");
   }
 
   /** Look up stock/availability for a material at a plant. */
   async getStock(matnr: string, werks: string, lgort?: string, opts?: { signal?: AbortSignal }): Promise<StockResponse> {
     const params: Record<string, string> = { matnr, werks };
     if (lgort) params.lgort = lgort;
-    return this.request<StockResponse>({ path: "/sap/bc/zzapi/mes/stock", params, signal: opts?.signal });
+    const raw = await this.request<Record<string, unknown>>({ path: "/sap/bc/zzapi/mes/stock", params, signal: opts?.signal });
+    return this.applyTransform<StockResponse>(raw, "stock");
   }
 
   /** Look up PO line items by ebeln. */
   async getPoItems(ebeln: string, opts?: { signal?: AbortSignal }): Promise<PoItemsResponse> {
-    return this.request<PoItemsResponse>({ path: "/sap/bc/zzapi/mes/po_items", params: { ebeln }, signal: opts?.signal });
+    const raw = await this.request<Record<string, unknown>>({ path: "/sap/bc/zzapi/mes/po_items", params: { ebeln }, signal: opts?.signal });
+    return this.applyTransform<PoItemsResponse>(raw, "poItems");
   }
 
   /** Look up routing/recipe for a material at a plant. */
   async getRouting(matnr: string, werks: string, opts?: { signal?: AbortSignal }): Promise<RoutingResponse> {
-    return this.request<RoutingResponse>({ path: "/sap/bc/zzapi/mes/routing", params: { matnr, werks }, signal: opts?.signal });
+    const raw = await this.request<Record<string, unknown>>({ path: "/sap/bc/zzapi/mes/routing", params: { matnr, werks }, signal: opts?.signal });
+    return this.applyTransform<RoutingResponse>(raw, "routing");
   }
 
   /** Look up work center details. */
   async getWorkCenter(arbpl: string, werks: string, opts?: { signal?: AbortSignal }): Promise<WorkCenterResponse> {
-    return this.request<WorkCenterResponse>({ path: "/sap/bc/zzapi/mes/wc", params: { arbpl, werks }, signal: opts?.signal });
+    const raw = await this.request<Record<string, unknown>>({ path: "/sap/bc/zzapi/mes/wc", params: { arbpl, werks }, signal: opts?.signal });
+    return this.applyTransform<WorkCenterResponse>(raw, "workCenter");
   }
 
   /** Post a production order confirmation. */

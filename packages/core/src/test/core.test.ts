@@ -58,8 +58,9 @@ describe("SapClient", () => {
     // fields, producing invalid JSON like {"sakl":} instead of {"sakl":null}.
     // SapClient should repair this common pattern rather than failing with
     // "Non-JSON response".
+    // Note: Using format: 'raw' to test JSON repair without transform interference
     globalThis.fetch = mockFetch(200, '{"arbpl":"00310211","werks":"1000","costCenters":[{"kostl":"0009552100","sakl":}]}');
-    const result = await new SapClient(CFG).getWorkCenter("00310211", "1000");
+    const result = await new SapClient({ ...CFG, format: "raw" }).getWorkCenter("00310211", "1000");
     assert.equal((result as Record<string, unknown>).arbpl, "00310211");
     // The repaired null value should be accessible
     const ccs = ((result as Record<string, unknown>).costCenters ?? []) as Array<Record<string, unknown>>;
@@ -70,8 +71,9 @@ describe("SapClient", () => {
 
   it("repairs ABAP zz_cl_json empty-value in middle of object (e.g. \"sakl\":,)", async () => {
     // Variant where the empty value is followed by another key, not end-of-object
+    // Using format: 'raw' to test JSON repair without transform interference
     globalThis.fetch = mockFetch(200, '{"sakl":,"kostl":"123"}');
-    const result = await new SapClient(CFG).ping();
+    const result = await new SapClient({ ...CFG, format: "raw" }).ping();
     assert.equal((result as Record<string, unknown>).sakl, null);
     assert.equal((result as Record<string, unknown>).kostl, "123");
   });
