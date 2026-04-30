@@ -170,13 +170,14 @@ describe("HubClient", () => {
       if (url.endsWith("/auth/token")) {
         return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
       }
-      return jsonResponse(200, { ebeln: "3010000608", aedat: "20170306", lifnr: "0000500340", eindt: "20170630" });
+      // Hub returns envelope { data, _links? } with friendly format
+      return jsonResponse(200, { data: { purchaseOrderNumber: "3010000608", createdAt: "2017-03-06", vendorNumber: "0000500340", deliveryDate: "2017-06-30" } });
     });
 
     const client = new HubClient({ url: BASE, apiKey: API_KEY });
     const result = await client.getPo("3010000608");
 
-    assert.equal(result.ebeln, "3010000608");
+    assert.equal(result.purchaseOrderNumber, "3010000608");
     assert.match(capturedUrl!, /\/po\/3010000608$/);
   });
 
@@ -252,27 +253,30 @@ describe("HubClient", () => {
   it("getProdOrder builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(200, { aufnr: "1000000", auart: "PP01", werks: "1000", matnr: "10000001", gamng: 1000, gstrp: "20260401", gltrp: "20260415" });
+      // Hub returns envelope { data } with friendly format
+      return jsonResponse(200, { data: { productionOrderNumber: "1000000", orderType: "PP01", plant: "1000", materialNumber: "10000001", totalQuantity: 1000, scheduledStartDate: "2026-04-01", scheduledFinishDate: "2026-04-15" } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getProdOrder("1000000");
-    assert.equal(result.aufnr, "1000000");
+    assert.equal(result.productionOrderNumber, "1000000");
     assert.match(capturedUrl!, /\/prod-order\/1000000$/);
   });
 
   it("getMaterial builds correct URL with optional werks", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(200, { matnr: "10000001", mtart: "FERT", meins: "EA" });
+      // Hub returns envelope { data } with friendly format
+      return jsonResponse(200, { data: { materialNumber: "10000001", materialType: "FERT", baseUnit: "EA" } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getMaterial("10000001", "1000");
-    assert.equal(result.mtart, "FERT");
+    assert.equal(result.materialType, "FERT");
     assert.match(capturedUrl!, /\/material\/10000001\?werks=1000$/);
   });
 
   it("getStock builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(200, { matnr: "10000001", werks: "1000", items: [{ lgort: "0001", clabs: 250 }] });
+      // Hub returns envelope { data } with friendly format
+      return jsonResponse(200, { data: { materialNumber: "10000001", plant: "1000", storageLocations: [{ storageLocation: "0001", unrestrictedStock: 250 }] } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getStock("10000001", "1000", "0001");
     assert.match(capturedUrl!, /\/stock\/10000001\?werks=1000&lgort=0001$/);
@@ -281,30 +285,33 @@ describe("HubClient", () => {
   it("getPoItems builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(200, { ebeln: "4500000001", items: [{ ebelp: "00010", matnr: "10000001", menge: 100, meins: "EA" }] });
+      // Hub returns envelope { data } with friendly format
+      return jsonResponse(200, { data: { purchaseOrderNumber: "4500000001", items: [{ itemNumber: "00010", materialNumber: "10000001", quantity: 100, unit: "EA" }] } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getPoItems("4500000001");
-    assert.equal(result.ebeln, "4500000001");
+    assert.equal(result.purchaseOrderNumber, "4500000001");
     assert.match(capturedUrl!, /\/po\/4500000001\/items$/);
   });
 
   it("getRouting builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(200, { matnr: "10000001", werks: "1000", plnnr: "50000123", operations: [{ vornr: "0010", ltxa1: "Turning" }] });
+      // Hub returns envelope { data } with friendly format
+      return jsonResponse(200, { data: { materialNumber: "10000001", plant: "1000", routingNumber: "50000123", operations: [{ operationNumber: "0010", operationDescription: "Turning" }] } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getRouting("10000001", "1000");
-    assert.equal(result.plnnr, "50000123");
+    assert.equal(result.routingNumber, "50000123");
     assert.match(capturedUrl!, /\/routing\/10000001\?werks=1000$/);
   });
 
   it("getWorkCenter builds correct URL", async () => {
     globalThis.fetch = mockFetch((url) => {
       if (url.endsWith("/auth/token")) return jsonResponse(200, { token: "jwt-abc", expires_in: 900 });
-      return jsonResponse(200, { arbpl: "TURN1", werks: "1000", steus: "PP01" });
+      // Hub returns envelope { data } with friendly format
+      return jsonResponse(200, { data: { workCenterId: "TURN1", plant: "1000", controlKey: "PP01" } });
     });
     const result = await new HubClient({ url: BASE, apiKey: API_KEY }).getWorkCenter("TURN1", "1000");
-    assert.equal(result.steus, "PP01");
+    assert.equal(result.controlKey, "PP01");
     assert.match(capturedUrl!, /\/work-center\/TURN1\?werks=1000$/);
   });
 

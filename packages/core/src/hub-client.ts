@@ -16,6 +16,13 @@ interface TokenCache {
   expiresAt: number; // epoch ms
 }
 
+/** Hub wraps responses in { data, _links?, _source? } envelope */
+interface HubEnvelope<T> {
+  data: T;
+  _links?: Record<string, string>;
+  _source?: unknown;
+}
+
 /**
  * Client that talks to the zzapi-mes hub (not SAP directly).
  * Handles JWT acquisition and automatic refresh.
@@ -53,42 +60,49 @@ export class HubClient {
 
   /** Look up a purchase order by ebeln via hub. */
   async getPo(ebeln: string): Promise<PoResponse> {
-    return this.request<PoResponse>(`/po/${encodeURIComponent(ebeln)}`);
+    const envelope = await this.request<HubEnvelope<PoResponse>>(`/po/${encodeURIComponent(ebeln)}`);
+    return envelope.data;
   }
 
   /** Look up a production order by aufnr via hub. */
   async getProdOrder(aufnr: string): Promise<ProdOrderResponse> {
-    return this.request<ProdOrderResponse>(`/prod-order/${encodeURIComponent(aufnr)}`);
+    const envelope = await this.request<HubEnvelope<ProdOrderResponse>>(`/prod-order/${encodeURIComponent(aufnr)}`);
+    return envelope.data;
   }
 
   /** Look up material master via hub. */
   async getMaterial(matnr: string, werks?: string): Promise<MaterialResponse> {
     const query = werks ? `?werks=${encodeURIComponent(werks)}` : "";
-    return this.request<MaterialResponse>(`/material/${encodeURIComponent(matnr)}${query}`);
+    const envelope = await this.request<HubEnvelope<MaterialResponse>>(`/material/${encodeURIComponent(matnr)}${query}`);
+    return envelope.data;
   }
 
   /** Look up stock/availability via hub. */
   async getStock(matnr: string, werks: string, lgort?: string): Promise<StockResponse> {
     const params = new URLSearchParams({ werks });
     if (lgort) params.set("lgort", lgort);
-    return this.request<StockResponse>(`/stock/${encodeURIComponent(matnr)}?${params}`);
+    const envelope = await this.request<HubEnvelope<StockResponse>>(`/stock/${encodeURIComponent(matnr)}?${params}`);
+    return envelope.data;
   }
 
   /** Look up PO line items via hub. */
   async getPoItems(ebeln: string): Promise<PoItemsResponse> {
-    return this.request<PoItemsResponse>(`/po/${encodeURIComponent(ebeln)}/items`);
+    const envelope = await this.request<HubEnvelope<PoItemsResponse>>(`/po/${encodeURIComponent(ebeln)}/items`);
+    return envelope.data;
   }
 
   /** Look up routing/recipe via hub. */
   async getRouting(matnr: string, werks: string): Promise<RoutingResponse> {
     const params = new URLSearchParams({ werks });
-    return this.request<RoutingResponse>(`/routing/${encodeURIComponent(matnr)}?${params}`);
+    const envelope = await this.request<HubEnvelope<RoutingResponse>>(`/routing/${encodeURIComponent(matnr)}?${params}`);
+    return envelope.data;
   }
 
   /** Look up work center via hub. */
   async getWorkCenter(arbpl: string, werks: string): Promise<WorkCenterResponse> {
     const params = new URLSearchParams({ werks });
-    return this.request<WorkCenterResponse>(`/work-center/${encodeURIComponent(arbpl)}?${params}`);
+    const envelope = await this.request<HubEnvelope<WorkCenterResponse>>(`/work-center/${encodeURIComponent(arbpl)}?${params}`);
+    return envelope.data;
   }
 
   /** Post a production order confirmation. */
