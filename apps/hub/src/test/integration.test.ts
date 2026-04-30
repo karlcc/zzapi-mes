@@ -238,11 +238,13 @@ describe("E2E integration against mock SAP", () => {
   });
 
   it("authenticates and proxies ping + po through hub to mock SAP", async () => {
+    // Use format: 'raw' because hub applies its own transform to raw SAP data
     const sap = new SapClient({
       host: `http://127.0.0.1:${sapPort}`,
       client: 200,
       user: "test",
       password: "test",
+      format: "raw",
     });
 
     const { app } = createApp(sap, { db });
@@ -267,12 +269,13 @@ describe("E2E integration against mock SAP", () => {
     assert.equal(pingBody.ok, true);
     assert.ok(pingBody.sap_time);
 
-    // 3. PO lookup (format=raw to get raw SAP field names)
+    // 3. PO lookup (format=raw to get raw SAP field names directly)
     const poRes = await app.fetch(new Request("http://localhost/po/4500000001?format=raw", {
       headers: { authorization: `Bearer ${token}` },
     }));
     assert.equal(poRes.status, 200);
     const poBody = await poRes.json() as Record<string, unknown>;
+    // Hub with format=raw returns raw SAP data directly (not wrapped in envelope)
     assert.equal(poBody.ebeln, "4500000001");
 
     // 4. x-request-id present in responses

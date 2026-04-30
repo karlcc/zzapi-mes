@@ -109,6 +109,7 @@ export function createApp(sap?: SapClient, deps?: AppDeps): {
       client: sapClientNum,
       user: requireEnv("SAP_USER"),
       password: requireEnv("SAP_PASS"),
+      format: "raw", // Hub needs raw SAP data to apply its own transform
       timeout: (() => {
         const t = process.env.SAP_TIMEOUT;
         if (t !== undefined && t !== "") {
