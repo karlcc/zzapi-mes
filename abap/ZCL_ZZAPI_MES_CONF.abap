@@ -31,29 +31,45 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
         ENDIF.
 
         " --- Extract fields from JSON body ---
-        DATA: lv_orderid  TYPE aufnr,
-              lv_operation TYPE vornr,
-              lv_yield     TYPE gamng,
-              lv_scrap     TYPE gamng,
-              lv_work_act  TYPE vgwrt,
-              lv_postg_date TYPE budat,
-              lv_fin_conf  TYPE string.
+        " extract_field CHANGING cv_value TYPE string — use string temporaries
+        " then convert to DDIC types for BAPI call.
+        DATA: lv_orderid_str   TYPE string,
+              lv_operation_str TYPE string,
+              lv_yield_str_ext TYPE string,
+              lv_scrap_str_ext TYPE string,
+              lv_work_act_str  TYPE string,
+              lv_postg_date_str TYPE string,
+              lv_fin_conf      TYPE string,
+              lv_orderid       TYPE aufnr,
+              lv_operation     TYPE vornr,
+              lv_yield         TYPE gamng,
+              lv_scrap         TYPE gamng,
+              lv_work_act      TYPE vgwrt,
+              lv_postg_date    TYPE budat.
 
         " Simple JSON field extraction (SAP_BASIS 700 — no /UI2/CL_JSON)
         zcl_zzapi_mes_utils=>extract_field(
-          EXPORTING iv_json = lv_body iv_field = 'orderid' CHANGING cv_value = lv_orderid ).
+          EXPORTING iv_json = lv_body iv_field = 'orderid' CHANGING cv_value = lv_orderid_str ).
         zcl_zzapi_mes_utils=>extract_field(
-          EXPORTING iv_json = lv_body iv_field = 'operation' CHANGING cv_value = lv_operation ).
+          EXPORTING iv_json = lv_body iv_field = 'operation' CHANGING cv_value = lv_operation_str ).
         zcl_zzapi_mes_utils=>extract_field(
-          EXPORTING iv_json = lv_body iv_field = 'yield' CHANGING cv_value = lv_yield ).
+          EXPORTING iv_json = lv_body iv_field = 'yield' CHANGING cv_value = lv_yield_str_ext ).
         zcl_zzapi_mes_utils=>extract_field(
-          EXPORTING iv_json = lv_body iv_field = 'scrap' CHANGING cv_value = lv_scrap ).
+          EXPORTING iv_json = lv_body iv_field = 'scrap' CHANGING cv_value = lv_scrap_str_ext ).
         zcl_zzapi_mes_utils=>extract_field(
-          EXPORTING iv_json = lv_body iv_field = 'work_actual' CHANGING cv_value = lv_work_act ).
+          EXPORTING iv_json = lv_body iv_field = 'work_actual' CHANGING cv_value = lv_work_act_str ).
         zcl_zzapi_mes_utils=>extract_field(
-          EXPORTING iv_json = lv_body iv_field = 'postg_date' CHANGING cv_value = lv_postg_date ).
+          EXPORTING iv_json = lv_body iv_field = 'postg_date' CHANGING cv_value = lv_postg_date_str ).
         zcl_zzapi_mes_utils=>extract_field(
           EXPORTING iv_json = lv_body iv_field = 'fin_conf' CHANGING cv_value = lv_fin_conf ).
+
+        " Convert string extractions to DDIC types for BAPI call
+        lv_orderid    = lv_orderid_str.
+        lv_operation  = lv_operation_str.
+        lv_yield      = lv_yield_str_ext.
+        lv_scrap      = lv_scrap_str_ext.
+        lv_work_act   = lv_work_act_str.
+        lv_postg_date = lv_postg_date_str.
 
         IF lv_orderid IS INITIAL OR lv_operation IS INITIAL OR lv_yield IS INITIAL.
           server->response->set_status( code = 400 reason = 'Bad Request' ).
@@ -64,61 +80,70 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
 
         " --- Call BAPI_PRODORDCONF_CREATE_TT ---
         DATA: ls_timeticket TYPE bapi_pp_timeticket,
-              lt_return     TYPE TABLE OF bapiret2,
-              ls_return     TYPE bapiret2,
-              lv_conf_no    TYPE bapi_pp_conf_key-conf_no,
-              lv_conf_cnt   TYPE bapi_pp_conf_key-conf_cnt.
+              lt_timetickets TYPE TABLE OF bapi_pp_timeticket,
+              ls_ret1       TYPE bapiret1,
+              lt_detail     TYPE TABLE OF bapi_coru_return,
+              ls_detail     TYPE bapi_coru_return.
 
         ls_timeticket-orderid      = lv_orderid.
         ls_timeticket-operation    = lv_operation.
         ls_timeticket-yield        = lv_yield.
         ls_timeticket-scrap        = lv_scrap.
-        ls_timeticket-work_actual  = lv_work_act.
+        " BAPI_PP_TIMETICKET has no WORK_ACTUAL — map to CONF_ACTIVITY1
+        " (actual activity for the first standard value key in the routing).
+        IF lv_work_act IS NOT INITIAL.
+          ls_timeticket-conf_activity1 = lv_work_act.
+        ENDIF.
         IF lv_postg_date IS NOT INITIAL.
           ls_timeticket-postg_date = lv_postg_date.
         ENDIF.
-        " fin_conf: "X" = final confirmation, "" = partial confirmation.
-        " When omitted from request body, extract_field returns empty string.
-        " Default to final confirmation for backward compatibility.
-        " fin_conf is a char1 field on BAPI_PP_TIMETICKET — "X" means final.
-        IF lv_fin_conf IS INITIAL.
-          ls_timeticket-fin_conf = abap_true.  " Default: final confirmation
-        ELSEIF lv_fin_conf = 'X'.
-          ls_timeticket-fin_conf = abap_true.  " Explicit: final confirmation
+        " FIN_CONF = 'X' means final confirmation; space means partial.
+        " Our API: fin_conf "X" or omitted → final; any other value → partial.
+        IF lv_fin_conf IS INITIAL OR lv_fin_conf = 'X'.
+          ls_timeticket-fin_conf = abap_true.  " Final confirmation
         ELSE.
-          " Any other value (e.g. explicit empty) — partial confirmation
-          ls_timeticket-fin_conf = lv_fin_conf.
+          ls_timeticket-fin_conf = space.       " Partial confirmation
         ENDIF.
 
+        " BAPI_PRODORDCONF_CREATE_TT takes TIMETICKETS as a TABLE parameter.
+        APPEND ls_timeticket TO lt_timetickets.
+
         CALL FUNCTION 'BAPI_PRODORDCONF_CREATE_TT'
-          EXPORTING
-            timeticket   = ls_timeticket
           IMPORTING
-            confirmed    = lv_conf_no
-            conf_counter = lv_conf_cnt
+            return        = ls_ret1
           TABLES
-            return       = lt_return.
+            timetickets   = lt_timetickets
+            detail_return = lt_detail.
 
         " --- Check for errors ---
+        " ls_ret1 is BAPIRET1 (single structure), lt_detail is BAPI_CORU_RETURN table.
+        " Check both for errors.
         DATA: lv_has_error TYPE abap_bool.
-        LOOP AT lt_return INTO ls_return WHERE type = 'E' OR type = 'A'.
+        IF ls_ret1-type = 'E' OR ls_ret1-type = 'A'.
+          lv_has_error = abap_true.
+        ENDIF.
+        LOOP AT lt_detail INTO ls_detail WHERE type = 'E' OR type = 'A'.
           lv_has_error = abap_true.
           EXIT.
         ENDLOOP.
 
         IF lv_has_error = abap_true.
           CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
-          " Serialize only TYPE+MESSAGE from bapiret2 — strip SAP internals
-          " (LOG_NO, LOG_MSG_NO, PARAMETER, ROW, FIELD, SYSTEM, etc.)
+          " Collect error messages from both BAPIRET1 and DETAIL_RETURN
           TYPES: BEGIN OF lty_bapi_msg,
                    type    TYPE bapiret2-type,
                    message TYPE bapiret2-message,
                  END OF lty_bapi_msg.
           DATA: lt_err_msg TYPE TABLE OF lty_bapi_msg,
                 ls_err_msg TYPE lty_bapi_msg.
-          LOOP AT lt_return INTO ls_return WHERE type = 'E' OR type = 'A'.
-            ls_err_msg-type    = ls_return-type.
-            ls_err_msg-message = ls_return-message.
+          IF ls_ret1-type = 'E' OR ls_ret1-type = 'A'.
+            ls_err_msg-type    = ls_ret1-type.
+            ls_err_msg-message = ls_ret1-message.
+            APPEND ls_err_msg TO lt_err_msg.
+          ENDIF.
+          LOOP AT lt_detail INTO ls_detail WHERE type = 'E' OR type = 'A'.
+            ls_err_msg-type    = ls_detail-type.
+            ls_err_msg-message = ls_detail-message.
             APPEND ls_err_msg TO lt_err_msg.
           ENDLOOP.
           DATA: lv_err_json TYPE string.
@@ -134,6 +159,19 @@ CLASS zcl_zzapi_mes_conf IMPLEMENTATION.
         ELSE.
           CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
             EXPORTING wait = abap_true.
+          " Extract confirmation number from detail_return or ret1
+          DATA: lv_conf_no  TYPE bapi_pp_conf_key-conf_no,
+                lv_conf_cnt TYPE bapi_pp_conf_key-conf_cnt.
+          " BAPI_CORU_RETURN has CONF_NO and CONF_CNT as direct fields
+          " (not in PARAMETER/MESSAGE_V1 as with generic BAPIRET2).
+          LOOP AT lt_detail INTO ls_detail WHERE type = 'S' OR type = 'I'.
+            IF ls_detail-conf_no IS NOT INITIAL.
+              lv_conf_no = ls_detail-conf_no.
+            ENDIF.
+            IF ls_detail-conf_cnt IS NOT INITIAL.
+              lv_conf_cnt = ls_detail-conf_cnt.
+            ENDIF.
+          ENDLOOP.
           " Format numeric fields with dot as decimal separator (locale-independent)
           " to avoid comma in non-US locales producing invalid JSON.
           lv_yield_str = lv_yield.

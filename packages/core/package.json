@@ -4,6 +4,16 @@
   "description": "SAP client, Zod schemas, and shared types for ZZAPI MES",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./transform": {
+      "types": "./dist/transform/index.d.ts",
+      "default": "./dist/transform/index.js"
+    }
+  },
   "files": ["dist"],
   "scripts": {
     "build": "tsc",

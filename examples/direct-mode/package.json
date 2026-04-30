@@ -1,0 +1,26 @@
+{
+  "name": "zzapi-mes-direct-example",
+  "version": "1.0.0",
+  "description": "Example: Direct SAP connection using @zzapi-mes/sdk",
+  "type": "module",
+  "scripts": {
+    "ping": "tsx ping.ts",
+    "po": "tsx get-po.ts",
+    "material": "tsx get-material.ts",
+    "stock": "tsx get-stock.ts",
+    "prod-order": "tsx get-prod-order.ts",
+    "routing": "tsx get-routing.ts",
+    "work-center": "tsx get-work-center.ts",
+    "confirm": "tsx confirm-production.ts",
+    "gr": "tsx goods-receipt.ts",
+    "gi": "tsx goods-issue.ts"
+  },
+  "dependencies": {
+    "@zzapi-mes/sdk": "workspace:*",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.0"
+  }
+}
