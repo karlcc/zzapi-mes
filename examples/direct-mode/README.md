@@ -2,12 +2,9 @@
 
 These examples demonstrate using `@zzapi-mes/sdk` for **direct SAP ICF connection** (bypassing the hub).
 
-> **Important:** Direct mode returns **raw SAP DDIC format** (cryptic field names like `ebeln`, `aedat`, `lifnr`).  
-> For **human-readable format** (e.g., `purchaseOrderNumber`, `createdAt`, `vendorNumber`), use the **hub** instead:
-> ```ts
-> import { HubClient } from "@zzapi-mes/sdk";
-> const client = new HubClient({ url: "http://hub:8080", apiKey: "..." });
-> ```
+> **Human-readable format by default:** Direct mode now returns friendly field names
+> (e.g., `purchaseOrderNumber`, `createdAt`, `vendorNumber`) — just like the hub.
+> For raw SAP DDIC format (`ebeln`, `aedat`, `lifnr`), pass `format: 'raw'` to SapClient.
 
 ## Setup
 
@@ -54,14 +51,17 @@ Or use the package.json scripts:
 pnpm exec tsx ping.ts          # or: pnpm tsx ping.ts (from repo root with filter)
 ```
 
-## SAP Field Names (Direct vs. Hub)
+## SAP Field Names
 
-| Mode | Field Names | Example |
-|------|-------------|---------|
-| **Direct** (these examples) | Raw SAP DDIC (`ebeln`, `aedat`, `lifnr`) | `{ ebeln: "3010000608", aedat: "20170306", lifnr: "0000500340" }` |
-| **Hub** | Human-readable (`purchaseOrderNumber`, `createdAt`, `vendorNumber`) | `{ purchaseOrderNumber: "3010000608", createdAt: "2017-03-06", vendorNumber: "0000500340" }` |
+Both direct mode and hub mode return **human-readable field names** by default:
 
-Use `?format=raw` on the hub to get raw SAP format, or use these direct mode examples for direct SAP connection.
+| Field | Friendly Format (default) | Raw SAP DDIC |
+|-------|---------------------------|--------------|
+| PO number | `purchaseOrderNumber` | `ebeln` |
+| Created date | `createdAt` (YYYY-MM-DD) | `aedat` (YYYYMMDD) |
+| Vendor | `vendorNumber` | `lifnr` |
+
+To get raw SAP format, pass `format: 'raw'` to SapClient or use `?format=raw` on the hub.
 
 ## SAP ID Formatting
 
@@ -87,30 +87,21 @@ Use `?format=raw` on the hub to get raw SAP format, or use these direct mode exa
 | `pnpm exec tsx goods-receipt.ts [EBELN] [EBELP] [QTY]` | Write | Post goods receipt |
 | `pnpm exec tsx goods-issue.ts [AUFNR] [MATNR] [QTY]` | Write | Post goods issue |
 
-## Why No Friendly Format in Direct Mode?
+## How It Works
 
-The **human-readable field mapping** is implemented in the **hub**, not in the SDK's direct mode:
+Both direct and hub mode apply a transform engine that converts SAP DDIC field names to human-readable format:
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Client    │────▶│    Hub      │────▶│     SAP     │
-│             │     │ (transform) │     │  (raw DDIC) │
-└─────────────┘     └─────────────┘     └─────────────┘
-                         ↓
-              ebeln → purchaseOrderNumber
-              aedat → createdAt (YYYY-MM-DD)
+┌─────────────┐     ┌───────────────┐     ┌─────────────┐
+│   Client    │────▶│  SapClient    │────▶│     SAP     │
+│  (SDK/CLI)  │     │ (transform)   │     │  (raw DDIC) │
+└─────────────┘     └───────────────┘     └─────────────┘
+                          ↓
+               ebeln → purchaseOrderNumber
+               aedat → createdAt (YYYY-MM-DD)
 ```
 
-**Direct mode connects straight to SAP** — no transform layer. The SDK (`SapClient`) is a thin wrapper over HTTP Basic Auth + JSON parsing.
-
-**To add friendly format to direct mode**, you would need to:
-
-1. **Port the transform engine** from `apps/hub/src/transform/` into `@zzapi-mes/core`
-2. **Map field names** using `ENTITY_MAPPINGS` from `apps/hub/src/transform/mappings.ts`
-3. **Convert dates** from `YYYYMMDD` → `YYYY-MM-DD`
-4. **Optionally** expose a `format: "friendly" | "raw"` option in `SapClientConfig`
-
-**Recommended approach:** Use `HubClient` instead of `SapClient` if you need human-readable responses. The hub handles JWT auth, rate limiting, idempotency, **and** response transformation.
+The transform engine lives in `@zzapi-mes/core` and is applied by both `SapClient` (direct mode) and the hub server.
 
 ## Troubleshooting
 

@@ -4,6 +4,8 @@ import {
   ENTITY_MAPPINGS,
 } from "./transform/index.js";
 
+export { transformResponse, parseTransformOpts, type TransformOptions } from "./transform/index.js";
+
 /** Response format option */
 export type Format = "friendly" | "raw";
 

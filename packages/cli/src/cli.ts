@@ -84,50 +84,45 @@ function die(msg: string, code: number = EXIT_USAGE): never {
 
 const VERSION = "0.1.0";
 
-function parseMode(args: string[]): { mode: Mode; rest: string[] } {
-  const modeIdx = args.indexOf("--mode");
-  if (modeIdx === -1) {
-    // Check for --mode=hub form
-    const modeEq = args.find(a => a.startsWith("--mode="));
-    if (modeEq) {
-      const mode = modeEq.split("=")[1];
-      if (mode !== "direct" && mode !== "hub") die(`Unknown mode: ${mode}. Use 'direct' or 'hub'.`);
-      return { mode: mode as Mode, rest: args.filter(a => a !== modeEq) };
+function parseFlag<T extends string>(
+  args: string[],
+  name: string,
+  validValues: readonly T[],
+  defaultValue: T
+): { value: T; rest: string[] } {
+  const flagIdx = args.indexOf(`--${name}`);
+  if (flagIdx === -1) {
+    const flagEq = args.find(a => a.startsWith(`--${name}=`));
+    if (flagEq) {
+      const value = flagEq.split("=")[1];
+      if (!validValues.includes(value as T)) {
+        die(`Unknown ${name}: ${value}. Use '${validValues.join("' or '")}'.`);
+      }
+      return { value: value as T, rest: args.filter(a => a !== flagEq) };
     }
-    return { mode: "direct", rest: args };
+    return { value: defaultValue, rest: args };
   }
-  // Check for duplicate --mode flags (e.g. --mode hub --mode=direct)
-  const secondMode = args.indexOf("--mode", modeIdx + 1);
-  const secondModeEq = args.slice(modeIdx + 1).find(a => a.startsWith("--mode="));
-  if (secondMode !== -1 || secondModeEq) {
-    die("Duplicate --mode flag — specify only one mode");
+  const secondFlag = args.indexOf(`--${name}`, flagIdx + 1);
+  const secondFlagEq = args.slice(flagIdx + 1).find(a => a.startsWith(`--${name}=`));
+  if (secondFlag !== -1 || secondFlagEq) {
+    die(`Duplicate --${name} flag — specify only one ${name}`);
   }
-  const mode = args[modeIdx + 1];
-  if (!mode) die("--mode requires a value: 'direct' or 'hub'");
-  if (mode !== "direct" && mode !== "hub") die(`Unknown mode: ${mode}. Use 'direct' or 'hub'.`);
-  return { mode, rest: [...args.slice(0, modeIdx), ...args.slice(modeIdx + 2)] };
+  const value = args[flagIdx + 1];
+  if (!value) die(`--${name} requires a value: '${validValues.join("' or '")}'`);
+  if (!validValues.includes(value as T)) {
+    die(`Unknown ${name}: ${value}. Use '${validValues.join("' or '")}'.`);
+  }
+  return { value: value as T, rest: [...args.slice(0, flagIdx), ...args.slice(flagIdx + 2)] };
+}
+
+function parseMode(args: string[]): { mode: Mode; rest: string[] } {
+  const { value, rest } = parseFlag(args, "mode", ["direct", "hub"] as const, "direct");
+  return { mode: value, rest };
 }
 
 function parseFormat(args: string[]): { format: Format; rest: string[] } {
-  const formatIdx = args.indexOf("--format");
-  if (formatIdx === -1) {
-    const formatEq = args.find(a => a.startsWith("--format="));
-    if (formatEq) {
-      const format = formatEq.split("=")[1];
-      if (format !== "friendly" && format !== "raw") die(`Unknown format: ${format}. Use 'friendly' or 'raw'.`);
-      return { format: format as Format, rest: args.filter(a => a !== formatEq) };
-    }
-    return { format: "friendly", rest: args };
-  }
-  const secondFormat = args.indexOf("--format", formatIdx + 1);
-  const secondFormatEq = args.slice(formatIdx + 1).find(a => a.startsWith("--format="));
-  if (secondFormat !== -1 || secondFormatEq) {
-    die("Duplicate --format flag — specify only one format");
-  }
-  const format = args[formatIdx + 1];
-  if (!format) die("--format requires a value: 'friendly' or 'raw'");
-  if (format !== "friendly" && format !== "raw") die(`Unknown format: ${format}. Use 'friendly' or 'raw'.`);
-  return { format, rest: [...args.slice(0, formatIdx), ...args.slice(formatIdx + 2)] };
+  const { value, rest } = parseFlag(args, "format", ["friendly", "raw"] as const, "friendly");
+  return { format: value, rest };
 }
 
 async function main() {
