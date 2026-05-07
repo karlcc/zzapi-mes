@@ -50,6 +50,6 @@ remote_hosts: [msi-1]
 notes:
   abap_deploy: Manual via SE24/SICF on SAP (msi-1 Parsec/RDP → SAP GUI)
   hub_deploy: bash apps/hub/deploy/update-msi1.sh
-  known_test_failures: 3 CLI tests fail on main (--mode flag, hub mode, confirm command)
+  known_test_failures: none (all 873 tests pass as of 2026-05-07)
   smoke: pnpm smoke against sapdev.fastcell.hk:8000
 ```
