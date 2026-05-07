@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-zzapi-mes is an SAP ICF REST handler SDK + CLI for MES integration on **SAP_BASIS 700**. The core architectural decision ("Strategy D") is to implement new API endpoints as ABAP classes implementing `IF_HTTP_EXTENSION` and registered via transaction SICF — **deliberately avoiding BSP pages, SE80, and page-attribute/flow-logic plumbing**. Full rationale: `docs/demo-walkthrough.md` and the Obsidian note `zzapi-mes-strategy-d-icf-handler-deep-study.md`.
+zzapi-mes is an SAP ICF REST handler SDK + CLI for MES integration on **SAP_BASIS 700**. The core architectural decision ("Strategy D") is to implement new API endpoints as ABAP classes implementing `IF_HTTP_EXTENSION` and registered via transaction SICF — **deliberately avoiding BSP pages, SE80, and page-attribute/flow-logic plumbing**. Full rationale: `docs/_archived/demo-walkthrough.md` and the vault concept `zzapi-mes-icf-handler-deployment`.
 
 The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go through the ICF handler pattern.
 
@@ -10,7 +10,7 @@ The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go throug
 
 - `abap/` — ABAP class source mirrored from SE24. These files are the source of truth in git, but the *running* code lives on the SAP system. They are not "compiled" locally.
 - `scripts/smoke.sh` — curl round-trip tests against the deployed handlers on `sapdev.fastcell.hk:8000`. Supports direct and hub mode (`HUB_MODE=1`).
-- `docs/demo-walkthrough.md` — step-by-step SE24 + SICF deployment procedure.
+- `docs/_archived/demo-walkthrough.md` — step-by-step SE24 + SICF deployment procedure (archived; see vault concept `zzapi-mes-icf-handler-deployment`).
 - `packages/core/` — `@zzapi-mes/core` — SAP client (`SapClient`), hub client (`HubClient`), Zod schemas, error types, `ALL_SCOPES` constant. Shared by SDK, CLI, and hub.
 - `packages/sdk/` — `@zzapi-mes/sdk` — thin re-export of `@zzapi-mes/core`. Back-compat for existing consumers.
 - `packages/cli/` — `@zzapi-mes/cli` — CLI with `--mode direct|hub` flag. Both modes support all commands including write-back (confirm, goods-receipt, goods-issue). Direct mode reads `SAP_*` env or `~/.zzapirc`. Hub mode reads `HUB_URL`/`HUB_API_KEY`.
