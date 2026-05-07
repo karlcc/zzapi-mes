@@ -20,10 +20,6 @@ The existing BSP page `ZMES001.htm` stays as-is; all **new** endpoints go throug
 
 ## Commands
 
-### Known Test Issues
-
-3 CLI tests fail on main: `--mode flag`, `hub mode (missing creds)`, `confirm command`. These are pre-existing and not blocking. Hub and core tests pass clean.
-
 - `pnpm build` — compile core, SDK, CLI, and hub TypeScript packages.
 - `pnpm --filter @zzapi-mes/hub dev` — run the hub locally with tsx watch (reads `HUB_*` + `SAP_*` env).
 - `pnpm --filter @zzapi-mes/hub migrate` — apply SQLite migrations before first start / after schema changes.
